@@ -23,10 +23,11 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "check:no-network": "node scripts/check-no-network.mjs",
+    "check:size": "npm run build && node scripts/check-bundle-size.mjs",
     "pack:dry": "npm pack --dry-run --json",
     "test": "npm run build && vitest run",
     "test:coverage": "npm run build && vitest run --coverage",
-    "verify": "npm run typecheck && npm run check:no-network && npm test && npm run pack:dry"
+    "verify": "npm run typecheck && npm run check:no-network && npm test && npm run check:size && npm run pack:dry"
   },
   "engines": {
     "node": ">=20.11"
@@ -34,6 +35,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^4.1.5",
+    "esbuild": "^0.28.0",
     "typescript": "^5.5.0",
     "vitest": "^4.1.5"
   }
