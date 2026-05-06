@@ -11,6 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   group,
+  run,
   CostBudget,
   TelemetryBudget,
   createBudget,
@@ -167,6 +168,35 @@ test("section 2 TaskContext.budgets lists visible budget states", async () => {
     budgets.map((budget) => [budget.key, budget.state.limit]).sort(),
     [["CostBudget", 1.0], ["TokenBudget", 100]]
   );
+});
+
+test("section 2 Child scope budget shadows parent budget", async () => {
+  const parentBudget = { spent: 0, limit: 10, unit: "USD" };
+  const childBudget = { spent: 0, limit: 1, unit: "USD" };
+
+  await run.context.with(CostBudget, parentBudget, async () => {
+    await run.scope(async (scope) => {
+      const handle = scope.spawn(async (ctx) => {
+        ctx.consumeCost(0.5);
+      });
+      await handle;
+    }, { context: run.context.current().with(CostBudget, childBudget) });
+  });
+
+  assert.equal(parentBudget.spent, 0);
+  assert.equal(childBudget.spent, 0.5);
+});
+
+test("section 2 Concurrent budget charges land at exact total", async () => {
+  const budget = { spent: 0, limit: 1, unit: "USD" };
+
+  await run.context.with(CostBudget, budget, async () => {
+    await run.all(Array.from({ length: 100 }, () => async (ctx) => {
+      ctx.consumeCost(0.01);
+    }));
+  });
+
+  assert.equal(Math.round(budget.spent * 100), 100);
 });
 
 // --- section 8 Telemetry budget never throws ---------------------------------

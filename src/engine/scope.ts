@@ -489,7 +489,8 @@ function consumeBudget<T extends BudgetState>(
   if (state === undefined) {
     throw new Error(`Budget "${key.name}" not set in scope`);
   }
-  if (state.spent + amount > state.limit) {
+  const nextSpent = normalizeBudgetAmount(state.spent + amount);
+  if (nextSpent > state.limit) {
     const unit = state.unit ?? key.unit;
     const err = new BudgetExceededError({
       budgetKey: key.name,
@@ -503,7 +504,12 @@ function consumeBudget<T extends BudgetState>(
     owner.cancel(err.reason);
     throw err;
   }
-  state.spent += amount;
+  state.spent = nextSpent;
+}
+
+/** Normalizes decimal budget arithmetic to avoid floating-point drift. */
+function normalizeBudgetAmount(value: number): number {
+  return Number(value.toFixed(12));
 }
 
 /** Finds the highest scope that owns the current visible budget key. */
@@ -511,9 +517,12 @@ function findBudgetOwner<T extends BudgetState>(
   scope: ScopeImpl,
   key: ContextKey<T>
 ): ScopeImpl | null {
+  const visibleState = scope.context.get(key);
   let cur: ScopeImpl | null = scope;
   while (cur) {
-    if (cur.context.has(key) && (!cur.parent || !cur.parent.context.has(key))) {
+    const ownsVisibleState = cur.context.has(key) && cur.context.get(key) === visibleState;
+    const parentHasSameState = cur.parent?.context.get(key) === visibleState;
+    if (ownsVisibleState && !parentHasSameState) {
       return cur;
     }
     cur = cur.parent;
