@@ -3,9 +3,6 @@
  *
  * @author Admilson B. F. Cossa
  *
- * Implements `doc.md` section 4.6 and `doc-extensions.md` section 8.5
- * (rules O3 and O4).
- *
  * Key properties:
  *   - Zero dispatch work when no handlers are subscribed (fast path).
  *   - Bubbles to parent bus (one handler at the root sees the whole tree).

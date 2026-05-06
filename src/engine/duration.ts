@@ -3,9 +3,8 @@
  *
  * @author Admilson B. F. Cossa
  *
- * Implements `doc.md` section 3.2. The parser is intentionally strict because
- * duration values affect cancellation policy; malformed values must fail before
- * task execution begins.
+ * The parser is intentionally strict because duration values affect
+ * cancellation policy; malformed values must fail before task execution begins.
  *
  * Accepted values:
  * - "500ms"

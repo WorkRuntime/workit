@@ -344,7 +344,7 @@ export class ScopeImpl implements Scope {
     }
   }
 
-  // -- Status snapshot (section 3.9) ------------------------------------------
+  // -- Status snapshot ---------------------------------------------------------
 
   /** Returns a point-in-time snapshot of this scope and currently retained children. */
   status(): ScopeSnapshot {
@@ -470,7 +470,7 @@ function isBudgetState(value: unknown): value is BudgetState {
   return typeof candidate.limit === "number" && typeof candidate.spent === "number";
 }
 
-// --- Budget consumption (section 2.3 rules B1-B6) ------------------------------
+// --- Budget consumption --------------------------------------------------------
 
 /**
  * Charges a cooperative budget installed in scope context.
@@ -530,7 +530,7 @@ function findBudgetOwner<T extends BudgetState>(
   return null;
 }
 
-// --- run.group - the canonical scope opener (section 6.2) ---------------------
+// --- run.group - the canonical scope opener -----------------------------------
 
 /** Function object used by `group()` bodies to spawn owned tasks. */
 export interface TaskSpawner {

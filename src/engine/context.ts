@@ -3,10 +3,9 @@
  *
  * @author Admilson B. F. Cossa
  *
- * Implements `doc.md` section 3.7 and the budget keys from `doc-extensions.md`
- * section 2. Context is the boundary for dependency injection and cooperative
- * budgets; callers must install required values before task execution reaches
- * the code that consumes them.
+ * Context is the boundary for dependency injection and cooperative budgets.
+ * Callers must install required values before task execution reaches the code
+ * that consumes them.
  */
 
 import type { ContextKey, ContextBag, BudgetState } from "../types/index.js";

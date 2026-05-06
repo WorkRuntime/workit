@@ -1,5 +1,5 @@
 /**
- * Sanity test - exercises the core BDD scenarios from doc.md section 5.
+ * Sanity test - exercises the core structured concurrency behavior.
  *
  * @author Admilson B. F. Cossa
  *
@@ -34,8 +34,8 @@ const sleep = (ms, signal) =>
     );
   });
 
-// --- section 5.1 Scope lifecycle ---------------------------------------------
-test("section 5.1 Defer blocks run in LIFO order on success", async () => {
+// --- Scope lifecycle -----------------------------------------------------------
+test("defer blocks run in LIFO order on success", async () => {
   const order = [];
   await group(async (task) => {
     await task(async (ctx) => {
@@ -47,7 +47,7 @@ test("section 5.1 Defer blocks run in LIFO order on success", async () => {
   assert.deepEqual(order, ["c", "b", "a"]);
 });
 
-test("section 5.1 Scope cannot resolve before children settle", async () => {
+test("scope cannot resolve before children settle", async () => {
   let childDone = false;
   const start = Date.now();
   await group(async (task) => {
@@ -62,8 +62,8 @@ test("section 5.1 Scope cannot resolve before children settle", async () => {
   assert.ok(elapsed >= 70, `scope returned at ${elapsed}ms, expected >=70`);
 });
 
-// --- section 5.4 run.group - background tasks are scoped, not orphaned -----
-test("section 5.4 Background task is cancelled when sibling fails", async () => {
+// --- Scoped background work ----------------------------------------------------
+test("background task is cancelled when sibling fails", async () => {
   let bgDeferRan = false;
   let bgCompleted = false;
 
@@ -86,7 +86,7 @@ test("section 5.4 Background task is cancelled when sibling fails", async () => 
   assert.equal(bgDeferRan, true, "background defer must run on cancellation");
 });
 
-test("section 5.4 Unawaited child failure cancels siblings and rejects group", async () => {
+test("unawaited child failure cancels siblings and rejects group", async () => {
   let siblingCancelled = false;
   let siblingCleanup = false;
 
@@ -117,8 +117,8 @@ test("section 5.4 Unawaited child failure cancels siblings and rejects group", a
   assert.equal(siblingCleanup, true, "cancelled sibling cleanup must run");
 });
 
-// --- section 2 Budget system -------------------------------------------------
-test("section 2 Single budget overrun cancels scope with BudgetExceededError", async () => {
+// --- Budget system -------------------------------------------------------------
+test("single budget overrun cancels scope with BudgetExceededError", async () => {
   let inner = 0;
 
   await assert.rejects(
@@ -142,7 +142,7 @@ test("section 2 Single budget overrun cancels scope with BudgetExceededError", a
   assert.equal(inner, 3, "execution must stop at the failing consume");
 });
 
-test("section 2 Consuming an unset budget throws synchronously", async () => {
+test("consuming an unset budget throws synchronously", async () => {
   await assert.rejects(
     group(async (task) => {
       await task(async (ctx) => {
@@ -153,7 +153,7 @@ test("section 2 Consuming an unset budget throws synchronously", async () => {
   );
 });
 
-test("section 2 TaskContext.budgets lists visible budget states", async () => {
+test("TaskContext.budgets lists visible budget states", async () => {
   const TokenBudget = createBudget("TokenBudget", { unit: "tokens" });
   const context = new ContextBagImpl()
     .with(CostBudget, { spent: 0, limit: 1.0, unit: "USD" })
@@ -170,7 +170,7 @@ test("section 2 TaskContext.budgets lists visible budget states", async () => {
   );
 });
 
-test("section 2 Child scope budget shadows parent budget", async () => {
+test("child scope budget shadows parent budget", async () => {
   const parentBudget = { spent: 0, limit: 10, unit: "USD" };
   const childBudget = { spent: 0, limit: 1, unit: "USD" };
 
@@ -187,7 +187,7 @@ test("section 2 Child scope budget shadows parent budget", async () => {
   assert.equal(childBudget.spent, 0.5);
 });
 
-test("section 2 Concurrent budget charges land at exact total", async () => {
+test("concurrent budget charges land at exact total", async () => {
   const budget = { spent: 0, limit: 1, unit: "USD" };
 
   await run.context.with(CostBudget, budget, async () => {
@@ -199,8 +199,8 @@ test("section 2 Concurrent budget charges land at exact total", async () => {
   assert.equal(Math.round(budget.spent * 100), 100);
 });
 
-// --- section 8 Telemetry budget never throws ---------------------------------
-test("section 8 Telemetry budget overrun drops events but tasks complete normally", async () => {
+// --- Telemetry budget ----------------------------------------------------------
+test("telemetry budget overrun drops events but tasks complete normally", async () => {
   const events = [];
   const { ContextBagImpl } = await import("../../dist/index.js");
 

@@ -3,7 +3,6 @@
  *
  * @author Admilson B. F. Cossa
  *
- * The complete public type surface. See `doc.md` section 3 and `doc-extensions.md` section 2, section 8.
  * Every type here is normative; implementations must match these signatures exactly.
  */
 
@@ -194,7 +193,7 @@ export interface ContextBag {
   has<T>(key: ContextKey<T>): boolean;
 }
 
-// --- Budget state (used by section 2 budgets and section 8 telemetry budget) -----------
+// --- Budget state ---------------------------------------------------------
 
 /** Mutable cooperative budget state stored in a scope context. */
 export interface BudgetState {
@@ -430,7 +429,7 @@ export interface Scope {
   onCancel(handler: (reason: CancelReason) => void): Unsubscribe;
 }
 
-// --- Built-in budget keys (section 2.1, section 8.5) ----------------------------------
+// --- Built-in budget keys ------------------------------------------------
 
 /** Built-in budget key for telemetry event volume. */
 export const TelemetryBudget: ContextKey<BudgetState> = {
