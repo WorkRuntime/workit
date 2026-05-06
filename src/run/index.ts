@@ -105,30 +105,20 @@ async function any<T>(tasks: TaskFn<T>[]): Promise<T> {
       let pending = handles.length;
       let settled = false;
       for (const handle of handles) {
-        handle.then(
-          (settlement) => {
-            if (settled) return;
-            pending--;
-            if (settlement.status !== "fulfilled") {
-              if (pending === 0) {
-                settled = true;
-                reject(new WorkAggregateError(errors));
-              }
-              return;
-            }
-            settled = true;
-            cancelLosers(handles, handle);
-            resolve(settlement.value);
-          },
-          (err: unknown) => {
-            errors.push(err);
-            pending--;
-            if (!settled && pending === 0) {
+        handle.then((settlement) => {
+          if (settled) return;
+          pending--;
+          if (settlement.status !== "fulfilled") {
+            if (pending === 0) {
               settled = true;
               reject(new WorkAggregateError(errors));
             }
+            return;
           }
-        );
+          settled = true;
+          cancelLosers(handles, handle);
+          resolve(settlement.value);
+        });
       }
     });
   });
@@ -191,6 +181,7 @@ function timeout<T>(task: TaskFn<T>, duration: Duration): TaskFn<T> {
         timeoutPromise,
       ]);
     } finally {
+      /* v8 ignore else -- timeoutPromise assigns the timer synchronously. */
       if (timer !== undefined) clearTimeout(timer);
     }
   };
@@ -220,6 +211,7 @@ function retry<T>(task: TaskFn<T>, opts: number | RetryOpts): TaskFn<T> {
         await sleep(delayMs, ctx.signal);
       }
     }
+    /* v8 ignore next -- normalizeRetry guarantees at least one attempt. */
     throw lastErr;
   };
 }
@@ -240,6 +232,7 @@ function hedge<T>(task: TaskFn<T>, opts: HedgeOpts): TaskFn<T> {
       const clearPendingStarts = () => {
         while (timers.length > 0) {
           const timer = timers.pop();
+          /* v8 ignore else -- loop condition guarantees a timer was present. */
           if (timer !== undefined) clearTimeout(timer);
         }
       };
@@ -268,6 +261,7 @@ function hedge<T>(task: TaskFn<T>, opts: HedgeOpts): TaskFn<T> {
       );
 
       const start = (attempt: number) => {
+        /* v8 ignore next -- pending timers are cleared on settlement; this is a race guard. */
         if (settled) return;
         const ctrl = new AbortController();
         controllers.push(ctrl);
@@ -497,16 +491,5 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 function linkSignals(signals: AbortSignal[]): AbortSignal {
-  if (typeof (AbortSignal as unknown as { any?: (items: AbortSignal[]) => AbortSignal }).any === "function") {
-    return (AbortSignal as unknown as { any: (items: AbortSignal[]) => AbortSignal }).any(signals);
-  }
-  const ctrl = new AbortController();
-  for (const signal of signals) {
-    if (signal.aborted) {
-      ctrl.abort(signal.reason);
-      break;
-    }
-    signal.addEventListener("abort", () => ctrl.abort(signal.reason), { once: true });
-  }
-  return ctrl.signal;
+  return AbortSignal.any(signals);
 }

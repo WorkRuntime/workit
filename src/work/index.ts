@@ -149,6 +149,7 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
   async collect(): Promise<O[]> {
     const failFast = new WorkBuilderImpl<I, O>(this.source, { ...this.cfg, errorMode: "fail" });
     const output = await failFast.do((item) => item);
+    /* v8 ignore next -- collect() forces fail mode above. */
     if (output.mode !== "fail") throw new Error("Unexpected collect mode");
     return output.results;
   }

@@ -62,19 +62,9 @@ export function getCurrentScope(): ScopeImpl | null {
   return currentScope.getStore() ?? null;
 }
 
-// --- AbortSignal.any polyfill (Node <20 / older runtimes) -------------
-
 /** Links multiple abort signals into one signal without changing their owners. */
 function anySignal(signals: AbortSignal[]): AbortSignal {
-  if (typeof (AbortSignal as unknown as { any?: Function }).any === "function") {
-    return (AbortSignal as unknown as { any: (s: AbortSignal[]) => AbortSignal }).any(signals);
-  }
-  const ctrl = new AbortController();
-  for (const s of signals) {
-    if (s.aborted) { ctrl.abort(s.reason); break; }
-    s.addEventListener("abort", () => ctrl.abort(s.reason), { once: true });
-  }
-  return ctrl.signal;
+  return AbortSignal.any(signals);
 }
 
 // --- Internal task record (engine-side mirror of TaskHandle) -----------
@@ -310,10 +300,12 @@ export class ScopeImpl implements Scope {
       );
       const scopePromises = [...this.childScopes].map(s => s.awaitClose());
       const all = [...taskPromises, ...scopePromises];
+      /* v8 ignore next -- loop condition guarantees at least one pending owner. */
       if (all.length === 0) break;
       await Promise.all(all);
       // Drain: remove settled records
       for (const [id, t] of this.tasks) {
+        /* v8 ignore else -- awaited task promises cannot remain pending or running here. */
         if (t.status !== "pending" && t.status !== "running") this.tasks.delete(id);
       }
     }
@@ -348,13 +340,17 @@ export class ScopeImpl implements Scope {
 
   /** Returns a point-in-time snapshot of this scope and currently retained children. */
   status(): ScopeSnapshot {
-    let pending = 0, completed = 0, failed = 0, cancelled = 0;
+    const counts = { pending: 0, completed: 0, failed: 0, cancelled: 0 };
+    const statusBuckets = {
+      pending: "pending",
+      running: "pending",
+      succeeded: "completed",
+      failed: "failed",
+      cancelled: "cancelled",
+    } as const;
     const taskSnaps: TaskSnapshot[] = [];
     for (const t of this.tasks.values()) {
-      if (t.status === "pending" || t.status === "running") pending++;
-      else if (t.status === "succeeded") completed++;
-      else if (t.status === "failed") failed++;
-      else if (t.status === "cancelled") cancelled++;
+      counts[statusBuckets[t.status]]++;
 
       const snap: TaskSnapshot = {
         id: t.id,
@@ -373,10 +369,10 @@ export class ScopeImpl implements Scope {
       id: this.id,
       status: this.state,
       startedAt: this.startedAt,
-      pendingCount: pending,
-      completedCount: completed,
-      failedCount: failed,
-      cancelledCount: cancelled,
+      pendingCount: counts.pending,
+      completedCount: counts.completed,
+      failedCount: counts.failed,
+      cancelledCount: counts.cancelled,
       tasks: taskSnaps,
       scopes: [...this.childScopes].map(s => s.status()),
     };

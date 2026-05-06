@@ -20,6 +20,12 @@
 import type { Duration } from "../types/index.js";
 
 const PATTERN = /^(\d+)(ms|s|m|h)$/;
+const MULTIPLIERS = {
+  ms: 1,
+  s: 1_000,
+  m: 60_000,
+  h: 3_600_000,
+} as const;
 
 /**
  * Converts a WorkJS duration into milliseconds.
@@ -38,12 +44,6 @@ export function parseDuration(d: Duration): number {
     throw new RangeError(`Invalid duration string: "${d}". Use e.g. "500ms", "3s", "5m", "2h".`);
   }
   const n = Number(m[1]);
-  const unit = m[2]!;
-  switch (unit) {
-    case "ms": return n;
-    case "s":  return n * 1000;
-    case "m":  return n * 60_000;
-    case "h":  return n * 3_600_000;
-    default:   /* unreachable */ throw new Error("unreachable");
-  }
+  const unit = m[2] as keyof typeof MULTIPLIERS;
+  return n * MULTIPLIERS[unit];
 }
