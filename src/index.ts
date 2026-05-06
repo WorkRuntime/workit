@@ -3,9 +3,8 @@
  *
  * @author Admilson B. F. Cossa
  *
- * This module exports only the implemented core engine surface. Higher-level
- * namespaces described in the local concept docs are not exported until they
- * exist in source, tests, and build output.
+ * This module exports only runtime surfaces that exist in source, tests, and
+ * build output.
  */
 
 // Engine primitives

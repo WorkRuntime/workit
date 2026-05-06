@@ -1,158 +1,281 @@
 # WorkJS
 
-> **Author:** Admilson B. F. Cossa
+> Structured concurrency runtime for TypeScript.
+>
+> Author: Admilson B. F. Cossa
 
-Structured concurrency for TypeScript.
+WorkJS gives TypeScript applications a small, explicit runtime for owned async
+work. It keeps tasks inside scopes, propagates cancellation with typed reasons,
+runs cleanup before scopes close, and exposes safe task events without forcing an
+effect system, generator DSL, or provider client into the application.
 
-WorkJS is an early structured-concurrency runtime for building async TypeScript systems where work has ownership, cancellation has a reason, cleanup is guaranteed, and observability is part of the contract.
+The package is currently private and pre-release. The implemented runtime is
+verified locally, but the project should not be treated as publicly released
+until the license, provenance, contribution process, and package publishing
+policy are finalized.
 
-The goal is simple: make async code feel as natural as `Promise` and `async/await`, while giving production systems the safety properties that raw promises do not provide on their own.
+## Why It Exists
 
-## Project Status
+Raw promises make it easy to start work that nobody owns. That is painful in
+systems that need retries, budgets, cancellation, provider fallbacks, telemetry,
+and cleanup to behave as one unit.
 
-WorkJS currently contains a working core engine with strict TypeScript compilation and a focused `node:test` sanity suite.
-
-This repository should not imply public package availability until the API, tests, release process, license, and provenance story are complete. Examples below use only the current engine surface.
-
-## Why WorkJS Exists
-
-Modern TypeScript applications routinely coordinate many concurrent operations:
-
-- API calls
-- queue jobs
-- file processing
-- AI agent steps
-- embedding batches
-- search and retrieval pipelines
-- background audits
-- retries, timeouts, and fallbacks
-
-Raw async code makes it too easy to create orphaned work, miss cleanup, leak retries, ignore cancellation, or lose observability. WorkJS is designed to make those failure modes hard to ship.
-
-## Core Principles
-
-- **Plain TypeScript first:** no generators, no custom effect language, no hidden control flow.
-- **No orphaned work:** every task belongs to a scope unless it is explicitly detached.
-- **Cancellable by contract:** cancellation has a typed reason and propagates through the task tree.
-- **Cleanup is guaranteed:** deferred cleanup runs before a scope closes.
-- **Observable by default:** task and scope transitions are visible through typed events.
-- **Conservative defaults:** no silent retries, timeouts, provider routing, or background work.
-- **Production scale:** bounded concurrency, backpressure, idempotency, and cost-aware telemetry are first-class concerns.
-
-## Current Engine Surface
-
-```ts
-import { group } from "workjs"
-
-const result = await group(async task => {
-  const plan = await task(planWork)
-
-  task.background(writeAuditEvent)
-
-  return task(async ctx => executeStep(plan.next, ctx.signal))
-})
-```
-
-In this model:
-
-- the group owns every child task
-- failures cancel sibling work
-- cleanup runs before the group resolves
-- cancellation can abort signal-aware APIs such as `fetch`
-- events describe what started, succeeded, failed, retried, or cancelled
-
-## Primary Workloads
-
-The current scope engine is designed for TypeScript workloads where concurrent async work must be owned and cancellable:
+WorkJS is built for:
 
 - agent task trees
-- RAG ingest
+- RAG ingestion
 - embedding batches
 - streaming transcription
 - multi-provider races
-- budget-aware execution
-- long-running tool calls
+- queue and API orchestration
+- budget-aware background work
+- cancellation-safe tool execution
 
-## Design Guarantees
+## Guarantees
 
-WorkJS should only be considered ready when these guarantees are backed by tests and reproducible measurements:
+The current engine is designed around these production guarantees:
 
-- a scope cannot close before owned child work settles
-- scope cancellation aborts children and runs cleanup
-- non-background child failure cancels siblings
-- every exported engine function has happy-path and error-path coverage
-- every error path emits a safe typed event
-- telemetry is bounded in volume, cardinality, and retention
+- every non-detached task belongs to exactly one scope
+- a scope waits for owned children before closing
+- scope cancellation aborts children through `AbortSignal`
+- non-background child failure cancels sibling work
+- deferred cleanup runs in last-in, first-out order
+- context and budgets inherit through child scopes with explicit shadowing
+- task and scope transitions are emitted as typed local events
+- telemetry export is opt-in, sampled, and circuit-broken
+- provider helpers are neutral and import no network clients
 
-## Repository Layout
+## Public Surface
 
-```txt
-src/
-  index.ts
-  engine/
-    context.ts
-    duration.ts
-    event-bus.ts
-    scope.ts
-  types/
-    index.ts
-tests/
-  unit/
-    sanity.test.js
+```ts
+import {
+  group,
+  run,
+  work,
+  renderTree,
+  createBudget,
+  createContextKey,
+  CostBudget,
+  TelemetryBudget,
+  TokenBudget,
+  LatencyBudget,
+} from "workjs";
 ```
 
-The root `docs/` folder and `AGENTS.md` are local project context and are intentionally ignored by git.
+| Export | Purpose |
+| --- | --- |
+| `group()` | Opens an owned scope and runs scoped tasks. |
+| `run` | Composition helpers for all, race, any, pool, timeout, retry, hedge, fallback, circuit breaker, detached, background, and supervise. |
+| `work()` | Fluent batch builder with bounded concurrency, retry, timeout, filtering, mapping, collection, and stream output. |
+| `renderTree()` | Renders a scope snapshot into a stable text tree for diagnostics. |
+| `createContextKey()` | Creates typed context keys for scope-local values. |
+| `createBudget()` | Creates typed budget keys for cost, telemetry, token, latency, or application budgets. |
+
+Subpath exports:
+
+```ts
+import { embedAll, transcribeStream, wrapAI } from "workjs/ai";
+import { attachTelemetryExporter } from "workjs/observability";
+```
+
+## Core Example
+
+```ts
+import { group } from "workjs";
+
+const result = await group(async (task) => {
+  const profile = task(async (ctx) => {
+    return await fetchProfile(ctx.signal);
+  }, { name: "profile.load" });
+
+  const account = task(async (ctx) => {
+    return await fetchAccount(ctx.signal);
+  }, { name: "account.load" });
+
+  task.background(async (ctx) => {
+    ctx.defer(() => flushAuditBuffer());
+    await writeAuditEvent(ctx.signal);
+  }, { name: "audit.write" });
+
+  return {
+    profile: await profile,
+    account: await account,
+  };
+});
+```
+
+If either owned child fails, the scope cancels sibling work and still runs
+registered cleanup before returning or throwing.
+
+## Run Helpers
+
+```ts
+import { run } from "workjs";
+
+const fastest = await run.race([
+  run.timeout(callPrimary, "800ms"),
+  run.timeout(callReplica, "800ms"),
+]);
+
+const resilient = run.fallback(
+  run.retry(callProvider, { times: 3, backoff: "exponential" }),
+  callBackupProvider
+);
+
+const batch = await run.pool(8, inputs.map((input) => async (ctx) => {
+  return await processInput(input, ctx.signal);
+}));
+```
+
+`run.race()` and `run.any()` cancel losing work. `run.pool()` preserves result
+order while bounding concurrency. Retry, timeout, hedge, fallback, and circuit
+breaker helpers are task wrappers, so they compose without leaving the scope
+model.
+
+## Work Builder
+
+```ts
+import { work } from "workjs";
+
+const output = await work(documents)
+  .inParallel(8)
+  .withRetry({ times: 3, backoff: "exponential" })
+  .withTimeout("5s")
+  .filter((doc) => doc.enabled)
+  .map(async (doc, ctx) => {
+    return await embedDocument(doc, ctx.signal);
+  })
+  .onError("collect")
+  .do((embedding) => embedding);
+```
+
+The builder defaults to sequential, fail-fast execution. Concurrency, retry,
+timeouts, and error collection are explicit choices.
+
+## Budgets And Context
+
+```ts
+import { CostBudget, TokenBudget, group } from "workjs";
+
+await group(async (task) => {
+  await task(async (ctx) => {
+    ctx.consume(CostBudget, 25);
+    ctx.consume(TokenBudget, 1_200);
+    return await callModel(ctx.signal);
+  });
+}, {
+  budgets: {
+    CostBudget: 100,
+    TokenBudget: 10_000,
+  },
+});
+```
+
+Cost-like budgets fail loudly when exhausted. Telemetry budgets drop events
+instead of failing application work. Child scopes inherit budgets unless they
+explicitly provide a replacement budget.
+
+## AI Helpers
+
+```ts
+import { embedAll } from "workjs/ai";
+
+const embeddings = await embedAll(chunks, {
+  countTokens: (chunk) => chunk.tokenCount,
+  embed: async (chunk, ctx) => {
+    return await provider.embed(chunk.text, { signal: ctx.signal });
+  },
+}, {
+  concurrency: 4,
+  timeout: "10s",
+  onError: "collect",
+});
+```
+
+The AI subpath supplies contracts and structured execution helpers only. It does
+not import OpenAI, Anthropic, cloud SDKs, HTTP clients, or any other provider
+runtime.
+
+## Observability Export
+
+```ts
+import { attachTelemetryExporter } from "workjs/observability";
+
+const attachment = attachTelemetryExporter(scope, async (event) => {
+  await telemetry.write(event);
+}, {
+  sampling: { mode: "errors_and_slow", slowThresholdMs: 2_000 },
+  circuitBreaker: { failureThreshold: 3, openForMs: 60_000 },
+});
+
+attachment.unsubscribe();
+```
+
+The core event bus is local and dependency-free. Exporting events to another
+system is explicit, sampled, and protected by a small circuit breaker so telemetry
+backend failures do not take down application work.
 
 ## Quality Gates
 
-Use the local verification command before staging production changes:
+Run the full local gate before staging production changes:
 
 ```sh
 npm run verify
 ```
 
-Current gates:
+`npm run verify` runs:
 
-- strict TypeScript compile
-- declaration output
-- Node test runner sanity suite
-- zero runtime dependencies
-- ignored local specifications and debug artifacts
+- TypeScript typecheck
+- no-network import guard
+- build plus unit tests
+- bundle size limits
+- runtime benchmark smoke
+- scope leak smoke
+- package dry run
 
-## Repository Rules
+Run coverage separately when changing behavior:
 
-Production code, tests, documentation, and release artifacts must be committed intentionally.
+```sh
+npm run test:coverage
+```
 
-Local-only agent instructions, private specifications, temporary tests, debug scripts, scratch reproductions, generated output, dependency folders, caches, and environment files must stay out of git.
+Coverage thresholds are set to 100% for statements, branches, functions, and
+lines. The current suite verifies 69 tests across the public runtime, run
+helpers, work builder, tree rendering, budget contracts, AI helpers, and
+observability exporter.
 
-Every necessary committed file must include language-appropriate documentation and author metadata where the file format supports it.
+## Runtime Requirements
 
-## Commit Standard
+- Node.js `>=20.11`
+- TypeScript `>=5.5`
+- zero runtime npm dependencies
+- ESM package output
 
-Commits should be small, scoped, and written in the imperative mood.
+## Repository Hygiene
 
-Good examples:
+Committed source, tests, scripts, and package metadata include
+language-appropriate documentation and author metadata where the format supports
+it.
 
-- `Initialize project README`
-- `Add scope cancellation contract`
-- `Implement duration parser`
-- `Cover retry timeout behavior`
+Generated output, dependency folders, private planning notes, temporary tests,
+debug traces, scratch reproductions, and environment files are intentionally
+excluded from version control.
 
-Avoid vague commits such as `update`, `changes`, or `fix stuff`.
+Commits should be scoped, imperative, and made only after the related tests and
+gates are green.
 
-## Release Readiness
+## Release Status
 
-Before any public release, the project needs:
+WorkJS is not ready for public release until these decisions are complete:
 
-- finalized public API
-- implementation backed by focused tests
-- strict TypeScript configuration
-- package exports and build pipeline
-- benchmark and bundle-size checks
-- license decision
+- open-source license
 - contribution guide
-- release and provenance process
+- security policy
+- provenance and release signing
+- package publishing workflow
+- benchmark methodology publication
+- public API stability policy
 
 ## License
 
-License not selected yet.
+No license has been selected yet.
