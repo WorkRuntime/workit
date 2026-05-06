@@ -15,6 +15,9 @@ export type { TaskSpawner } from "./engine/scope.js";
 // Run namespace
 export { run } from "./run/index.js";
 
+// Work builder
+export { work } from "./work/index.js";
+
 // Tree rendering
 export { renderTree } from "./engine/tree.js";
 
@@ -28,7 +31,7 @@ export type {
   ContextKey, ContextBag, BudgetState,
   CancelReason, TaskEvent, Unsubscribe, ProgressReport, TaskLogger,
   Settled, Duration, TaskResults, WorkOutput, ItemError,
-  RetryOpts, HedgeOpts, BreakerOpts, RunNamespace, TreeOpts,
+  RetryOpts, HedgeOpts, BreakerOpts, RunNamespace, WorkFactory, WorkBuilder, TreeOpts,
 } from "./types/index.js";
 
 // Errors

@@ -375,6 +375,28 @@ export interface RunNamespace {
   };
 }
 
+/** Entry point for fluent bounded work over iterable sources. */
+export interface WorkFactory {
+  <I>(items: Iterable<I> | AsyncIterable<I>): WorkBuilder<I, I>;
+}
+
+/** Fluent builder for conservative, bounded batch work. */
+export interface WorkBuilder<I, O> {
+  inParallel(n: number): WorkBuilder<I, O>;
+  inSeries(): WorkBuilder<I, O>;
+  withConcurrencyLimit(n: number): WorkBuilder<I, O>;
+  withRetry(opts: number | RetryOpts): WorkBuilder<I, O>;
+  withTimeout(duration: Duration): WorkBuilder<I, O>;
+  withDeadline(at: number | Date): WorkBuilder<I, O>;
+  onError(strategy: "fail" | "continue" | "collect"): WorkBuilder<I, O>;
+  map<R>(fn: (item: O, ctx: TaskContext) => R | Promise<R>): WorkBuilder<I, R>;
+  filter(fn: (item: O, ctx: TaskContext) => boolean | Promise<boolean>): WorkBuilder<I, O>;
+  tap(fn: (item: O, ctx: TaskContext) => void | Promise<void>): WorkBuilder<I, O>;
+  do<R>(fn: (item: O, ctx: TaskContext) => R | Promise<R>): Promise<WorkOutput<R>>;
+  collect(): Promise<O[]>;
+  stream(): AsyncIterable<O>;
+}
+
 // --- The Scope interface (engine surface) --------------------------------
 
 /** Structured concurrency boundary that owns child tasks, context, cleanup, and events. */
