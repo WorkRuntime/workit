@@ -15,22 +15,26 @@
     }
   },
   "sideEffects": false,
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "clean": "node -e \"const fs=require('node:fs'); for (const p of ['dist','coverage']) fs.rmSync(p,{recursive:true,force:true});\"",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "check:no-network": "node scripts/check-no-network.mjs",
     "pack:dry": "npm pack --dry-run --json",
-    "test": "npm run build && node --test tests/unit/*.test.js",
+    "test": "npm run build && vitest run",
+    "test:coverage": "npm run build && vitest run --coverage",
     "verify": "npm run typecheck && npm run check:no-network && npm test && npm run pack:dry"
   },
   "engines": {
     "node": ">=20.11"
   },
-  "dependencies": {},
   "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^4.1.5",
     "typescript": "^5.5.0",
-    "@types/node": "^22.0.0"
+    "vitest": "^4.1.5"
   }
 }

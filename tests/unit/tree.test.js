@@ -4,7 +4,7 @@
  * @author Admilson B. F. Cossa
  */
 
-import { test } from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import { group, run, renderTree } from "../../dist/index.js";
 

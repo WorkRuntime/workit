@@ -3,11 +3,11 @@
  *
  * @author Admilson B. F. Cossa
  *
- * Uses node:test so current verification runs through the built package with
- * no test-runner dependency beyond Node itself.
+ * Uses Vitest against the built package so verification proves the published
+ * artifact shape instead of a source-only path.
  */
 
-import { test } from "node:test";
+import { test } from "vitest";
 import assert from "node:assert/strict";
 import {
   group,
