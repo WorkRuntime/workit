@@ -13,6 +13,8 @@ import {
   group,
   CostBudget,
   TelemetryBudget,
+  createBudget,
+  ContextBagImpl,
   CancellationError,
   BudgetExceededError,
 } from "../../dist/index.js";
@@ -83,6 +85,37 @@ test("section 5.4 Background task is cancelled when sibling fails", async () => 
   assert.equal(bgDeferRan, true, "background defer must run on cancellation");
 });
 
+test("section 5.4 Unawaited child failure cancels siblings and rejects group", async () => {
+  let siblingCancelled = false;
+  let siblingCleanup = false;
+
+  await assert.rejects(
+    group(async (task) => {
+      task(async (ctx) => {
+        ctx.defer(() => {
+          siblingCleanup = true;
+        });
+        try {
+          await sleep(1000, ctx.signal);
+        } catch (err) {
+          siblingCancelled = err instanceof CancellationError
+            && err.reason.kind === "sibling_failed";
+          throw err;
+        }
+      }, { name: "long-sibling" });
+
+      task(async () => {
+        await sleep(20);
+        throw new Error("child failed");
+      }, { name: "failing-child" });
+    }),
+    /child failed/
+  );
+
+  assert.equal(siblingCancelled, true, "sibling must observe sibling_failed cancellation");
+  assert.equal(siblingCleanup, true, "cancelled sibling cleanup must run");
+});
+
 // --- section 2 Budget system -------------------------------------------------
 test("section 2 Single budget overrun cancels scope with BudgetExceededError", async () => {
   let inner = 0;
@@ -119,6 +152,23 @@ test("section 2 Consuming an unset budget throws synchronously", async () => {
   );
 });
 
+test("section 2 TaskContext.budgets lists visible budget states", async () => {
+  const TokenBudget = createBudget("TokenBudget", { unit: "tokens" });
+  const context = new ContextBagImpl()
+    .with(CostBudget, { spent: 0, limit: 1.0, unit: "USD" })
+    .with(TokenBudget, { spent: 10, limit: 100 });
+
+  const budgets = await group(
+    async (task) => task(async (ctx) => ctx.budgets()),
+    { context }
+  );
+
+  assert.deepEqual(
+    budgets.map((budget) => [budget.key, budget.state.limit]).sort(),
+    [["CostBudget", 1.0], ["TokenBudget", 100]]
+  );
+});
+
 // --- section 8 Telemetry budget never throws ---------------------------------
 test("section 8 Telemetry budget overrun drops events but tasks complete normally", async () => {
   const events = [];
@@ -143,23 +193,46 @@ test("section 8 Telemetry budget overrun drops events but tasks complete normall
   assert.equal(result, "ok");
 });
 
+test("TaskContext.log emits task progress events without console side effects", async () => {
+  const events = [];
+
+  await group(async (task) => {
+    await task(async (ctx) => {
+      ctx.scope.onEvent((event) => events.push(event));
+      ctx.log.info("phase complete", { phase: "setup" });
+    }, { name: "logged-task" });
+  });
+
+  const logEvent = events.find((event) =>
+    event.type === "task:progress"
+    && event.message === "phase complete"
+  );
+
+  assert.ok(logEvent, `events: ${events.map((event) => event.type).join(", ")}`);
+  assert.equal(logEvent.data.logLevel, "info");
+  assert.deepEqual(logEvent.data.fields, { phase: "setup" });
+});
+
 // --- Snapshot / observability sanity ---------------------------------
 test("status() reflects task counts correctly", async () => {
   let snapshotDuringRun;
 
-  await group(async (task) => {
-    const t1 = task(async () => "a");
-    const t2 = task(async () => {
-      await sleep(20);
-      throw new Error("b failed");
-    });
-    // Take snapshot mid-flight
-    snapshotDuringRun = task(async (ctx) => {
-      const snap = ctx.scope.status();
-      return snap;
-    });
-    await Promise.allSettled([t1, t2, snapshotDuringRun]);
-  });
+  await assert.rejects(
+    group(async (task) => {
+      const t1 = task(async () => "a");
+      const t2 = task(async () => {
+        await sleep(20);
+        throw new Error("b failed");
+      });
+      // Take snapshot mid-flight
+      snapshotDuringRun = task(async (ctx) => {
+        const snap = ctx.scope.status();
+        return snap;
+      });
+      await Promise.allSettled([t1, t2, snapshotDuringRun]);
+    }),
+    /b failed/
+  );
 
   const snap = await snapshotDuringRun;
   assert.ok(snap.tasks.length >= 1);

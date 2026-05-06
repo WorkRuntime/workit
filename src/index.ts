@@ -20,7 +20,7 @@ export type {
   TaskFn, TaskHandle, TaskContext, TaskOpts, TaskKind, TaskId,
   Scope, ScopeOpts, ScopeId, ScopeSnapshot, TaskSnapshot,
   ContextKey, ContextBag, BudgetState,
-  CancelReason, TaskEvent, Unsubscribe, ProgressReport,
+  CancelReason, TaskEvent, Unsubscribe, ProgressReport, TaskLogger,
   Settled, Duration,
 } from "./types/index.js";
 

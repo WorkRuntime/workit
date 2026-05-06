@@ -37,6 +37,7 @@ import type {
   BudgetState,
   Duration,
   Unsubscribe,
+  TaskLogger,
 } from "../types/index.js";
 import { CancellationError, BudgetExceededError, CostBudget } from "../types/index.js";
 import { ContextBagImpl } from "./context.js";
@@ -86,6 +87,7 @@ interface TaskRecord<T = unknown> {
   endedAt?: number;
   promise: Promise<T>;
   cancel: (reason: CancelReason) => void;
+  background: boolean;
   meta?: Record<string, unknown>;
 }
 
@@ -115,6 +117,7 @@ export class ScopeImpl implements Scope {
   private readonly startedAt = Date.now();
   private deadlineAt?: number;
   private deadlineTimer?: ReturnType<typeof setTimeout>;
+  private firstChildFailure: unknown = undefined;
 
   /** Opens a scope under an optional parent and emits `scope:opened`. */
   constructor(parent: ScopeImpl | null, opts: ScopeOpts = {}) {
@@ -143,7 +146,7 @@ export class ScopeImpl implements Scope {
    * The returned handle is both awaitable and cancellable. Task cleanup defers
    * drain in LIFO order after the task body settles.
    */
-  spawn<T>(task: TaskFn<T>, opts: TaskOpts = {}): TaskHandle<T> {
+  spawn<T>(task: TaskFn<T>, opts: TaskOpts = {}, background = false): TaskHandle<T> {
     if (this.state !== "running") {
       throw new Error(`Cannot spawn on a ${this.state} scope`);
     }
@@ -165,6 +168,7 @@ export class ScopeImpl implements Scope {
       startedAt,
       promise: undefined as unknown as Promise<T>,
       cancel: (reason) => taskAbort.abort(new CancellationError(reason)),
+      background,
       ...(opts.meta !== undefined ? { meta: opts.meta } : {}),
     };
     this.tasks.set(id, record as TaskRecord);
@@ -195,6 +199,10 @@ export class ScopeImpl implements Scope {
           );
         } else {
           record.status = "failed";
+          if (!record.background && this.firstChildFailure === undefined) {
+            this.firstChildFailure = err;
+            this.cancel({ kind: "sibling_failed", siblingId: id, error: err });
+          }
           this.bus.emit(
             { type: "task:failed", taskId: id, error: err, durationMs: record.endedAt - startedAt, at: record.endedAt },
             this.context
@@ -387,12 +395,14 @@ export class ScopeImpl implements Scope {
     defers: Array<() => void | Promise<void>>
   ): import("../types/index.js").TaskContext {
     const scope = this;
+    const log = makeTaskLogger(scope, id);
     return {
       signal,
       scope,
       attempt: 1,
       id, name, kind,
       context: this.context,
+      log,
       defer(fn) { defers.push(fn); },
       report(p) {
         scope.bus.emit({
@@ -406,8 +416,52 @@ export class ScopeImpl implements Scope {
       },
       consumeCost(amount) { consumeBudget(scope, CostBudget, amount); },
       consume(key, amount) { consumeBudget(scope, key, amount); },
+      budgets() { return listVisibleBudgets(scope.context); },
     };
   }
+
+  /** Returns the first non-background child failure observed by this scope. */
+  childFailure(): unknown {
+    return this.firstChildFailure;
+  }
+}
+
+/** Creates a task-local logger backed by typed progress events. */
+function makeTaskLogger(scope: ScopeImpl, taskId: TaskId): TaskLogger {
+  const emit = (level: "debug" | "info" | "warn" | "error", message: string, fields?: Record<string, unknown>) => {
+    scope.bus.emit({
+      type: "task:progress",
+      taskId,
+      message,
+      data: {
+        logLevel: level,
+        ...(fields !== undefined ? { fields } : {}),
+      },
+      at: Date.now(),
+    }, scope.context);
+  };
+
+  return {
+    debug(message, fields) { emit("debug", message, fields); },
+    info(message, fields) { emit("info", message, fields); },
+    warn(message, fields) { emit("warn", message, fields); },
+    error(message, fields) { emit("error", message, fields); },
+  };
+}
+
+/** Lists budget-shaped values explicitly installed in the visible context bag. */
+function listVisibleBudgets(context: ContextBag): ReadonlyArray<{ key: string; state: BudgetState }> {
+  if (!(context instanceof ContextBagImpl)) return [];
+  return context.entriesSnapshot()
+    .filter((entry): entry is readonly [string, BudgetState] => isBudgetState(entry[1]))
+    .map(([key, state]) => ({ key, state }));
+}
+
+/** Runtime guard for budget-shaped context values. */
+function isBudgetState(value: unknown): value is BudgetState {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as { limit?: unknown; spent?: unknown };
+  return typeof candidate.limit === "number" && typeof candidate.spent === "number";
 }
 
 // --- Budget consumption (section 2.3 rules B1-B6) ------------------------------
@@ -487,7 +541,7 @@ export async function group<R>(
 
   const spawner: TaskSpawner = Object.assign(
     <T>(fn: TaskFn<T>, taskOpts?: TaskOpts) => scope.spawn(fn, taskOpts),
-    { background: <T>(fn: TaskFn<T>) => scope.spawn(fn, { name: "background" }) }
+    { background: <T>(fn: TaskFn<T>) => scope.spawn(fn, { name: "background" }, true) }
   );
 
   let result: R | undefined;
@@ -505,5 +559,7 @@ export async function group<R>(
   await scope.close();
 
   if (bodyError !== undefined) throw bodyError;
+  const childFailure = scope.childFailure();
+  if (childFailure !== undefined) throw childFailure;
   return result as R;
 }

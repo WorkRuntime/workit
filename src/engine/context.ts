@@ -54,6 +54,11 @@ export class ContextBagImpl implements ContextBag {
   has<T>(key: ContextKey<T>): boolean {
     return this.entries.has(key.name);
   }
+
+  /** Returns a stable snapshot of explicitly installed entries for inspection APIs. */
+  entriesSnapshot(): ReadonlyArray<readonly [string, unknown]> {
+    return [...this.entries.entries()];
+  }
 }
 
 /**

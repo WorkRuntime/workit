@@ -105,6 +105,21 @@ export interface ProgressReport {
   data?: unknown;
 }
 
+/** Cardinality-safe task logger that emits through WorkJS events, never console. */
+export interface TaskLogger {
+  /** Emits low-priority diagnostic detail for subscribed observers. */
+  debug(message: string, fields?: Record<string, unknown>): void;
+
+  /** Emits normal task activity detail for subscribed observers. */
+  info(message: string, fields?: Record<string, unknown>): void;
+
+  /** Emits degraded-but-continuing task detail for subscribed observers. */
+  warn(message: string, fields?: Record<string, unknown>): void;
+
+  /** Emits task-local failure detail for subscribed observers. */
+  error(message: string, fields?: Record<string, unknown>): void;
+}
+
 // --- Event bus types ------------------------------------------------------
 
 /** Typed event stream emitted by the engine at task and scope boundaries. */
@@ -186,6 +201,9 @@ export interface TaskContext {
   /** Immutable scope context visible to this task. */
   readonly context: ContextBag;
 
+  /** Emits cardinality-safe task log events through the owning scope's event bus. */
+  readonly log: TaskLogger;
+
   /** Registers cleanup that runs in LIFO order when the task settles. */
   defer(cleanup: () => void | Promise<void>): void;
 
@@ -197,6 +215,9 @@ export interface TaskContext {
 
   /** Charges a custom budget key and cancels that budget's owning scope if exceeded. */
   consume<T extends BudgetState>(key: ContextKey<T>, amount: number): void;
+
+  /** Returns active budget states visible to this task. */
+  budgets(): ReadonlyArray<{ key: string; state: BudgetState }>;
 }
 
 // --- Task handle (Promise + control surface) -----------------------------
