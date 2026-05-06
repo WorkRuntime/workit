@@ -12,6 +12,9 @@
 export { group, getCurrentScope } from "./engine/scope.js";
 export type { TaskSpawner } from "./engine/scope.js";
 
+// Run namespace
+export { run } from "./run/index.js";
+
 // Context
 export { createContextKey, createBudget, ContextBagImpl } from "./engine/context.js";
 
@@ -21,11 +24,12 @@ export type {
   Scope, ScopeOpts, ScopeId, ScopeSnapshot, TaskSnapshot,
   ContextKey, ContextBag, BudgetState,
   CancelReason, TaskEvent, Unsubscribe, ProgressReport, TaskLogger,
-  Settled, Duration,
+  Settled, Duration, TaskResults, WorkOutput, ItemError,
+  RetryOpts, HedgeOpts, BreakerOpts, RunNamespace,
 } from "./types/index.js";
 
 // Errors
-export { CancellationError, TimeoutError, BudgetExceededError } from "./types/index.js";
+export { CancellationError, TimeoutError, BudgetExceededError, WorkAggregateError } from "./types/index.js";
 
 // Built-in budget keys
-export { CostBudget, TelemetryBudget } from "./types/index.js";
+export { CostBudget, TelemetryBudget, TokenBudget, LatencyBudget } from "./types/index.js";

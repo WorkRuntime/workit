@@ -88,6 +88,17 @@ export class BudgetExceededError extends CancellationError {
   }
 }
 
+/** Aggregate failure used by APIs that need to preserve all failed attempts. */
+export class WorkAggregateError extends Error {
+  readonly errors: readonly unknown[];
+
+  constructor(errors: readonly unknown[], message = "All WorkJS tasks failed") {
+    super(message);
+    this.name = "WorkAggregateError";
+    this.errors = errors;
+  }
+}
+
 // --- Settlement outcome ---------------------------------------------------
 
 /** Exhaustive settlement result for APIs that collect success, failure, and cancellation. */
@@ -95,6 +106,25 @@ export type Settled<T> =
   | { status: "fulfilled"; value: T }
   | { status: "rejected"; reason: unknown }
   | { status: "cancelled"; reason: CancelReason };
+
+/** Static result tuple for `run.all`. */
+export type TaskResults<T extends readonly TaskFn<unknown>[]> = {
+  [K in keyof T]: T[K] extends TaskFn<infer U> ? U : never;
+};
+
+/** Output shape for batch APIs that make failure handling explicit. */
+export type WorkOutput<R> =
+  | { mode: "fail"; results: R[] }
+  | { mode: "continue"; results: R[]; errors: ItemError[] }
+  | { mode: "collect"; results: Settled<R>[] };
+
+/** Item-level error captured by continuing batch work. */
+export interface ItemError {
+  index: number;
+  item: unknown;
+  error: unknown;
+  attempts: number;
+}
 
 // --- Progress reports -----------------------------------------------------
 
@@ -177,6 +207,29 @@ export interface BudgetState {
 
 /** Function executed inside exactly one WorkJS task context. */
 export type TaskFn<T> = (ctx: TaskContext) => Promise<T>;
+
+/** Retry policy for cancel-aware task wrappers. */
+export interface RetryOpts {
+  times: number;
+  backoff?: "fixed" | "linear" | "exponential" | ((attempt: number) => Duration);
+  initialDelay?: Duration;
+  maxDelay?: Duration;
+  jitter?: boolean;
+  retryIf?: (err: unknown, attempt: number) => boolean;
+}
+
+/** Hedging policy that starts duplicate attempts after a delay. */
+export interface HedgeOpts {
+  after: Duration;
+  max: number;
+}
+
+/** In-process circuit breaker policy for task wrappers. */
+export interface BreakerOpts {
+  failureThreshold: number;
+  resetAfter: Duration;
+  halfOpenMaxCalls?: number;
+}
 
 /** Runtime contract exposed to a task body. */
 export interface TaskContext {
@@ -279,6 +332,40 @@ export interface ScopeOpts {
   context?: ContextBag;
 }
 
+/** Public run namespace implemented by `src/run`. */
+export interface RunNamespace {
+  all<T extends readonly TaskFn<unknown>[]>(tasks: T): Promise<TaskResults<T>>;
+  allSettled<T>(tasks: TaskFn<T>[]): Promise<Settled<T>[]>;
+  any<T>(tasks: TaskFn<T>[]): Promise<T>;
+  race<T>(tasks: TaskFn<T>[]): Promise<T>;
+  series<T>(tasks: TaskFn<T>[]): Promise<T[]>;
+  pool<T>(concurrency: number, tasks: TaskFn<T>[]): Promise<T[]>;
+  timeout<T>(task: TaskFn<T>, duration: Duration): TaskFn<T>;
+  deadline<T>(task: TaskFn<T>, at: number | Date): TaskFn<T>;
+  retry<T>(task: TaskFn<T>, opts: number | RetryOpts): TaskFn<T>;
+  hedge<T>(task: TaskFn<T>, opts: HedgeOpts): TaskFn<T>;
+  fallback<T>(primary: TaskFn<T>, secondary: TaskFn<T>): TaskFn<T>;
+  circuitBreaker<T>(task: TaskFn<T>, opts: BreakerOpts): TaskFn<T>;
+  group<R>(body: (task: {
+    <T>(fn: TaskFn<T>, opts?: TaskOpts): TaskHandle<T>;
+    background<T>(fn: TaskFn<T>): TaskHandle<T>;
+  }) => Promise<R>, opts?: ScopeOpts): Promise<R>;
+  scope<R>(body: (scope: Scope) => Promise<R>, opts?: ScopeOpts): Promise<R>;
+  background<T>(task: TaskFn<T>): TaskHandle<T>;
+  detached<T>(task: TaskFn<T>): TaskHandle<T>;
+  supervise<T>(task: TaskFn<T>, opts?: {
+    restartOn?: "error" | "always" | ((err: unknown) => boolean);
+    maxRestarts?: number;
+    resetWindow?: Duration;
+    backoff?: RetryOpts["backoff"];
+  }): TaskHandle<T>;
+  context: {
+    current(): ContextBag;
+    with<T>(key: ContextKey<T>, value: T, body: () => Promise<unknown>): Promise<unknown>;
+    get<T>(key: ContextKey<T>): T | undefined;
+  };
+}
+
 // --- The Scope interface (engine surface) --------------------------------
 
 /** Structured concurrency boundary that owns child tasks, context, cleanup, and events. */
@@ -324,4 +411,20 @@ export const CostBudget: ContextKey<BudgetState> = {
   __brand: "ContextKey",
   __type: undefined as unknown as BudgetState,
   name: "CostBudget",
+};
+
+/** Built-in budget key for token accounting. */
+export const TokenBudget: ContextKey<BudgetState> = {
+  __brand: "ContextKey",
+  __type: undefined as unknown as BudgetState,
+  name: "TokenBudget",
+  unit: "tokens",
+};
+
+/** Built-in budget key for latency accounting. */
+export const LatencyBudget: ContextKey<BudgetState> = {
+  __brand: "ContextKey",
+  __type: undefined as unknown as BudgetState,
+  name: "LatencyBudget",
+  unit: "ms",
 };
