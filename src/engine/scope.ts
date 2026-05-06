@@ -43,6 +43,7 @@ import { CancellationError, BudgetExceededError, CostBudget } from "../types/ind
 import { ContextBagImpl } from "./context.js";
 import { EventBus } from "./event-bus.js";
 import { parseDuration } from "./duration.js";
+import { renderTree } from "./tree.js";
 
 // --- ID generation ------------------------------------------------------
 let _nextId = 0;
@@ -382,6 +383,11 @@ export class ScopeImpl implements Scope {
     if (this.name !== undefined) snapshot.name = this.name;
     if (this.deadlineAt !== undefined) snapshot.deadlineAt = this.deadlineAt;
     return snapshot;
+  }
+
+  /** Renders this scope's current snapshot as a human-readable tree. */
+  tree(opts: import("../types/index.js").TreeOpts = {}): string {
+    return renderTree(this.status(), opts);
   }
 
   // -- Build a TaskContext for a spawned task body ---------------------

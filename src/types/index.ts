@@ -314,6 +314,15 @@ export interface ScopeSnapshot {
   scopes: ScopeSnapshot[];
 }
 
+/** Rendering options for `scope.tree()` and `renderTree()`. */
+export interface TreeOpts {
+  ascii?: boolean;
+  showDurations?: boolean;
+  showProgress?: boolean;
+  maxDepth?: number;
+  colors?: boolean;
+}
+
 // --- Task options ---------------------------------------------------------
 
 /** Options used when spawning a task. */
@@ -388,6 +397,9 @@ export interface Scope {
 
   /** Returns the current scope tree snapshot. */
   status(): ScopeSnapshot;
+
+  /** Renders the current scope tree as a human-readable status string. */
+  tree(opts?: TreeOpts): string;
 
   /** Subscribes to task and scope events emitted in this scope tree. */
   onEvent(handler: (e: TaskEvent) => void): Unsubscribe;
