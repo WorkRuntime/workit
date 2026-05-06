@@ -155,8 +155,22 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
   }
 
   async *stream(): AsyncIterable<O> {
-    for (const item of await this.collect()) {
-      yield item;
+    const iterator = toAsyncIterator(this.source);
+    const concurrency = this.cfg.concurrency ?? 1;
+    let nextKey = 0;
+
+    while (true) {
+      const tasks: TaskFn<O | typeof SKIP>[] = [];
+      while (tasks.length < concurrency) {
+        const next = await iterator.next();
+        if (next.done === true) break;
+        tasks.push(this.makeTask<O>(next.value, nextKey++, (item) => item));
+      }
+      if (tasks.length === 0) break;
+
+      for (const value of await run.pool(concurrency, tasks)) {
+        if (value !== SKIP) yield value;
+      }
     }
   }
 
@@ -200,6 +214,16 @@ async function toArray<I>(source: Iterable<I> | AsyncIterable<I>): Promise<I[]> 
     for (const item of source) out.push(item);
   }
   return out;
+}
+
+function toAsyncIterator<I>(source: Iterable<I> | AsyncIterable<I>): AsyncIterator<I> {
+  if (Symbol.asyncIterator in source) return source[Symbol.asyncIterator]();
+  const iterator = source[Symbol.iterator]();
+  return {
+    async next() {
+      return iterator.next();
+    },
+  };
 }
 
 function assertConcurrency(n: number): void {

@@ -6,7 +6,7 @@
 
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { work } from "../../dist/index.js";
+import { CancellationError, work } from "../../dist/index.js";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -78,6 +78,78 @@ test("work builder map filter tap collect and stream operate on transformed valu
   const streamed = [];
   for await (const item of builder.stream()) streamed.push(item);
   assert.deepEqual(streamed, [6, 8]);
+
+  const empty = [];
+  for await (const item of work([]).stream()) empty.push(item);
+  assert.deepEqual(empty, []);
+});
+
+test("work().stream is backpressured over virtual billion sources and respects concurrency", async () => {
+  const total = 1_000_000_000;
+  let produced = 0;
+  let active = 0;
+  let maxActive = 0;
+
+  async function* virtualBillionSource() {
+    for (let item = 0; item < total; item++) {
+      produced++;
+      yield item;
+    }
+  }
+
+  const streamed = [];
+  for await (const item of work(virtualBillionSource())
+    .inParallel(16)
+    .map(async (value) => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await sleep(1);
+      active--;
+      return value * 2;
+    })
+    .stream()) {
+    streamed.push(item);
+    if (streamed.length === 25) break;
+  }
+
+  assert.equal(streamed.length, 25);
+  assert.ok(produced <= 41);
+  assert.ok(maxActive <= 16);
+  assert.equal(active, 0);
+});
+
+test("work().stream propagates failures and cancels active siblings", async () => {
+  let slowCancelled = false;
+
+  await assert.rejects(
+    async () => {
+      for await (const _item of work([1, 2])
+        .inParallel(2)
+        .map(async (value, ctx) => {
+          if (value === 1) throw new Error("stream failed");
+          try {
+            await new Promise((resolve, reject) => {
+              const timer = setTimeout(resolve, 1_000);
+              ctx.signal.addEventListener("abort", () => {
+                clearTimeout(timer);
+                reject(ctx.signal.reason);
+              }, { once: true });
+            });
+          } catch (err) {
+            slowCancelled = err instanceof CancellationError
+              && err.reason.kind === "sibling_failed";
+            throw err;
+          }
+          return value;
+        })
+        .stream()) {
+        assert.fail("stream should not yield after a mapped failure");
+      }
+    },
+    /stream failed/
+  );
+
+  assert.equal(slowCancelled, true);
 });
 
 test("work().withRetry applies retry policy to item execution", async () => {
