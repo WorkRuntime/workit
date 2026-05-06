@@ -16,6 +16,10 @@
     "./ai": {
       "import": "./dist/ai/index.js",
       "types": "./dist/ai/index.d.ts"
+    },
+    "./observability": {
+      "import": "./dist/observability/index.js",
+      "types": "./dist/observability/index.d.ts"
     }
   },
   "sideEffects": false,
