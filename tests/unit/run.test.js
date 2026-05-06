@@ -109,6 +109,16 @@ test("run.timeout rejects with TimeoutError", async () => {
   );
 });
 
+test("run.deadline rejects when the deadline is reached", async () => {
+  await assert.rejects(
+    run.group(async (task) => task(run.deadline(async (ctx) => {
+      await sleep(1000, ctx.signal);
+      return "late";
+    }, Date.now() + 10))),
+    TimeoutError
+  );
+});
+
 test("run.pool enforces concurrency and preserves order", async () => {
   let active = 0;
   let maxActive = 0;
@@ -140,4 +150,79 @@ test("run.fallback uses secondary task after primary failure", async () => {
   );
 
   assert.equal(await run.group(async (task) => task(wrapped)), "secondary");
+});
+
+test("run.hedge starts delayed attempts only while unsettled", async () => {
+  let attempts = 0;
+
+  const wrapped = run.hedge(async () => {
+    attempts++;
+    return "first";
+  }, { after: 20, max: 3 });
+
+  assert.equal(await run.group(async (task) => task(wrapped)), "first");
+  await sleep(60);
+  assert.equal(attempts, 1);
+});
+
+test("run.circuitBreaker opens after repeated failures and recovers after reset", async () => {
+  let calls = 0;
+  const wrapped = run.circuitBreaker(async () => {
+    calls++;
+    if (calls <= 2) throw new Error("backend down");
+    return "ok";
+  }, { failureThreshold: 2, resetAfter: 20 });
+
+  await assert.rejects(run.group(async (task) => task(wrapped)), /backend down/);
+  await assert.rejects(run.group(async (task) => task(wrapped)), /backend down/);
+  await assert.rejects(run.group(async (task) => task(wrapped)), /Circuit breaker is open/);
+  await sleep(30);
+  assert.equal(await run.group(async (task) => task(wrapped)), "ok");
+});
+
+test("run.background requires a scope and keeps work owned by that scope", async () => {
+  await assert.rejects(
+    async () => run.background(async () => "outside"),
+    /requires an active WorkJS scope/
+  );
+
+  let completed = false;
+  await run.group(async () => {
+    run.background(async (ctx) => {
+      await sleep(20, ctx.signal);
+      completed = true;
+    });
+  });
+
+  assert.equal(completed, true);
+});
+
+test("run.detached does not delay the active scope", async () => {
+  let completed = false;
+  let handle;
+  const start = Date.now();
+
+  await run.group(async () => {
+    handle = run.detached(async () => {
+      await sleep(80);
+      completed = true;
+    });
+  });
+
+  assert.ok(Date.now() - start < 70);
+  assert.equal(completed, false);
+  await handle;
+  assert.equal(completed, true);
+});
+
+test("run.supervise restarts failures within the restart window", async () => {
+  let attempts = 0;
+  const handle = run.supervise(async () => {
+    attempts++;
+    if (attempts < 3) throw new Error("restart me");
+    return "stable";
+  }, { maxRestarts: 3, backoff: () => 1 });
+
+  assert.equal(await handle, "stable");
+  assert.equal(attempts, 3);
 });

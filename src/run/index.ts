@@ -230,36 +230,70 @@ function hedge<T>(task: TaskFn<T>, opts: HedgeOpts): TaskFn<T> {
     const max = Math.max(1, opts.max);
     const afterMs = parseDuration(opts.after);
     const controllers: AbortController[] = [];
+    const timers: Array<ReturnType<typeof setTimeout>> = [];
     const errors: unknown[] = [];
 
     return await new Promise<T>((resolve, reject) => {
       let settled = false;
       let completed = 0;
 
+      const clearPendingStarts = () => {
+        while (timers.length > 0) {
+          const timer = timers.pop();
+          if (timer !== undefined) clearTimeout(timer);
+        }
+      };
+
+      const settle = (finish: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearPendingStarts();
+        finish();
+      };
+
+      if (ctx.signal.aborted) {
+        reject(ctx.signal.reason);
+        return;
+      }
+
+      ctx.signal.addEventListener(
+        "abort",
+        () => {
+          settle(() => {
+            for (const candidate of controllers) candidate.abort(ctx.signal.reason);
+            reject(ctx.signal.reason);
+          });
+        },
+        { once: true }
+      );
+
       const start = (attempt: number) => {
+        if (settled) return;
         const ctrl = new AbortController();
         controllers.push(ctrl);
         const signal = linkSignals([ctx.signal, ctrl.signal]);
         task({ ...ctx, signal, attempt }).then(
           (value) => {
-            if (settled) return;
-            settled = true;
-            for (const candidate of controllers) candidate.abort(new CancellationError({ kind: "race_lost", winnerId: ctx.id }));
-            resolve(value);
+            settle(() => {
+              for (const candidate of controllers) candidate.abort(new CancellationError({ kind: "race_lost", winnerId: ctx.id }));
+              resolve(value);
+            });
           },
           (err: unknown) => {
+            if (settled) return;
             errors.push(err);
             completed++;
             if (!settled && completed === max) {
-              settled = true;
-              reject(new WorkAggregateError(errors, "All hedged attempts failed"));
+              settle(() => reject(new WorkAggregateError(errors, "All hedged attempts failed")));
             }
           }
         );
       };
 
       for (let attempt = 1; attempt <= max; attempt++) {
-        setTimeout(() => start(attempt), (attempt - 1) * afterMs);
+        const delayMs = (attempt - 1) * afterMs;
+        if (delayMs === 0) start(attempt);
+        else timers.push(setTimeout(() => start(attempt), delayMs));
       }
     });
   };
