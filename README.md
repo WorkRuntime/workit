@@ -249,6 +249,19 @@ bounded concurrency, high-concurrency budget accounting, and a virtual
 billion-item stream source that proves bounded production when consumers stop
 early.
 
+Visible sample scripts are available after build:
+
+```sh
+npm run sample:1b
+npm run sample:concurrency
+npm run sample:logging
+```
+
+`sample:logging` demonstrates adapting WorkJS task log events to OTel-shaped log
+records without importing OpenTelemetry into the core package. A real
+OpenTelemetry companion package is still release work, not part of the current
+core runtime.
+
 ## Runtime Requirements
 
 - Node.js `>=20.11`

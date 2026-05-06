@@ -35,6 +35,9 @@
     "check:benchmark": "npm run build && node scripts/check-benchmark.mjs",
     "check:leak": "npm run build && node --expose-gc scripts/check-leak.mjs",
     "pack:dry": "npm pack --dry-run --json",
+    "sample:1b": "npm run build && node samples/1b-stream.sample.js",
+    "sample:concurrency": "npm run build && node samples/concurrency-budget.sample.js",
+    "sample:logging": "npm run build && node samples/logging-otel-bridge.sample.js",
     "test": "npm run build && vitest run",
     "test:coverage": "npm run build && vitest run --coverage",
     "verify": "npm run typecheck && npm run check:no-network && npm test && npm run check:size && npm run check:benchmark && npm run check:leak && npm run pack:dry"
