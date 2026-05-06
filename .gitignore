@@ -1,0 +1,66 @@
+# Git ignore policy for local-only project context and generated artifacts.
+# Author: Admilson B. F. Cossa
+
+# Local agent instructions and private specification context.
+AGENTS.md
+docs/
+
+# Environment and secrets.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Dependencies and package manager caches.
+node_modules/
+.pnpm-store/
+.yarn/
+.npm/
+
+# Build and distribution output.
+dist/
+build/
+out/
+lib/
+coverage/
+.nyc_output/
+mnt/
+
+# Runtime caches.
+.cache/
+.parcel-cache/
+.turbo/
+.vite/
+.vitest/
+.eslintcache
+*.tsbuildinfo
+
+# Logs and debug output.
+*.log
+logs/
+debug/
+debug-*/
+*.debug.*
+*.trace
+*.trace.json
+
+# Temporary tests, scratch reproductions, and local experiments.
+tmp/
+temp/
+.tmp/
+scratch/
+repro/
+tmp-tests/
+.tmp-tests/
+*.tmp.*
+*.scratch.*
+
+# OS and editor files.
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/

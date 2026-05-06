@@ -1,0 +1,4 @@
+# Repository text normalization rules.
+# Author: Admilson B. F. Cossa
+
+* text=auto eol=lf
