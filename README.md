@@ -155,20 +155,19 @@ timeouts, and error collection are explicit choices.
 ## Budgets And Context
 
 ```ts
-import { CostBudget, TokenBudget, group } from "workjs";
+import { CostBudget, TokenBudget, group, run } from "workjs";
 
-await group(async (task) => {
-  await task(async (ctx) => {
-    ctx.consume(CostBudget, 25);
-    ctx.consume(TokenBudget, 1_200);
-    return await callModel(ctx.signal);
-  });
-}, {
-  budgets: {
-    CostBudget: 100,
-    TokenBudget: 10_000,
-  },
-});
+await run.context.with(CostBudget, { spent: 0, limit: 100 }, async () =>
+  run.context.with(TokenBudget, { spent: 0, limit: 10_000 }, async () =>
+    group(async (task) => {
+      await task(async (ctx) => {
+        ctx.consume(CostBudget, 25);
+        ctx.consume(TokenBudget, 1_200);
+        return await callModel(ctx.signal);
+      });
+    })
+  )
+);
 ```
 
 Cost-like budgets fail loudly when exhausted. Telemetry budgets drop events
@@ -240,9 +239,15 @@ npm run test:coverage
 ```
 
 Coverage thresholds are set to 100% for statements, branches, functions, and
-lines. The current suite verifies 69 tests across the public runtime, run
-helpers, work builder, tree rendering, budget contracts, AI helpers, and
-observability exporter.
+lines. The current suite verifies 77 tests across the public runtime, run
+helpers, work builder, tree rendering, budget contracts, AI helpers,
+observability exporter, and executable scale examples.
+
+The executable examples run against the compiled package and cover agent-tree
+cancellation, provider racing, budget-capped RAG flow, 100K fake embeddings with
+bounded concurrency, high-concurrency budget accounting, and a virtual
+billion-item stream source that proves bounded production when consumers stop
+early.
 
 ## Runtime Requirements
 
