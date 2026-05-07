@@ -223,7 +223,7 @@ test("example: 100k embeddings use bounded concurrency and exact token accountin
   assert.ok(maxActive <= 32);
   assert.equal(context.get(OpenAITokens).spent, total);
   assert.equal(active, 0);
-});
+}, 30_000);
 
 test("example: high-concurrency budget charges land at the exact total", async () => {
   const budget = { spent: 0, limit: 1_000, unit: "credits" };

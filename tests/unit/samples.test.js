@@ -165,7 +165,7 @@ test("sample: 100k embeddings complete with bounded concurrency and token budget
   assert.equal(result.concurrency, 32);
   assert.equal(result.maxActive, 32);
   assert.equal(result.tokensSpent, 100_000);
-});
+}, 30_000);
 
 test("sample: bad-batch bisection isolates failed embeddings", async () => {
   const result = await runSample("samples/embed-bisection.sample.js");

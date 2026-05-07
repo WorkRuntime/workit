@@ -30,6 +30,21 @@ assert.equal(packageJson.name, "@workit/core", "release package identity must re
 assert.equal(packageJson.private, false, "package.json must be publishable after final release approval");
 assert.equal(packageJson.publishConfig?.access, "public", "publishConfig.access must be public");
 assert.equal(packageJson.license, "Apache-2.0", "release license must remain Apache-2.0");
+assert.equal(
+  packageJson.repository?.url,
+  "https://github.com/WorkRuntime/workit",
+  "package repository.url must match GitHub provenance repository"
+);
+assert.equal(
+  packageJson.bugs?.url,
+  "https://github.com/WorkRuntime/workit/issues",
+  "package bug tracker must point at the public repository"
+);
+assert.equal(
+  packageJson.homepage,
+  "https://github.com/WorkRuntime/workit#readme",
+  "package homepage must point at the public README"
+);
 assert.ok(packageJson.files.includes("SECURITY.md"), "published package must include SECURITY.md");
 assert.ok(packageJson.files.includes("CONTRIBUTING.md"), "published package must include CONTRIBUTING.md");
 assert.match(workflow, /id-token:\s*write/u, "release workflow must allow OIDC id-token provenance");
