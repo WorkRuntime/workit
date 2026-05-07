@@ -22,6 +22,26 @@ npm install @workit/core
 
 WorkIt currently targets Node.js server runtimes. Browser and edge runtimes resolve to an explicit unsupported-runtime boundary.
 
+## Guide
+
+Use WorkIt by choosing the smallest primitive that owns the work you need:
+
+| Need | Use |
+| --- | --- |
+| One operation with child tasks | `group(async (task) => ...)` |
+| A few task functions together | `run.all()`, `run.race()`, `run.any()`, `run.series()` |
+| Bounded concurrency with ordered results | `run.pool(concurrency, tasks)` |
+| Batch transforms over items | `work(items).inParallel(n).do(fn)` |
+| Retry, timeout, fallback, or resource cleanup | `run.retry()`, `run.timeout()`, `run.fallback()`, `run.bracket()` |
+| Streaming batches with backpressure | `work(items).stream()` |
+| Producer-consumer coordination | `@workit/core/channel` |
+| Snapshot diagnosis | `@workit/core/diagnostics` |
+| AI tool/budget helper contracts | `@workit/core/ai` |
+| OpenTelemetry bridge | `@workit/core/otel` |
+| CPU or non-cooperative work boundary | `@workit/core/worker` |
+
+The main rule is: keep native `Promise` for single async values, and use WorkIt when the operation needs ownership, cancellation, cleanup, bounded concurrency, budgets, diagnostics, or observable task events.
+
 ## Example
 
 ```ts
@@ -115,12 +135,12 @@ Current verification evidence:
 
 | Gate | Result |
 | --- | --- |
-| Unit tests | 210 tests passing |
+| Unit tests | 214 tests passing |
 | Coverage | 100% statements, branches, functions, lines |
 | Runtime dependencies | 0 production dependencies |
 | Public API exports | 7 locked package export paths |
-| Public bundle | 29,275 B minified / 9,696 B gzip |
-| Core group import | 14,195 B minified / 4,839 B gzip |
+| Public bundle | 29,255 B minified / 9,694 B gzip |
+| Core group import | 14,175 B minified / 4,835 B gzip |
 | Soak | 100,000 logical tasks, bounded concurrency |
 | Stream memory | 1,000,000 logical items, bounded producer growth |
 | Exporter stress | 100,000 events with bounded queue |
@@ -193,6 +213,64 @@ const batch = await run.pool(8, inputs.map((input) => async (ctx) => {
 ```
 
 `run.race()` and `run.any()` cancel losing work. `run.pool()` preserves result order while bounding concurrency.
+
+## Retry Policy
+
+Retry defaults are resilience-oriented, not micro-benchmark-oriented.
+
+Both `run.retry(task, 3)` and `work(items).withRetry(3)` normalize to:
+
+```ts
+{
+  times: 3,
+  backoff: "exponential",
+  initialDelay: 100,
+  maxDelay: 30_000,
+  jitter: true,
+}
+```
+
+`times` is the maximum number of attempts including the first attempt. With `times: 3`, WorkIt can run one initial attempt and two retries.
+
+Use the numeric form for production calls where brief backoff is desired:
+
+```ts
+const resilient = run.retry(callProvider, 3);
+```
+
+Use an explicit zero-delay policy for local operations, tests, or fast in-memory retries:
+
+```ts
+const fast = run.retry(callLocalCache, {
+  times: 3,
+  initialDelay: "0ms",
+  maxDelay: "0ms",
+  jitter: false,
+});
+
+const output = await work(items)
+  .withRetry({
+    times: 3,
+    initialDelay: "0ms",
+    maxDelay: "0ms",
+    jitter: false,
+  })
+  .do(async (item) => processItem(item));
+```
+
+Use `retryIf` to keep retry policy explicit:
+
+```ts
+const providerCall = run.retry(callProvider, {
+  times: 4,
+  backoff: "exponential",
+  initialDelay: "200ms",
+  maxDelay: "5s",
+  retryIf: (err) => isTransientProviderError(err),
+});
+```
+
+Do not use retry to hide deterministic validation errors. Reject those at the boundary.
 
 ## Resource Safety
 
@@ -332,7 +410,20 @@ OpenTelemetry integration is opt-in:
 import { attachOpenTelemetry } from "@workit/core/otel";
 ```
 
-`@opentelemetry/api` is an optional peer dependency.
+`@opentelemetry/api` is an optional peer dependency so the root package can stay dependency-free. Install it only when using the OTel subpath:
+
+```sh
+npm install @opentelemetry/api
+```
+
+If the peer is missing and `attachOpenTelemetry()` needs the default OTel API, WorkIt throws:
+
+```txt
+To use @workit/core/otel, install:
+npm install @opentelemetry/api
+```
+
+You may also pass explicit `tracer` and `meter` objects for tests or custom OTel wiring.
 
 ## Worker Offload Boundary
 
@@ -353,9 +444,9 @@ Accepted worker inputs include primitives, arrays, plain objects, `Map`, `Set`, 
 
 Rejected worker inputs include functions, symbols, class instances, objects with custom prototypes, remote module URLs, inline module URLs, and traversal paths.
 
-## Examples
+## Examples Index
 
-After build:
+Samples run against the compiled package:
 
 ```sh
 npm run sample:1b
@@ -380,7 +471,75 @@ npm run sample:otel
 npm run sample:logging
 ```
 
-These samples run against the compiled package.
+| Sample | Scenario |
+| --- | --- |
+| `sample:all` | Safer `Promise.all()` replacement with sibling cancellation and cleanup. |
+| `sample:concurrency` | Bounded parallelism with budget consumption. |
+| `sample:cancel` | Typed cancellation reason propagation. |
+| `sample:timeout` | Timeout-driven cancellation. |
+| `sample:no-orphan` | Scope ownership preventing orphaned child work. |
+| `sample:agent` | Agent-style task tree cancellation. |
+| `sample:race` | Provider race with loser cancellation. |
+| `sample:rag` | RAG-style budgeted work. |
+| `sample:batch` | Batch upload with retry and partial-result handling. |
+| `sample:stream` | Streaming summarizer with bounded work. |
+| `sample:embed100k` | 100,000 logical embedding tasks. |
+| `sample:bisection` | Batch bisection for partial provider failures. |
+| `sample:stt-disconnect` | Speech-to-text cancellation on disconnect. |
+| `sample:worker` | Worker offload for CPU/non-cooperative work. |
+| `sample:aws` | AWS Lambda-shaped handler. |
+| `sample:azure` | Azure Functions-shaped handler. |
+| `sample:next` | Next.js route-shaped handler. |
+| `sample:otel` | OpenTelemetry adapter use. |
+| `sample:logging` | Logging-to-telemetry bridge. |
+
+## Benchmarks And Reproducibility
+
+WorkIt benchmark claims are tied to executable gates in the repository. They are release checks, not synthetic marketing numbers.
+
+| Command | What it validates |
+| --- | --- |
+| `npm run check:benchmark` | Basic runtime throughput for `group()` and `run.all()`. |
+| `npm run check:1b` | One-billion logical item streaming shape with bounded concurrency. |
+| `npm run check:stream-memory` | Slow-consumer stream memory ceiling and producer backpressure. |
+| `npm run check:soak` | 100,000 logical task runtime soak. |
+| `npm run check:exporter-stress` | Bounded telemetry exporter behavior under high event volume. |
+| `npm run check:package-consumer` | Installed package behavior across ESM, CJS, TypeScript, framework fixtures, browser bundle split, and Cloudflare dry-run unsupported boundary. |
+| `npm run check:claims` | Executable claim fixtures derived from review findings. |
+
+Run all public proof gates:
+
+```sh
+npm run verify
+```
+
+Run only the public proof artifact gate:
+
+```sh
+npm run check:public-proof
+```
+
+The static proof artifact is `benchmarks/public-proof.json`. It records evidence commands, benchmark fixture thresholds, migration-guide coverage, and runtime matrix rows.
+
+When comparing WorkIt with another library, keep the comparison scoped:
+
+- compare raw throughput only for equivalent operations
+- include cancellation, cleanup, and ownership when those are part of the requirement
+- report Node.js version, operating system, CPU, command, iteration count, concurrency, and heap flags
+- use `--expose-gc` for memory gates that require explicit garbage collection
+- do not compare a structured runtime against a semaphore without naming the semantic difference
+
+## WorkIt Compared With Common Alternatives
+
+| Tool | Primary model | Use it when | Use WorkIt when |
+| --- | --- | --- | --- |
+| Native `Promise` | Async value | One async value or a small local composition is enough. | The operation needs ownership, cancellation, cleanup, or diagnostics. |
+| `p-limit` | Local concurrency limiter | You only need a tiny semaphore. | Bounded work also needs scope ownership, cancellation, retry, timeout, or task events. |
+| `p-map` | Concurrent mapping | You need a focused map helper. | Mapping also needs retry, timeout, stream policy, budgets, or partial-result contracts. |
+| RxJS | Observable transformation graph | You are modeling rich event streams and operators. | You are modeling owned async task lifecycles. |
+| Bottleneck | Rate limiting and reservoirs | You need distributed or reservoir-based rate limiting. | You need local structured concurrency and lifecycle control. |
+
+WorkIt is not a replacement for every async library. It is a structured-concurrency runtime for owned work. The correct choice depends on whether lifecycle semantics are part of the problem.
 
 ## Migration Notes
 
@@ -444,8 +603,6 @@ The repository includes gates for:
 - CODEOWNERS
 - Dependabot
 - signed release tag policy
-
-The package remains private until final publication approval.
 
 ## Contributing
 
