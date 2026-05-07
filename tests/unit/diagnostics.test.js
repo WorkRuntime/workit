@@ -86,3 +86,91 @@ test("diagnoseSnapshot returns an ok report for a closed healthy snapshot", () =
   assert.equal(report.findings.length, 0);
   assert.equal(report.summary.pendingTasks, 0);
 });
+
+test("diagnoseSnapshot ignores non-cleanup events", () => {
+  const report = diagnoseSnapshot({
+    id: "scope-event-ok",
+    status: "closed",
+    startedAt: 1_000,
+    pendingCount: 0,
+    completedCount: 1,
+    failedCount: 0,
+    cancelledCount: 0,
+    tasks: [],
+    scopes: [],
+  }, {
+    now: 2_000,
+    events: [
+      { type: "scope:opened", scopeId: "scope-event-ok", parentId: undefined, at: 1_000 },
+    ],
+  });
+
+  assert.equal(report.status, "ok");
+  assert.equal(report.summary.cleanupTimeouts, 0);
+  assert.equal(report.findings.length, 0);
+});
+
+test("diagnoseSnapshot counts young pending tasks without findings and ignores completed tasks", () => {
+  const report = diagnoseSnapshot({
+    id: "scope-young",
+    status: "running",
+    startedAt: 1_000,
+    pendingCount: 1,
+    completedCount: 1,
+    failedCount: 0,
+    cancelledCount: 0,
+    tasks: [
+      {
+        id: "task-young",
+        name: "young",
+        kind: "io",
+        status: "pending",
+        attempt: 1,
+        startedAt: 1_900,
+      },
+      {
+        id: "task-done",
+        name: "done",
+        kind: "io",
+        status: "succeeded",
+        attempt: 1,
+        startedAt: 1_000,
+        durationMs: 20,
+      },
+    ],
+    scopes: [],
+  }, {
+    now: 2_000,
+    staleTaskMs: 500,
+  });
+
+  assert.equal(report.status, "ok");
+  assert.equal(report.summary.pendingTasks, 1);
+  assert.equal(report.summary.oldPendingTasks, 0);
+  assert.equal(report.findings.length, 0);
+});
+
+test("diagnoseSnapshot uses defaults and truncates findings", () => {
+  const report = diagnoseSnapshot({
+    id: "scope-truncated",
+    status: "running",
+    startedAt: 1_000,
+    pendingCount: 0,
+    completedCount: 0,
+    failedCount: 0,
+    cancelledCount: 0,
+    tasks: [],
+    scopes: [],
+  }, {
+    maxFindings: 1,
+    events: [
+      { type: "scope:cleanup_timeout", scopeId: "scope-a", timeoutMs: 1, at: 1 },
+      { type: "scope:cleanup_timeout", scopeId: "scope-b", timeoutMs: 2, at: 2 },
+    ],
+  });
+
+  assert.equal(report.status, "needs_attention");
+  assert.equal(report.summary.cleanupTimeouts, 2);
+  assert.equal(report.findings.length, 1);
+  assert.equal(report.truncated, true);
+});

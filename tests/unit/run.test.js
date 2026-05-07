@@ -176,6 +176,39 @@ test("run.uncancellable delays parent cancellation and rethrows it after complet
   assert.deepEqual(events, ["started", "finished"]);
 });
 
+test("run.uncancellable returns normally without parent cancellation", async () => {
+  const result = await run.group(async (task) => {
+    return await task(run.uncancellable(async () => "done", { timeout: 100 }));
+  });
+
+  assert.equal(result, "done");
+});
+
+test("run.uncancellable observes pre-aborted task signals", async () => {
+  const controller = new AbortController();
+  controller.abort(new CancellationError({ kind: "manual", tag: "pre-start" }));
+  const shielded = run.uncancellable(async () => "done", { timeout: 100 });
+
+  await assert.rejects(
+    shielded({
+      signal: controller.signal,
+      id: "task-pre-aborted-uncancellable",
+      name: "pre-aborted-uncancellable",
+      kind: "io",
+      attempt: 1,
+      scope: {},
+      context: {},
+      report() {},
+      log: { info() {}, warn() {}, error() {} },
+      defer() {},
+      consume() {},
+    }),
+    (err) => err instanceof CancellationError
+      && err.reason.kind === "manual"
+      && err.reason.tag === "pre-start"
+  );
+});
+
 test("run.uncancellable timeout bounds the shield and aborts the inner signal", async () => {
   let innerReason;
 

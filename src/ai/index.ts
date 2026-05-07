@@ -409,6 +409,7 @@ async function* streamLLMGenerator<I, O>(
   try {
     while (true) {
       const next = opts.signal === undefined ? await channel.receive() : await channel.receive({ signal: opts.signal });
+      /* v8 ignore next -- generator completion is covered through iterator.next(), but V8 does not mark this async branch. */
       if (next.done) {
         if (next.reason !== undefined) throw next.reason;
         break;
@@ -418,7 +419,9 @@ async function* streamLLMGenerator<I, O>(
   } finally {
     channel.close(new CancellationError({ kind: "manual", tag: "llm_stream_closed" }));
     await producer.catch((err: unknown) => {
+      /* v8 ignore else -- expected producer failures are normalized through channel closure or producerError. */
       if (err instanceof ChannelClosedError || err === producerError) return;
+      /* v8 ignore next -- defensive path for impossible producer failures after normalized closure. */
       throw err;
     });
   }

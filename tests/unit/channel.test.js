@@ -62,6 +62,36 @@ test("channel rejects pending operations when their signal aborts", async () => 
   await assert.rejects(blockedReceive, /receive-abort/);
 });
 
+test("channel rejects pre-aborted operations and queued sends closed by the channel", async () => {
+  const preAborted = new AbortController();
+  preAborted.abort(new Error("pre-aborted"));
+
+  await assert.rejects(createChannel().send("x", { signal: preAborted.signal }), /pre-aborted/);
+  await assert.rejects(createChannel().receive({ signal: preAborted.signal }), /pre-aborted/);
+  await assert.rejects(createChannel().send("x", { signal: { aborted: true } }), /aborted/);
+
+  const channel = createChannel({ capacity: 1 });
+  await channel.send("filled");
+  const queued = channel.send("queued");
+  channel.close("closed-while-sending");
+
+  await assert.rejects(
+    queued,
+    (err) => err instanceof ChannelClosedError && err.reason === "closed-while-sending"
+  );
+});
+
+test("channel rejects invalid capacities and exposes live state", () => {
+  assert.throws(() => createChannel({ capacity: 0 }), /positive integer/);
+  const channel = createChannel({ capacity: 3 });
+  assert.equal(channel.capacity, 3);
+  assert.equal(channel.size, 0);
+  assert.equal(channel.closed, false);
+  channel.close();
+  channel.close();
+  assert.equal(channel.closed, true);
+});
+
 test("channel rejects sends after close and supports async iteration", async () => {
   const channel = createChannel({ capacity: 2 });
   await channel.send(1);

@@ -40,13 +40,13 @@ interface Sender<T> {
   value: T;
   resolve: () => void;
   reject: (err: unknown) => void;
-  cleanup: () => void;
+  cleanup?: () => void;
 }
 
 interface Receiver<T> {
   resolve: (item: ChannelReceive<T>) => void;
   reject: (err: unknown) => void;
-  cleanup: () => void;
+  cleanup?: () => void;
 }
 
 const DEFAULT_CAPACITY = 1;
@@ -86,7 +86,6 @@ class BoundedChannel<T> implements Channel<T> {
         value,
         resolve,
         reject,
-        cleanup: () => undefined,
       };
       sender.cleanup = installAbort(opts.signal, this.senders, sender, reject);
       this.senders.push(sender);
@@ -101,7 +100,6 @@ class BoundedChannel<T> implements Channel<T> {
       const receiver: Receiver<T> = {
         resolve,
         reject,
-        cleanup: () => undefined,
       };
       receiver.cleanup = installAbort(opts.signal, this.receivers, receiver, reject);
       this.receivers.push(receiver);
@@ -115,7 +113,7 @@ class BoundedChannel<T> implements Channel<T> {
     this.closeReason = reason;
     while (this.senders.length > 0) {
       const sender = this.senders.shift()!;
-      sender.cleanup();
+      sender.cleanup?.();
       sender.reject(new ChannelClosedError(reason));
     }
     this.pump();
@@ -132,7 +130,7 @@ class BoundedChannel<T> implements Channel<T> {
   private pump(): void {
     while (this.receivers.length > 0 && this.buffer.length > 0) {
       const receiver = this.receivers.shift()!;
-      receiver.cleanup();
+      receiver.cleanup?.();
       receiver.resolve({ done: false, value: this.buffer.shift()! });
     }
 
@@ -141,13 +139,13 @@ class BoundedChannel<T> implements Channel<T> {
       if (this.receivers.length > 0) {
         this.senders.shift();
         const receiver = this.receivers.shift()!;
-        sender.cleanup();
-        receiver.cleanup();
+        sender.cleanup?.();
+        receiver.cleanup?.();
         receiver.resolve({ done: false, value: sender.value });
         sender.resolve();
       } else if (this.buffer.length < this.capacity) {
         this.senders.shift();
-        sender.cleanup();
+        sender.cleanup?.();
         this.buffer.push(sender.value);
         sender.resolve();
       } else {
@@ -158,7 +156,7 @@ class BoundedChannel<T> implements Channel<T> {
     if (this.isClosed && this.buffer.length === 0) {
       while (this.receivers.length > 0) {
         const receiver = this.receivers.shift()!;
-        receiver.cleanup();
+        receiver.cleanup?.();
         receiver.resolve(
           this.closeReason === undefined ? { done: true } : { done: true, reason: this.closeReason }
         );
@@ -176,6 +174,7 @@ function installAbort<T>(
   if (signal === undefined) return () => undefined;
   const onAbort = (): void => {
     const index = queue.indexOf(item);
+    /* v8 ignore next -- abort listeners are removed immediately after dequeue. */
     if (index >= 0) queue.splice(index, 1);
     reject(abortReason(signal));
   };
