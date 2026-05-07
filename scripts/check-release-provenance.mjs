@@ -19,6 +19,7 @@ const packageJson = JSON.parse(await readFile("package.json", "utf8"));
 const workflow = await readFile(".github/workflows/release-provenance.yml", "utf8");
 const security = await readFile("SECURITY.md", "utf8");
 const codeowners = await readRequiredFile(".github/CODEOWNERS");
+const allowedSigners = await readRequiredFile(".github/allowed_signers");
 const dependabot = await readRequiredFile(".github/dependabot.yml");
 const ci = await readRequiredFile(".github/workflows/ci.yml");
 const scorecard = await readRequiredFile(".github/workflows/scorecard.yml");
@@ -36,6 +37,7 @@ assert.match(workflow, /attestations:\s*write/u, "release workflow must allow Gi
 assert.match(workflow, /npm publish --provenance --access public/u, "release workflow must publish with npm provenance");
 assert.match(workflow, /npm run verify/u, "release workflow must run full verification before publish");
 assert.match(workflow, /npm run test:coverage/u, "release workflow must run coverage before publish");
+assert.match(workflow, /gpg\.ssh\.allowedSignersFile/u, "release workflow must configure SSH allowed signers before tag verification");
 assert.match(workflow, /oven-sh\/setup-bun@[a-f0-9]{40}/u, "release workflow must provision Bun for package-consumer verification");
 assert.match(workflow, /denoland\/setup-deno@[a-f0-9]{40}/u, "release workflow must provision Deno for package-consumer verification");
 assert.match(workflow, /bun-version:\s*"1\.3\.13"/u, "release workflow must pin the Bun fixture version");
@@ -50,6 +52,7 @@ assert.match(dependabot, /package-ecosystem:\s*"npm"/u, "dependabot must monitor
 assert.match(dependabot, /package-ecosystem:\s*"github-actions"/u, "dependabot must monitor GitHub Actions");
 assert.match(scorecard, /ossf\/scorecard-action@[a-f0-9]{40}/u, "Scorecard workflow must use a SHA-pinned action");
 assert.match(scorecard, /security-events:\s*write/u, "Scorecard workflow must be able to upload SARIF");
+assert.match(allowedSigners, /admilsoncossa@gmail\.com ssh-ed25519 /u, "release allowed signers must trust the release signing key");
 await assertExistingTagsAreSigned();
 
 if (!requireRegistryDryRun) {
