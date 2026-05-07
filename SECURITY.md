@@ -88,12 +88,16 @@ Reports are in scope when they affect:
 - worker-thread offload boundaries
 
 Worker-thread offload is an explicit local execution boundary. `offload()`
-accepts only local file URLs or paths controlled by the application; inline
-`data:` modules and remote `http:`/`https:` modules are rejected before import.
-When `offload()` is given a timeout, WorkJS terminates the worker thread on
-timeout so non-cooperative worker code cannot keep running in-process. In-process
-helpers such as `run.uncancellable()` remain cooperative shields; JavaScript code
-that ignores abort signals cannot be forcibly stopped without a worker/process
+accepts only local file URLs or paths controlled by the application; inline and remote module URLs
+are rejected before import, and parent directory traversal is
+rejected before the worker starts. Worker input must be plain structured-clone data.
+Primitives, arrays, plain objects, `Map`, `Set`, dates, regexps, buffers,
+and typed arrays are accepted. Functions, symbols, class instances, and objects
+with custom prototypes are rejected before worker startup. When `offload()` is
+given a timeout, WorkJS terminates the worker thread on timeout so
+non-cooperative worker code cannot keep running in-process. In-process helpers
+such as `run.uncancellable()` remain cooperative shields; JavaScript code that
+ignores abort signals cannot be forcibly stopped without a worker/process
 boundary.
 
 Out of scope:

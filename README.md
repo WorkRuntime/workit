@@ -360,6 +360,33 @@ short, signal-aware in-process shields. Use `offload(module, exportName, input,
 { timeout })` when non-cooperative CPU work needs a hard worker-thread lifetime
 boundary.
 
+## Worker Offload Boundary
+
+`@workjs/core/worker` is an explicit local execution boundary. `moduleURL` must
+be a local file URL or path controlled by the application at build or deploy
+time. WorkJS rejects inline URLs, remote URLs, empty module references, and
+parent directory segments before the worker imports anything.
+
+Accepted worker inputs:
+
+- primitives
+- arrays
+- plain objects
+- `Map` and `Set`
+- `Date`, `RegExp`, `ArrayBuffer`, `SharedArrayBuffer`, and typed array views
+
+Rejected worker inputs:
+
+- functions
+- symbols
+- class instances
+- objects with custom prototypes
+- remote or inline module URLs
+- module paths containing parent directory segments
+
+Use the `timeout` option when worker code might ignore abort signals. On
+timeout, WorkJS terminates the worker thread and rejects with `TimeoutError`.
+
 ## Runtime Requirements
 
 - Node.js `>=20.11`
