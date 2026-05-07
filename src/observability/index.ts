@@ -472,6 +472,9 @@ function validateMetric(metric: MetricPoint, allowed: Set<string> | null): void 
     if (typeof value === "string" && value.length > 64) {
       throw new Error(`Metric label "${key}" value is too long`);
     }
+    if (key === "taskKind" && value !== "io" && value !== "llm" && value !== "tool" && value !== "cpu" && value !== "custom") {
+      throw new Error(`Metric label "${key}" value "${String(value)}" is not bounded`);
+    }
   }
 }
 

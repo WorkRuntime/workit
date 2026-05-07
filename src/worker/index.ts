@@ -36,6 +36,7 @@ export function offload<I, R>(
   input: I
 ): TaskFn<R> {
   const moduleHref = normalizeWorkerModuleURL(moduleURL);
+  assertPlainStructuredCloneData(input);
 
   return async (ctx) => {
     return await new Promise<R>((resolve, reject) => {
@@ -105,4 +106,50 @@ function toError(serialized: WorkerReply<unknown>["error"]): Error {
   err.name = serialized?.name ?? "WorkerTaskError";
   if (serialized?.stack !== undefined) err.stack = serialized.stack;
   return err;
+}
+
+function assertPlainStructuredCloneData(value: unknown, seen = new WeakSet<object>()): void {
+  if (value === null || value === undefined) return;
+  const type = typeof value;
+  if (type === "string" || type === "number" || type === "boolean" || type === "bigint") return;
+  if (type === "symbol" || type === "function") {
+    throw new TypeError("Worker offload input must be plain structured-clone data");
+  }
+
+  const object = value as object;
+  if (seen.has(object)) return;
+  seen.add(object);
+
+  if (isCloneSafeBuiltIn(object)) return;
+  if (Array.isArray(object)) {
+    for (const item of object) assertPlainStructuredCloneData(item, seen);
+    return;
+  }
+  if (object instanceof Map) {
+    for (const [key, item] of object) {
+      assertPlainStructuredCloneData(key, seen);
+      assertPlainStructuredCloneData(item, seen);
+    }
+    return;
+  }
+  if (object instanceof Set) {
+    for (const item of object) assertPlainStructuredCloneData(item, seen);
+    return;
+  }
+
+  const proto = Object.getPrototypeOf(object);
+  if (proto !== Object.prototype && proto !== null) {
+    throw new TypeError("Worker offload input must be plain structured-clone data");
+  }
+  for (const item of Object.values(object as Record<string, unknown>)) {
+    assertPlainStructuredCloneData(item, seen);
+  }
+}
+
+function isCloneSafeBuiltIn(value: object): boolean {
+  return value instanceof Date
+    || value instanceof RegExp
+    || value instanceof ArrayBuffer
+    || (typeof SharedArrayBuffer !== "undefined" && value instanceof SharedArrayBuffer)
+    || ArrayBuffer.isView(value);
 }

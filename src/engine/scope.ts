@@ -175,6 +175,9 @@ export class ScopeImpl implements Scope {
     const id = makeTaskId();
     const name = opts.name ?? "anonymous";
     const kind = opts.kind ?? "io";
+    if (kind !== "io" && kind !== "llm" && kind !== "tool" && kind !== "cpu" && kind !== "custom") {
+      throw new RangeError("invalid task kind");
+    }
     const startedAt = Date.now();
     const cleanupTimeoutMs = opts.cleanupTimeout !== undefined
       ? parseDuration(opts.cleanupTimeout)
@@ -335,7 +338,7 @@ export class ScopeImpl implements Scope {
       this.cancel({
         kind: "deadline",
         deadlineAt: this.deadlineAt!,
-        elapsedMs: Date.now() - this.startedAt,
+        elapsedMs: Math.max(0, Date.now() - this.startedAt),
       });
     }, ms);
   }
@@ -718,7 +721,7 @@ function assertBoundedString(label: string, value: string, maxLength: number): v
 function assertNoTaskPolicyShortcuts(opts: TaskOpts): void {
   const raw = opts as Record<string, unknown>;
   if ("retry" in raw || "timeout" in raw || "deadline" in raw) {
-    throw new Error("Task retry, timeout, and deadline policies must use run.retry/run.timeout/run.deadline wrappers");
+    throw new Error("must use run.retry/run.timeout/run.deadline");
   }
 }
 
