@@ -50,6 +50,9 @@ const SKIP = Symbol("work.skip");
 type StreamSettlement<T> =
   | { status: "fulfilled"; value: T }
   | { status: "rejected"; reason: unknown };
+type ActiveStreamSettlement<T> = StreamSettlement<T> & {
+  promise: Promise<ActiveStreamSettlement<T>>;
+};
 
 /** Creates a fluent builder over an iterable or async iterable source. */
 export const work: WorkFactory = <I>(items: Iterable<I> | AsyncIterable<I>) =>
@@ -216,7 +219,7 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
     let resolveScope!: () => void;
     let rejectScope!: (reason: unknown) => void;
     let resolveScopeReady!: (scope: Scope) => void;
-    const active = new Set<Promise<StreamSettlement<O | typeof SKIP>>>();
+    const active = new Set<Promise<ActiveStreamSettlement<O | typeof SKIP>>>();
     const scopeReady = new Promise<Scope>((resolve) => {
       resolveScopeReady = resolve;
     });
@@ -231,7 +234,6 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
     const scope = await scopeReady;
 
     const closeScope = async (reason?: unknown) => {
-      if (scopeClosed) return;
       scopeClosed = true;
       if (reason === undefined) resolveScope();
       else rejectScope(reason);
@@ -250,18 +252,19 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
         this.makeTask<O>(next.value, index, (item) => item, execution),
         { name: `work-stream-item-${index}` }
       );
-      const ready = handle.then(
-        (value) => ({ status: "fulfilled", value }) satisfies StreamSettlement<O | typeof SKIP>,
-        (reason: unknown) => ({ status: "rejected", reason }) satisfies StreamSettlement<O | typeof SKIP>
+      let ready!: Promise<ActiveStreamSettlement<O | typeof SKIP>>;
+      ready = handle.then(
+        (value) => ({ status: "fulfilled", value, promise: ready }),
+        (reason: unknown) => ({ status: "rejected", reason, promise: ready })
       );
       active.add(ready);
-      void ready.finally(() => active.delete(ready));
     };
 
     try {
       while (active.size < concurrency && !sourceDone) await launchNext();
       while (active.size > 0) {
         const settlement = await Promise.race(active);
+        active.delete(settlement.promise);
         if (settlement.status === "rejected") throw settlement.reason;
         if (settlement.value !== SKIP) yield settlement.value;
         await launchNext();

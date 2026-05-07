@@ -493,6 +493,28 @@ test("scope summary exporter emits one aggregate record per closed scope", async
   assert.equal(summaries[2].outcome, "cancelled");
 });
 
+test("scope summary exporter applies sanitizer drops before aggregation", async () => {
+  const scope = createScopeHarness();
+  const summaries = [];
+  const attachment = attachScopeSummaryExporter(
+    scope,
+    (summary) => summaries.push(summary),
+    {
+      sanitize() {
+        return undefined;
+      },
+    }
+  );
+
+  scope.emit({ type: "scope:opened", scopeId: "scope-drop", parentId: null, at: 1 });
+  scope.emit({ type: "scope:closed", scopeId: "scope-drop", durationMs: 1, at: 2 });
+  await flushExporter();
+
+  assert.equal(summaries.length, 0);
+  assert.equal(attachment.exportedCount(), 0);
+  assert.equal(attachment.droppedCount(), 2);
+});
+
 test("cardinality-safe metric exporter rejects unbounded labels", async () => {
   const metrics = [];
   const exporter = createCardinalitySafeMetricExporter(
