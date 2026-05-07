@@ -131,6 +131,20 @@ test("run.retry retries non-cancellation failures and respects times", async () 
   assert.equal(attempts, 3);
 });
 
+test("run.retry rejects unsafe retry attempt counts at the policy boundary", async () => {
+  assert.throws(
+    () => run.retry(async () => "never", { times: 1_000_000 }),
+    /retry attempts/
+  );
+
+  await assert.rejects(
+    run.group(async (task) => {
+      await task(async () => "never", { retry: { times: 1_000_000 } });
+    }),
+    /retry attempts/
+  );
+});
+
 test("run.timeout rejects with TimeoutError", async () => {
   await assert.rejects(
     run.group(async (task) => task(run.timeout(async (ctx) => {
@@ -384,6 +398,62 @@ test("run.detached does not delay the active scope", async () => {
   assert.equal(completed, false);
   await handle;
   assert.equal(completed, true);
+});
+
+test("run.detached can be bounded by maxLifetime for non-cooperative work", async () => {
+  const handle = run.detached(async () => {
+    await new Promise(() => {});
+  }, { maxLifetime: 10 });
+
+  await assert.rejects(handle, TimeoutError);
+  assert.equal(handle.status, "failed");
+
+  const unbounded = run.detached(async () => "unbounded-ok", {
+    name: "unbounded-detached",
+    maxLifetime: false,
+    cleanupTimeout: 5,
+  });
+  assert.equal(await unbounded, "unbounded-ok");
+  assert.equal(unbounded.name, "unbounded-detached");
+});
+
+test("background timeout is a failed background task, not scope cancellation", async () => {
+  const events = [];
+
+  const result = await run.group(async (task) => {
+    await task(async (ctx) => {
+      ctx.scope.onEvent((event) => events.push(event));
+    });
+    run.background(run.timeout(async (ctx) => {
+      await sleep(1_000, ctx.signal);
+      return "late";
+    }, 5));
+    return "scope-result";
+  });
+
+  assert.equal(result, "scope-result");
+  assert.ok(events.some((event) => event.type === "task:failed" && event.error instanceof TimeoutError));
+  assert.ok(!events.some((event) => event.type === "scope:closing" && event.reason === "cancelled"));
+});
+
+test("run.context.budget returns undefined when no budget is installed", () => {
+  assert.equal(run.context.budget({ name: "MissingBudget" }), undefined);
+});
+
+test("run.context.budget preserves optional unit shape", async () => {
+  const UnitlessBudget = createContextKey("UnitlessBudget");
+  let snapshot;
+
+  await run.context.with(UnitlessBudget, { spent: 0, limit: 2 }, async () => {
+    await run.group(async (task) => {
+      await task(async (ctx) => {
+        ctx.consume(UnitlessBudget, 1);
+      });
+    });
+    snapshot = run.context.budget(UnitlessBudget);
+  });
+
+  assert.deepEqual(snapshot, { spent: 1, limit: 2 });
 });
 
 test("run.supervise restarts failures within the restart window", async () => {

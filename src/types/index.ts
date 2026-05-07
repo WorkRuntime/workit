@@ -50,6 +50,9 @@ const TIMEOUT_ERROR_BRAND = Symbol.for("workjs.error.TimeoutError");
 const BUDGET_ERROR_BRAND = Symbol.for("workjs.error.BudgetExceededError");
 const AGGREGATE_ERROR_BRAND = Symbol.for("workjs.error.WorkAggregateError");
 
+/** Maximum configured retry attempts accepted by WorkJS retry policies. */
+export const MAX_RETRY_ATTEMPTS = 1_000;
+
 function hasErrorBrand(value: unknown, brand: symbol): boolean {
   return typeof value === "object" && value !== null && (value as Record<symbol, unknown>)[brand] === true;
 }
@@ -71,7 +74,13 @@ export class CancellationError extends Error {
   }
 }
 
-/** Cancellation error raised by timeout policies. */
+/**
+ * Error raised by timeout policies.
+ *
+ * It extends `CancellationError` so timeout abort signals preserve their typed
+ * reason, but task settlement records timeout as failure, not user/parent
+ * cancellation.
+ */
 export class TimeoutError extends CancellationError {
   readonly [TIMEOUT_ERROR_BRAND] = true;
   readonly timeoutMs: number;
@@ -215,11 +224,13 @@ export type TaskEvent =
   | { type: "task:retrying"; taskId: TaskId; attempt: number; error: unknown; nextDelayMs: number; at: number }
   | { type: "task:progress"; taskId: TaskId; pct?: number; message?: string; data?: unknown; at: number }
   | { type: "task:cleanup_failed"; taskId: TaskId; error: unknown; at: number }
+  | { type: "task:cleanup_timeout"; taskId: TaskId; timeoutMs: number; at: number }
   | { type: "task:succeeded"; taskId: TaskId; durationMs: number; at: number }
   | { type: "task:failed"; taskId: TaskId; error: unknown; durationMs: number; at: number }
   | { type: "task:cancelled"; taskId: TaskId; reason: CancelReason; durationMs: number; at: number }
   | { type: "scope:opened"; scopeId: ScopeId; parentId: ScopeId | null; at: number }
   | { type: "scope:cleanup_failed"; scopeId: ScopeId; error: unknown; at: number }
+  | { type: "scope:cleanup_timeout"; scopeId: ScopeId; timeoutMs: number; at: number }
   | { type: "scope:closing"; scopeId: ScopeId; reason: "completed" | "errored" | "cancelled"; at: number }
   | { type: "scope:closed"; scopeId: ScopeId; durationMs: number; droppedTelemetryEvents?: number; at: number };
 
@@ -269,6 +280,7 @@ export type TaskFn<T> = (ctx: TaskContext) => Promise<T>;
 
 /** Retry policy for cancel-aware task wrappers. */
 export interface RetryOpts {
+  /** Maximum attempts including the first try. WorkJS rejects values above its safety cap. */
   times: number;
   backoff?: "fixed" | "linear" | "exponential" | ((attempt: number) => Duration);
   initialDelay?: Duration;
@@ -288,6 +300,25 @@ export interface BreakerOpts {
   failureThreshold: number;
   resetAfter: Duration;
   halfOpenMaxCalls?: number;
+}
+
+/** Signal and timing metadata passed to cleanup defers. */
+export interface CleanupContext {
+  readonly signal: AbortSignal;
+  readonly timeoutMs: number;
+}
+
+/** Per-cleanup override for bounded defer execution. */
+export interface CleanupOpts {
+  timeout?: Duration;
+}
+
+/** Policy for explicitly detached root work. */
+export interface DetachedOpts {
+  name?: string;
+  /** Maximum detached handle lifetime. Use `false` only for intentionally unbounded roots. */
+  maxLifetime?: Duration | false;
+  cleanupTimeout?: Duration;
 }
 
 /** Runtime contract exposed to a task body. */
@@ -317,7 +348,7 @@ export interface TaskContext {
   readonly log: TaskLogger;
 
   /** Registers cleanup that runs in LIFO order when the task settles. */
-  defer(cleanup: () => void | Promise<void>): void;
+  defer(cleanup: (ctx: CleanupContext) => void | Promise<void>, opts?: CleanupOpts): void;
 
   /** Emits a task progress event without changing task state. */
   report(progress: ProgressReport): void;
@@ -393,6 +424,7 @@ export interface TaskOpts {
   deadline?: number | Date;
   retry?: number | RetryOpts;
   idempotencyKey?: string;
+  cleanupTimeout?: Duration;
 }
 
 // --- Scope options --------------------------------------------------------
@@ -402,6 +434,7 @@ export interface ScopeOpts {
   name?: string;
   deadline?: Duration;
   context?: ContextBag;
+  cleanupTimeout?: Duration;
 }
 
 /** Public run namespace implemented by `src/run`. */
@@ -424,7 +457,7 @@ export interface RunNamespace {
   }) => Promise<R>, opts?: ScopeOpts): Promise<R>;
   scope<R>(body: (scope: Scope) => Promise<R>, opts?: ScopeOpts): Promise<R>;
   background<T>(task: TaskFn<T>): TaskHandle<T>;
-  detached<T>(task: TaskFn<T>): TaskHandle<T>;
+  detached<T>(task: TaskFn<T>, opts?: DetachedOpts): TaskHandle<T>;
   supervise<T>(task: TaskFn<T>, opts?: {
     restartOn?: "error" | "always" | ((err: unknown) => boolean);
     maxRestarts?: number;
@@ -435,6 +468,7 @@ export interface RunNamespace {
     current(): ContextBag;
     with<T, R>(key: ContextKey<T>, value: T, body: () => Promise<R>): Promise<R>;
     get<T>(key: ContextKey<T>): T | undefined;
+    budget<T extends BudgetState>(key: ContextKey<T>): BudgetState | undefined;
   };
 }
 
@@ -482,7 +516,7 @@ export interface Scope {
   deadline(duration: Duration): void;
 
   /** Registers scope-level cleanup that runs in LIFO order on close. */
-  defer(cleanup: () => void | Promise<void>): void;
+  defer(cleanup: (ctx: CleanupContext) => void | Promise<void>, opts?: CleanupOpts): void;
 
   /** Returns the current scope tree snapshot. */
   status(): ScopeSnapshot;

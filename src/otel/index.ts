@@ -148,6 +148,9 @@ function handleTaskEvent(
     case "task:cleanup_failed":
       recordTaskCleanupFailure(spans.get(event.taskId)?.span, event);
       break;
+    case "task:cleanup_timeout":
+      recordTaskCleanupTimeout(spans.get(event.taskId)?.span, event);
+      break;
     case "task:succeeded":
       finishTask(event.taskId, "succeeded", event.durationMs, spans, taskCounter, taskDuration);
       break;
@@ -159,6 +162,7 @@ function handleTaskEvent(
       break;
     case "scope:opened":
     case "scope:cleanup_failed":
+    case "scope:cleanup_timeout":
     case "scope:closing":
     case "scope:closed":
       break;
@@ -201,6 +205,13 @@ function recordTaskCleanupFailure(span: Span | undefined, event: Extract<TaskEve
   if (span === undefined) return;
   span.addEvent("workjs.task.cleanup_failed", {
     "workjs.error.message": errorMessage(event.error),
+  });
+}
+
+function recordTaskCleanupTimeout(span: Span | undefined, event: Extract<TaskEvent, { type: "task:cleanup_timeout" }>): void {
+  if (span === undefined) return;
+  span.addEvent("workjs.task.cleanup_timeout", {
+    "workjs.cleanup.timeout_ms": event.timeoutMs,
   });
 }
 

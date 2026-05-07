@@ -26,6 +26,9 @@ import {
   TimeoutError,
   WorkAggregateError,
   BreakerOpts,
+  DetachedOpts,
+  BudgetState,
+  MAX_RETRY_ATTEMPTS,
 } from "../types/index.js";
 import { ContextBagImpl } from "../engine/context.js";
 import { ScopeImpl, getCurrentScope, group } from "../engine/scope.js";
@@ -384,10 +387,18 @@ function background<T>(task: TaskFn<T>): TaskHandle<T> {
   return current.spawn(task, { name: "background" }, true);
 }
 
+const DEFAULT_DETACHED_MAX_LIFETIME_MS = 300_000;
+
 /** Spawns explicitly detached work in a root scope. */
-function detached<T>(task: TaskFn<T>): TaskHandle<T> {
-  const root = new ScopeImpl(null, { name: "detached" });
-  const handle = root.spawn(task, { name: "detached" });
+function detached<T>(task: TaskFn<T>, opts: DetachedOpts = {}): TaskHandle<T> {
+  const root = new ScopeImpl(null, {
+    name: opts.name ?? "detached",
+    ...(opts.cleanupTimeout !== undefined ? { cleanupTimeout: opts.cleanupTimeout } : {}),
+  });
+  const boundedTask = opts.maxLifetime === false
+    ? task
+    : timeout(task, opts.maxLifetime ?? DEFAULT_DETACHED_MAX_LIFETIME_MS);
+  const handle = root.spawn(boundedTask, { name: opts.name ?? "detached" });
   void handle.finally(() => root.close()).catch(() => undefined);
   return handle;
 }
@@ -440,6 +451,16 @@ const context = {
   get<T>(key: ContextKey<T>): T | undefined {
     return context.current().get(key);
   },
+
+  budget<T extends BudgetState>(key: ContextKey<T>): T | undefined {
+    const value = context.current().get(key);
+    if (value === undefined) return undefined;
+    return {
+      spent: value.spent,
+      limit: value.limit,
+      ...(value.unit !== undefined ? { unit: value.unit } : {}),
+    } as T;
+  },
 };
 
 /** The public run namespace. */
@@ -473,15 +494,23 @@ function cancelLosers<T>(handles: TaskHandle<T>[], winner: TaskHandle<T>): void 
 function normalizeRetry(opts: number | RetryOpts): Required<Pick<RetryOpts, "times" | "initialDelay" | "maxDelay" | "jitter" | "retryIf">> & {
   backoff: NonNullable<RetryOpts["backoff"]>;
 } {
+  validateRetryPolicy(opts);
   const raw = typeof opts === "number" ? { times: opts } : opts;
   return {
-    times: Math.max(1, raw.times),
+    times: raw.times,
     backoff: raw.backoff ?? "exponential",
     initialDelay: raw.initialDelay ?? 100,
     maxDelay: raw.maxDelay ?? 30_000,
     jitter: raw.jitter ?? true,
     retryIf: raw.retryIf ?? (() => true),
   };
+}
+
+function validateRetryPolicy(opts: number | RetryOpts): void {
+  const times = typeof opts === "number" ? opts : opts.times;
+  if (!Number.isInteger(times) || times < 1 || times > MAX_RETRY_ATTEMPTS) {
+    throw new RangeError(`retry attempts must be an integer between 1 and ${MAX_RETRY_ATTEMPTS}`);
+  }
 }
 
 function computeDelay(attempt: number, policy: ReturnType<typeof normalizeRetry>): number {

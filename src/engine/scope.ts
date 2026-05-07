@@ -40,8 +40,10 @@ import type {
   RetryOpts,
   Unsubscribe,
   TaskLogger,
+  CleanupContext,
+  CleanupOpts,
 } from "../types/index.js";
-import { CancellationError, BudgetExceededError, CostBudget, TimeoutError } from "../types/index.js";
+import { CancellationError, BudgetExceededError, CostBudget, TimeoutError, MAX_RETRY_ATTEMPTS } from "../types/index.js";
 import { ContextBagImpl } from "./context.js";
 import { EventBus } from "./event-bus.js";
 import { parseDuration } from "./duration.js";
@@ -54,6 +56,12 @@ const makeTaskId = (): TaskId => `task-${++_nextId}` as TaskId;
 const MAX_TASK_NAME_LENGTH = 128;
 const MAX_IDEMPOTENCY_KEY_LENGTH = 512;
 const MAX_DEFERS_PER_OWNER = 10_000;
+const DEFAULT_CLEANUP_TIMEOUT_MS = 30_000;
+
+interface CleanupRecord {
+  readonly cleanup: (ctx: CleanupContext) => void | Promise<void>;
+  readonly timeoutMs: number;
+}
 
 // --- AsyncLocalStorage for current scope ------------------------------
 const currentScope = new AsyncLocalStorage<ScopeImpl>();
@@ -108,8 +116,9 @@ export class ScopeImpl implements Scope {
   private readonly tasks = new Map<TaskId, TaskRecord>();
   private readonly childScopes = new Set<ScopeImpl>();
   private readonly idempotencyHandles = new Map<string, TaskHandle<unknown>>();
-  private readonly defers: Array<() => void | Promise<void>> = [];
+  private readonly defers: CleanupRecord[] = [];
   private readonly cancelHandlers = new Set<(r: CancelReason) => void>();
+  private readonly cleanupTimeoutMs: number;
   private state: "running" | "cancelling" | "closed" = "running";
   private readonly startedAt = Date.now();
   private deadlineAt?: number;
@@ -126,6 +135,9 @@ export class ScopeImpl implements Scope {
     this.parent = parent;
     this.context = opts.context ?? parent?.context ?? new ContextBagImpl();
     this.name = opts.name;
+    this.cleanupTimeoutMs = opts.cleanupTimeout !== undefined
+      ? parseDuration(opts.cleanupTimeout)
+      : parent?.cleanupTimeoutMs ?? DEFAULT_CLEANUP_TIMEOUT_MS;
     this.signal = parent
       ? anySignal([parent.signal, this.ownAbort.signal])
       : this.ownAbort.signal;
@@ -160,17 +172,21 @@ export class ScopeImpl implements Scope {
       const existing = this.idempotencyHandles.get(opts.idempotencyKey);
       if (existing !== undefined) return existing as TaskHandle<T>;
     }
+    if (opts.retry !== undefined) validateRetryPolicy(opts.retry);
 
     const id = makeTaskId();
     const name = opts.name ?? "anonymous";
     const kind = opts.kind ?? "io";
     const startedAt = Date.now();
+    const cleanupTimeoutMs = opts.cleanupTimeout !== undefined
+      ? parseDuration(opts.cleanupTimeout)
+      : this.cleanupTimeoutMs;
 
     const taskAbort = new AbortController();
     const taskSignal = anySignal([this.signal, taskAbort.signal]);
-    const defers: Array<() => void | Promise<void>> = [];
+    const defers: CleanupRecord[] = [];
 
-    const ctx = this.makeTaskContext(id, name, kind, taskSignal, defers);
+    const ctx = this.makeTaskContext(id, name, kind, taskSignal, defers, cleanupTimeoutMs);
 
     const record: TaskRecord<T> = {
       id, name, kind,
@@ -203,7 +219,20 @@ export class ScopeImpl implements Scope {
         outcome = { ok: true, value };
       } catch (err) {
         record.endedAt = Date.now();
-        if (err instanceof CancellationError) {
+        if (err instanceof TimeoutError) {
+          record.status = "failed";
+          if (!record.background && this.firstChildFailure === undefined) {
+            this.firstChildFailure = err;
+            this.cancel({ kind: "sibling_failed", siblingId: id, error: err });
+          }
+          terminalEvent = {
+            type: "task:failed",
+            taskId: id,
+            error: err,
+            durationMs: record.endedAt - startedAt,
+            at: record.endedAt,
+          };
+        } else if (err instanceof CancellationError) {
           record.status = "cancelled";
           terminalEvent = {
             type: "task:cancelled",
@@ -232,8 +261,15 @@ export class ScopeImpl implements Scope {
       try {
         // Run defers LIFO; errors logged, never thrown (I5)
         while (defers.length > 0) {
-          const fn = defers.pop()!;
-          try { await fn(); } catch (cleanupErr) {
+          const record = defers.pop()!;
+          try {
+            if (await runCleanup(record) === "timed_out") {
+              this.bus.emit(
+                { type: "task:cleanup_timeout", taskId: id, timeoutMs: record.timeoutMs, at: Date.now() },
+                this.context
+              );
+            }
+          } catch (cleanupErr) {
             this.bus.emit(
               { type: "task:cleanup_failed", taskId: id, error: cleanupErr, at: Date.now() },
               this.context
@@ -309,9 +345,12 @@ export class ScopeImpl implements Scope {
   }
 
   /** Registers scope-level cleanup to run in reverse registration order. */
-  defer(cleanup: () => void | Promise<void>): void {
+  defer(cleanup: (ctx: CleanupContext) => void | Promise<void>, opts: CleanupOpts = {}): void {
     assertCanAddDefer(this.defers.length);
-    this.defers.push(cleanup);
+    this.defers.push({
+      cleanup,
+      timeoutMs: opts.timeout !== undefined ? parseDuration(opts.timeout) : this.cleanupTimeoutMs,
+    });
   }
 
   /** Subscribes to this scope tree's typed event stream. */
@@ -352,8 +391,15 @@ export class ScopeImpl implements Scope {
 
     // Run defers LIFO, errors logged not thrown (I5)
     while (this.defers.length > 0) {
-      const fn = this.defers.pop()!;
-      try { await fn(); } catch (err) {
+      const record = this.defers.pop()!;
+      try {
+        if (await runCleanup(record) === "timed_out") {
+          this.bus.emit(
+            { type: "scope:cleanup_timeout", scopeId: this.id, timeoutMs: record.timeoutMs, at: Date.now() },
+            this.context
+          );
+        }
+      } catch (err) {
         this.bus.emit(
           { type: "scope:cleanup_failed", scopeId: this.id, error: err, at: Date.now() },
           this.context
@@ -440,7 +486,8 @@ export class ScopeImpl implements Scope {
     name: string,
     kind: TaskKind,
     signal: AbortSignal,
-    defers: Array<() => void | Promise<void>>
+    defers: CleanupRecord[],
+    cleanupTimeoutMs: number
   ): import("../types/index.js").TaskContext {
     const scope = this;
     const log = makeTaskLogger(scope, id);
@@ -451,9 +498,12 @@ export class ScopeImpl implements Scope {
       id, name, kind,
       context: this.context,
       log,
-      defer(fn) {
+      defer(fn, opts = {}) {
         assertCanAddDefer(defers.length);
-        defers.push(fn);
+        defers.push({
+          cleanup: fn,
+          timeoutMs: opts.timeout !== undefined ? parseDuration(opts.timeout) : cleanupTimeoutMs,
+        });
       },
       report(p) {
         scope.bus.emit({
@@ -646,9 +696,38 @@ function assertCanAddDefer(currentCount: number): void {
   }
 }
 
+async function runCleanup(record: CleanupRecord): Promise<"completed" | "timed_out"> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<"timed_out">((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort(new TimeoutError(record.timeoutMs));
+      resolve("timed_out");
+    }, record.timeoutMs);
+  });
+  const cleanup = Promise.resolve()
+    .then(() => record.cleanup({ signal: controller.signal, timeoutMs: record.timeoutMs }))
+    .then(() => "completed" as const);
+  void cleanup.catch(() => undefined);
+
+  try {
+    return await Promise.race([cleanup, timeout]);
+  } finally {
+    /* v8 ignore next -- cleanup timeout assigns the timer synchronously. */
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 function assertBoundedString(label: string, value: string, maxLength: number): void {
   if (value.length === 0 || value.length > maxLength) {
     throw new RangeError(`${label} must be 1-${maxLength} characters`);
+  }
+}
+
+function validateRetryPolicy(opts: number | RetryOpts): void {
+  const times = typeof opts === "number" ? opts : opts.times;
+  if (!Number.isInteger(times) || times < 1 || times > MAX_RETRY_ATTEMPTS) {
+    throw new RangeError(`retry attempts must be an integer between 1 and ${MAX_RETRY_ATTEMPTS}`);
   }
 }
 
@@ -727,9 +806,10 @@ function wrapRetry<T>(
 function normalizeRetry(opts: number | RetryOpts): Required<Pick<RetryOpts, "times" | "initialDelay" | "maxDelay" | "jitter" | "retryIf">> & {
   backoff: NonNullable<RetryOpts["backoff"]>;
 } {
+  validateRetryPolicy(opts);
   const raw = typeof opts === "number" ? { times: opts } : opts;
   return {
-    times: Math.max(1, raw.times),
+    times: raw.times,
     backoff: raw.backoff ?? "exponential",
     initialDelay: raw.initialDelay ?? 100,
     maxDelay: raw.maxDelay ?? 30_000,
@@ -813,7 +893,7 @@ export async function group<R>(
     result = await currentScope.run(scope, () => body(spawner));
   } catch (err) {
     bodyError = err;
-    if (!(err instanceof CancellationError)) {
+    if (!(err instanceof CancellationError) || err instanceof TimeoutError) {
       scope.cancel({ kind: "parent_failed", error: err });
     }
   }

@@ -172,7 +172,9 @@ function shouldExport(event: TaskEvent, sampling: SamplingPolicy, headAccepted: 
     case "errors_and_slow":
       return event.type === "task:failed"
         || event.type === "task:cleanup_failed"
+        || event.type === "task:cleanup_timeout"
         || event.type === "scope:cleanup_failed"
+        || event.type === "scope:cleanup_timeout"
         || event.type === "task:cancelled"
         || (event.type === "task:succeeded" && event.durationMs >= sampling.slowThresholdMs);
     /* v8 ignore next -- off mode returns before subscribing to scope events. */
@@ -364,7 +366,9 @@ function ingestSummaryEvent(
       summary.outcome = "errored";
       break;
     case "task:cleanup_failed":
+    case "task:cleanup_timeout":
     case "scope:cleanup_failed":
+    case "scope:cleanup_timeout":
       summary.cleanupFailed++;
       summary.outcome = "errored";
       break;
