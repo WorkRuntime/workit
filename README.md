@@ -78,7 +78,7 @@ import {
 Subpath exports:
 
 ```ts
-import { embedAll, transcribeStream, wrapAI } from "@workjs/core/ai";
+import { embedAll, runAgent, streamLLM, transcribeStream, wrapAI } from "@workjs/core/ai";
 import { attachTelemetryExporter } from "@workjs/core/observability";
 import { attachOpenTelemetry } from "@workjs/core/otel";
 ```
@@ -199,6 +199,28 @@ const embeddings = await embedAll(chunks, {
 The AI subpath supplies contracts and structured execution helpers only. It does
 not import OpenAI, Anthropic, cloud SDKs, HTTP clients, or any other provider
 runtime.
+
+Agent helpers stay provider-neutral:
+
+```ts
+import { runAgent } from "@workjs/core/ai";
+
+const run = await runAgent(async (agent) => {
+  return await agent.tool("search", { q: "workjs" }, async (input, ctx) => {
+    return await searchProvider(input.q, { signal: ctx.signal });
+  }, {
+    tokens: 12,
+    toolCalls: 1,
+    timeout: "5s",
+  });
+});
+```
+
+`runAgent()` returns replayable local agent events. `agent.tool()` accepts an
+explicit input, provider function, retry/timeout options, and optional token,
+cost, and tool-call budget charges. `streamLLM()` provides a stream-first helper
+for provider chunks while keeping producer work under WorkJS cancellation and
+backpressure.
 
 ## Observability Export
 

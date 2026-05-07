@@ -44,10 +44,13 @@ const EXPECTED_RUNTIME_EXPORTS = {
     "work",
   ],
   "./ai": [
+    "AgentToolCalls",
     "BadBatchError",
     "OpenAITokens",
     "embedAll",
     "embedAllBisection",
+    "runAgent",
+    "streamLLM",
     "streamWithBackpressure",
     "transcribeStream",
     "wrapAI",

@@ -9,10 +9,13 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import { CancellationError, ContextBagImpl, group } from "../../dist/index.js";
 import {
+  AgentToolCalls,
   BadBatchError,
   OpenAITokens,
   embedAll,
   embedAllBisection,
+  runAgent,
+  streamLLM,
   streamWithBackpressure,
   transcribeStream,
   wrapAI,
@@ -493,4 +496,68 @@ test("streamWithBackpressure uses task signals when no external signal is provid
   }
 
   assert.deepEqual(output, ["PLAIN"]);
+});
+
+test("runAgent records replayable tool events and consumes AI budgets", async () => {
+  const context = new ContextBagImpl()
+    .with(OpenAITokens, { spent: 0, limit: 10, unit: "tokens" })
+    .with(AgentToolCalls, { spent: 0, limit: 2, unit: "tool_calls" });
+
+  const agentRun = await group(async () => runAgent(async (agent) => {
+    const value = await agent.tool("search", { q: "workjs" }, async (input, ctx) => {
+      assert.equal(ctx.kind, "tool");
+      return `found:${input.q}`;
+    }, {
+      tokens: 3,
+      toolCalls: 1,
+    });
+    return value;
+  }), { context });
+
+  assert.equal(agentRun.result, "found:workjs");
+  assert.deepEqual(agentRun.events.map((event) => event.type), [
+    "agent:started",
+    "agent:tool_started",
+    "agent:tool_succeeded",
+    "agent:completed",
+  ]);
+  assert.deepEqual(agentRun.events.map((event) => event.seq), [1, 2, 3, 4]);
+  assert.equal(context.get(OpenAITokens).spent, 3);
+  assert.equal(context.get(AgentToolCalls).spent, 1);
+});
+
+test("runAgent records failed tool events", async () => {
+  const agentRun = await runAgent(async (agent) => {
+    await assert.rejects(
+      agent.tool("fail", undefined, async () => {
+        throw new Error("tool down");
+      }),
+      /tool down/
+    );
+    return "handled";
+  });
+
+  assert.equal(agentRun.result, "handled");
+  assert.deepEqual(agentRun.events.map((event) => event.type), [
+    "agent:started",
+    "agent:tool_started",
+    "agent:tool_failed",
+    "agent:completed",
+  ]);
+});
+
+test("streamLLM streams provider chunks inside a WorkJS task", async () => {
+  const chunks = [];
+
+  for await (const chunk of streamLLM("hello", {
+    async *stream(input, ctx) {
+      assert.equal(ctx.kind, "llm");
+      yield input;
+      yield " world";
+    },
+  })) {
+    chunks.push(chunk);
+  }
+
+  assert.deepEqual(chunks, ["hello", " world"]);
 });
