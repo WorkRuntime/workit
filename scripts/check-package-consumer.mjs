@@ -44,10 +44,54 @@ try {
   const tarball = join(temp, pack.filename);
 
   await writeFile(join(temp, "package.json"), JSON.stringify({ type: "module" }), "utf8");
+  await runNpm(["install", "--ignore-scripts", tarball], {
+    cwd: temp,
+    timeout: 120_000,
+  });
+
+  await writeFile(join(temp, "otel-no-peer.mjs"), `
+    import { attachOpenTelemetry } from "@workit/core/otel";
+
+    try {
+      attachOpenTelemetry({ onEvent: () => () => {} });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!message.includes("To use @workit/core/otel, install:")) throw err;
+      if (!message.includes("npm install @opentelemetry/api")) throw err;
+      process.exit(0);
+    }
+
+    throw new Error("OTel subpath should explain the missing optional peer dependency.");
+  `, "utf8");
+
+  await execFileAsync(process.execPath, ["otel-no-peer.mjs"], {
+    cwd: temp,
+    timeout: 120_000,
+  });
+
+  await writeFile(join(temp, "otel-no-peer.cjs"), `
+    const { attachOpenTelemetry } = require("@workit/core/otel");
+
+    try {
+      attachOpenTelemetry({ onEvent: () => () => {} });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!message.includes("To use @workit/core/otel, install:")) throw err;
+      if (!message.includes("npm install @opentelemetry/api")) throw err;
+      process.exit(0);
+    }
+
+    throw new Error("OTel CommonJS subpath should explain the missing optional peer dependency.");
+  `, "utf8");
+
+  await execFileAsync(process.execPath, ["otel-no-peer.cjs"], {
+    cwd: temp,
+    timeout: 120_000,
+  });
+
   await runNpm([
     "install",
     "--ignore-scripts",
-    tarball,
     "@opentelemetry/api@^1.9.1",
     "@trpc/server@11.17.0",
     "express@5.2.1",

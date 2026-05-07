@@ -9,16 +9,8 @@
  * or configure the OpenTelemetry API in their runtime.
  */
 
-import {
-  SpanKind,
-  SpanStatusCode,
-  metrics,
-  trace,
-  type Attributes,
-  type Meter,
-  type Span,
-  type Tracer,
-} from "@opentelemetry/api";
+import { createRequire } from "node:module";
+import type { Attributes, Meter, Span, Tracer } from "@opentelemetry/api";
 import type { CancelReason, Scope, TaskEvent, TaskId, TaskKind } from "../types/index.js";
 import {
   attachScopeSummaryExporter,
@@ -26,6 +18,30 @@ import {
   type TelemetryExportOptions,
   type TaskEventSanitizer,
 } from "../observability/index.js";
+
+const OTEL_INSTALL_MESSAGE = [
+  "To use @workit/core/otel, install:",
+  "npm install @opentelemetry/api",
+].join("\n");
+
+const SPAN_KIND_INTERNAL = 0;
+const SPAN_STATUS_OK = 1;
+const SPAN_STATUS_ERROR = 2;
+const requirePeer = createPeerRequire();
+
+interface OpenTelemetryApi {
+  trace: {
+    getTracer(name: string, version?: string): Tracer;
+  };
+  metrics: {
+    getMeter(name: string, version?: string): Meter;
+  };
+}
+
+function createPeerRequire(): NodeJS.Require {
+  /* v8 ignore next -- CommonJS branch is validated by check-package-consumer. */
+  return createRequire(typeof __filename === "string" ? __filename : import.meta.url);
+}
 
 /** Options used to attach WorkIt events to OpenTelemetry. */
 export interface OpenTelemetryOptions {
@@ -57,9 +73,8 @@ export function attachOpenTelemetry(
   opts: OpenTelemetryOptions = {}
 ): OpenTelemetryAttachment {
   const instrumentationName = opts.instrumentationName ?? "workit";
-  const instrumentationVersion = opts.instrumentationVersion ?? "0.1.0";
-  const tracer = opts.tracer ?? trace.getTracer(instrumentationName, instrumentationVersion);
-  const meter = opts.meter ?? metrics.getMeter(instrumentationName, instrumentationVersion);
+  const instrumentationVersion = opts.instrumentationVersion ?? "0.1.1";
+  const { tracer, meter } = resolveOpenTelemetryHandles(opts, instrumentationName, instrumentationVersion);
   const taskCounter = meter.createCounter("workit.task.total", { unit: "1" });
   const taskDuration = meter.createHistogram("workit.task.duration", { unit: "ms" });
   const scopeCounter = meter.createCounter("workit.scope.total", { unit: "1" });
@@ -108,6 +123,39 @@ export function attachOpenTelemetry(
       return spans.size;
     },
   };
+}
+
+function resolveOpenTelemetryHandles(
+  opts: OpenTelemetryOptions,
+  instrumentationName: string,
+  instrumentationVersion: string
+): { tracer: Tracer; meter: Meter } {
+  if (opts.tracer !== undefined && opts.meter !== undefined) {
+    return { tracer: opts.tracer, meter: opts.meter };
+  }
+
+  const api = loadOpenTelemetryApi();
+  return {
+    tracer: opts.tracer ?? api.trace.getTracer(instrumentationName, instrumentationVersion),
+    meter: opts.meter ?? api.metrics.getMeter(instrumentationName, instrumentationVersion),
+  };
+}
+
+function loadOpenTelemetryApi(): OpenTelemetryApi {
+  try {
+    return requirePeer("@opentelemetry/api") as OpenTelemetryApi;
+  } catch (err) {
+    if (isMissingOpenTelemetryPeer(err)) {
+      throw new Error(OTEL_INSTALL_MESSAGE, { cause: err });
+    }
+    throw err;
+  }
+}
+
+function isMissingOpenTelemetryPeer(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = (error as { code?: unknown }).code;
+  return code === "MODULE_NOT_FOUND" && error.message.includes("@opentelemetry/api");
 }
 
 function omitSanitizer(opts: TelemetryExportOptions | undefined): TelemetryExportOptions | undefined {
@@ -185,7 +233,7 @@ function startTaskSpan(
   }
 
   const span = tracer.startSpan(`workit.task.${event.name}`, {
-    kind: SpanKind.INTERNAL,
+    kind: SPAN_KIND_INTERNAL,
     attributes,
   });
   spans.set(event.taskId, { span, name: event.name, kind: event.kind });
@@ -226,7 +274,7 @@ function finishTask(
   const state = spans.get(taskId);
   if (state === undefined) return;
   spans.delete(taskId);
-  state.span.setStatus({ code: SpanStatusCode.OK });
+  state.span.setStatus({ code: SPAN_STATUS_OK });
   recordTaskMetrics(outcome, durationMs, state.kind, taskCounter, taskDuration);
   safeEnd(state.span);
 }
@@ -243,7 +291,7 @@ function failTask(
   if (state === undefined) return;
   spans.delete(taskId);
   state.span.recordException(toException(error));
-  state.span.setStatus({ code: SpanStatusCode.ERROR, message: errorMessage(error) });
+  state.span.setStatus({ code: SPAN_STATUS_ERROR, message: errorMessage(error) });
   recordTaskMetrics("failed", durationMs, state.kind, taskCounter, taskDuration);
   safeEnd(state.span);
 }
@@ -260,7 +308,7 @@ function cancelTask(
   if (state === undefined) return;
   spans.delete(taskId);
   state.span.setAttribute("workit.cancel.kind", reason.kind);
-  state.span.setStatus({ code: SpanStatusCode.ERROR, message: `cancelled:${reason.kind}` });
+  state.span.setStatus({ code: SPAN_STATUS_ERROR, message: `cancelled:${reason.kind}` });
   recordTaskMetrics("cancelled", durationMs, state.kind, taskCounter, taskDuration);
   safeEnd(state.span);
 }
