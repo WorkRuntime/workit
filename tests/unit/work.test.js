@@ -120,6 +120,25 @@ test("work().stream is backpressured over virtual billion sources and respects c
   assert.equal(active, 0);
 });
 
+test("work().stream yields each item when it is ready instead of waiting for the whole batch", async () => {
+  const yielded = [];
+  const startedAt = Date.now();
+
+  for await (const item of work([1, 2])
+    .inParallel(2)
+    .map(async (value) => {
+      await sleep(value === 1 ? 40 : 1);
+      return value;
+    })
+    .stream()) {
+    yielded.push({ item, elapsedMs: Date.now() - startedAt });
+  }
+
+  assert.deepEqual(yielded.map((entry) => entry.item), [2, 1]);
+  assert.ok(yielded[0].elapsedMs < yielded[1].elapsedMs);
+  assert.ok(yielded[0].elapsedMs < 30);
+});
+
 test("work().stream propagates failures and cancels active siblings", async () => {
   let slowCancelled = false;
 

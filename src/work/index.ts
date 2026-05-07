@@ -15,6 +15,7 @@ import type {
   ItemError,
   RetryOpts,
   Settled,
+  Scope,
   TaskContext,
   TaskFn,
   WorkBuilder,
@@ -45,6 +46,10 @@ interface WorkConfig {
 }
 
 const SKIP = Symbol("work.skip");
+
+type StreamSettlement<T> =
+  | { status: "fulfilled"; value: T }
+  | { status: "rejected"; reason: unknown };
 
 /** Creates a fluent builder over an iterable or async iterable source. */
 export const work: WorkFactory = <I>(items: Iterable<I> | AsyncIterable<I>) =>
@@ -206,18 +211,70 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
     const concurrency = this.cfg.concurrency ?? 1;
     const execution = createExecution(this.cfg);
     let nextKey = 0;
+    let sourceDone = false;
+    let scopeClosed = false;
+    let resolveScope!: () => void;
+    let rejectScope!: (reason: unknown) => void;
+    let resolveScopeReady!: (scope: Scope) => void;
+    const active = new Set<Promise<StreamSettlement<O | typeof SKIP>>>();
+    const scopeReady = new Promise<Scope>((resolve) => {
+      resolveScopeReady = resolve;
+    });
+    const scopeHold = new Promise<void>((resolve, reject) => {
+      resolveScope = resolve;
+      rejectScope = reject;
+    });
+    const scopeRun = run.scope(async (scope) => {
+      resolveScopeReady(scope);
+      await scopeHold;
+    }, { name: "work-stream" });
+    const scope = await scopeReady;
 
-    while (true) {
-      const tasks: TaskFn<O | typeof SKIP>[] = [];
-      while (tasks.length < concurrency) {
-        const next = await iterator.next();
-        if (next.done === true) break;
-        tasks.push(this.makeTask<O>(next.value, nextKey++, (item) => item, execution));
+    const closeScope = async (reason?: unknown) => {
+      if (scopeClosed) return;
+      scopeClosed = true;
+      if (reason === undefined) resolveScope();
+      else rejectScope(reason);
+      await scopeRun.catch(() => undefined);
+    };
+
+    const launchNext = async () => {
+      if (sourceDone || scope.signal.aborted) return;
+      const next = await iterator.next();
+      if (next.done === true) {
+        sourceDone = true;
+        return;
       }
-      if (tasks.length === 0) break;
+      const index = nextKey++;
+      const handle = scope.spawn(
+        this.makeTask<O>(next.value, index, (item) => item, execution),
+        { name: `work-stream-item-${index}` }
+      );
+      const ready = handle.then(
+        (value) => ({ status: "fulfilled", value }) satisfies StreamSettlement<O | typeof SKIP>,
+        (reason: unknown) => ({ status: "rejected", reason }) satisfies StreamSettlement<O | typeof SKIP>
+      );
+      active.add(ready);
+      void ready.finally(() => active.delete(ready));
+    };
 
-      for (const value of await run.pool(concurrency, tasks)) {
-        if (value !== SKIP) yield value;
+    try {
+      while (active.size < concurrency && !sourceDone) await launchNext();
+      while (active.size > 0) {
+        const settlement = await Promise.race(active);
+        if (settlement.status === "rejected") throw settlement.reason;
+        if (settlement.value !== SKIP) yield settlement.value;
+        await launchNext();
+      }
+      await closeScope();
+    } catch (err) {
+      scope.cancel({ kind: "manual", tag: "stream_failed" });
+      await closeScope(err);
+      throw err;
+    } finally {
+      if (!scopeClosed) {
+        scope.cancel({ kind: "manual", tag: "stream_consumer_closed" });
+        await closeScope();
       }
     }
   }
