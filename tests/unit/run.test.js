@@ -484,7 +484,7 @@ test("run.circuitBreaker ignores stale closed-call success after another call op
       return "late-success";
     }
     throw new Error("fast-failure");
-  }, { failureThreshold: 1, resetAfter: 50 });
+  }, { failureThreshold: 1, resetAfter: 5_000 });
 
   const settled = await run.allSettled([wrapped, wrapped]);
   assert.deepEqual(settled.map((item) => item.status), ["fulfilled", "rejected"]);
@@ -497,7 +497,7 @@ test("run.circuitBreaker ignores stale closed-call failure after another call op
     calls++;
     if (calls === 1) await sleep(30, ctx.signal);
     throw new Error(`failure-${calls}`);
-  }, { failureThreshold: 1, resetAfter: 50 });
+  }, { failureThreshold: 1, resetAfter: 5_000 });
 
   const settled = await run.allSettled([wrapped, wrapped]);
   assert.deepEqual(settled.map((item) => item.status), ["rejected", "rejected"]);
