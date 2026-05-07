@@ -69,6 +69,7 @@
     "check:benchmark": "npm run build && node scripts/check-benchmark.mjs",
     "check:1b": "npm run build && node scripts/check-1b-benchmark.mjs",
     "check:leak": "npm run build && node --expose-gc scripts/check-leak.mjs",
+    "check:soak": "npm run build && node --expose-gc scripts/check-soak.mjs",
     "check:exporter-stress": "npm run build && node --expose-gc scripts/check-exporter-stress.mjs",
     "check:package-consumer": "npm run build && node scripts/check-package-consumer.mjs",
     "check:claims": "npm run build && node scripts/check-claim-fixtures.mjs",
@@ -97,9 +98,10 @@
     "sample:next": "npm run build && node samples/next-server-route.sample.js",
     "sample:otel": "npm run build && node samples/otel-adapter.sample.js",
     "sample:logging": "npm run build && node samples/logging-otel-bridge.sample.js",
+    "soak:24h": "npm run build && node --expose-gc scripts/soak-24h.mjs",
     "test": "npm run build && vitest run",
     "test:coverage": "npm run build && vitest run --coverage",
-    "verify": "npm run typecheck && npm run check:no-network && npm run check:headers && npm run check:tests && npm test && npm run check:security && npm run check:vulnerabilities && npm run check:sbom && npm run check:api && npm run check:size && npm run check:benchmark && npm run check:1b && npm run check:leak && npm run check:exporter-stress && npm run check:package-consumer && npm run check:claims && npm run check:release-policy && npm run pack:dry"
+    "verify": "npm run typecheck && npm run check:no-network && npm run check:headers && npm run check:tests && npm test && npm run check:security && npm run check:vulnerabilities && npm run check:sbom && npm run check:api && npm run check:size && npm run check:benchmark && npm run check:1b && npm run check:leak && npm run check:soak && npm run check:exporter-stress && npm run check:package-consumer && npm run check:claims && npm run check:release-policy && npm run pack:dry"
   },
   "engines": {
     "node": ">=20.11"
