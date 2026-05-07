@@ -25,6 +25,11 @@
       },
       "default": "./dist/runtime/unsupported.js"
     },
+    "./channel": {
+      "types": "./dist/channel/index.d.ts",
+      "import": "./dist/channel/index.js",
+      "require": "./dist-cjs/channel/index.cjs"
+    },
     "./observability": {
       "types": "./dist/observability/index.d.ts",
       "import": "./dist/observability/index.js",
