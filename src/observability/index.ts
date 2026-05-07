@@ -14,6 +14,9 @@ import type { Scope, TaskEvent, Unsubscribe } from "../types/index.js";
 /** Export destination supplied by an application or companion package. */
 export type TaskEventExporter = (event: TaskEvent) => void | Promise<void>;
 
+/** Redacts or drops an event before it leaves the process. */
+export type TaskEventSanitizer = (event: TaskEvent) => TaskEvent | undefined;
+
 /** Export destination for one closed scope summary. */
 export type ScopeSummaryExporter = (summary: ScopeSummary) => void | Promise<void>;
 
@@ -79,6 +82,7 @@ export interface TelemetryExportOptions {
   sampling?: SamplingPolicy;
   circuitBreaker?: ExporterCircuitBreakerOptions;
   queue?: ExportQueueOptions;
+  sanitize?: TaskEventSanitizer;
   onStateChange?: (event: ExporterStateChange) => void;
 }
 
@@ -90,6 +94,8 @@ export interface TelemetryAttachment {
   queuedCount(): number;
   state(): "closed" | "open" | "half_open";
 }
+
+const DROPPED_TELEMETRY_EVENT = Symbol("droppedTelemetryEvent");
 
 /** Attaches a sampled, circuit-broken exporter to a scope event stream. */
 export function attachTelemetryExporter(
@@ -109,11 +115,14 @@ export function attachTelemetryExporter(
     : true;
 
   const unsubscribe = scope.onEvent((event) => {
-    if (!shouldExport(event, sampling, headAccepted)) {
+    const sanitized = sanitizeTaskEvent(event, opts.sanitize, () => breaker.drop());
+    if (sanitized === DROPPED_TELEMETRY_EVENT) return;
+
+    if (!shouldExport(sanitized, sampling, headAccepted)) {
       breaker.drop();
       return;
     }
-    void breaker.export(event);
+    void breaker.export(sanitized);
   });
 
   return makeAttachment(unsubscribe, breaker);
@@ -129,12 +138,15 @@ export function attachScopeSummaryExporter(
   const taskOwners = new Map<string, string>();
   const breaker = createExporterCircuitBreaker(exporter, opts);
   const unsubscribe = scope.onEvent((event) => {
-    ingestSummaryEvent(summaries, taskOwners, event, breaker.droppedCount());
-    if (event.type !== "scope:closed") return;
-    const summary = summaries.get(event.scopeId);
+    const sanitized = sanitizeTaskEvent(event, opts.sanitize, () => breaker.drop());
+    if (sanitized === DROPPED_TELEMETRY_EVENT) return;
+
+    ingestSummaryEvent(summaries, taskOwners, sanitized, breaker.droppedCount());
+    if (sanitized.type !== "scope:closed") return;
+    const summary = summaries.get(sanitized.scopeId);
     if (summary === undefined) return;
-    summaries.delete(event.scopeId);
-    void breaker.export(toScopeSummary(summary, event.durationMs, breaker.droppedCount()));
+    summaries.delete(sanitized.scopeId);
+    void breaker.export(toScopeSummary(summary, sanitized.durationMs, breaker.droppedCount()));
   });
   return makeAttachment(unsubscribe, breaker);
 }
@@ -166,6 +178,25 @@ function shouldExport(event: TaskEvent, sampling: SamplingPolicy, headAccepted: 
     /* v8 ignore next -- off mode returns before subscribing to scope events. */
     case "off":
       return false;
+  }
+}
+
+function sanitizeTaskEvent(
+  event: TaskEvent,
+  sanitize: TaskEventSanitizer | undefined,
+  onDrop: () => void
+): TaskEvent | typeof DROPPED_TELEMETRY_EVENT {
+  if (sanitize === undefined) return event;
+  try {
+    const sanitized = sanitize(event);
+    if (sanitized === undefined) {
+      onDrop();
+      return DROPPED_TELEMETRY_EVENT;
+    }
+    return sanitized;
+  } catch {
+    onDrop();
+    return DROPPED_TELEMETRY_EVENT;
   }
 }
 

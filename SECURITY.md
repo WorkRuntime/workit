@@ -42,6 +42,7 @@ The core package must keep these guarantees:
 - zero runtime dependencies
 - no core networking imports or remote telemetry clients
 - bounded exporter queues for opt-in telemetry bridges
+- caller-owned telemetry sanitizers before events leave the process
 - no skipped or focused tests in release verification
 - 100% statement, branch, function, and line coverage
 - CycloneDX SBOM generation and validation

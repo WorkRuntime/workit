@@ -177,6 +177,49 @@ test("OpenTelemetry adapter isolates telemetry failures and closes active spans 
   assert.equal(healthy.spans[0].ended, true);
 });
 
+test("OpenTelemetry adapter sanitizes task events before spans and metrics", () => {
+  const scope = createScopeHarness();
+  const fake = createFakeOtel();
+  const attachment = attachOpenTelemetry(scope, {
+    tracer: fake.tracer,
+    meter: fake.meter,
+    telemetry: {
+      sanitize(event) {
+        if (event.type === "task:started") return { ...event, name: "redacted-task" };
+        if (event.type === "task:progress") return { ...event, data: { logLevel: "warn" } };
+        return event;
+      },
+    },
+  });
+
+  scope.emit({ type: "task:started", taskId: "task-secret", scopeId: "scope-a", name: "secret-task", kind: "io", at: 1 });
+  scope.emit({ type: "task:progress", taskId: "task-secret", data: { logLevel: "info", token: "secret" }, at: 2 });
+  scope.emit({ type: "task:succeeded", taskId: "task-secret", durationMs: 3, at: 3 });
+
+  assert.equal(fake.spans[0].name, "workjs.task.redacted-task");
+  assert.equal(fake.spans[0].events[0].attributes["workjs.log.level"], "warn");
+  assert.equal(attachment.droppedCount(), 0);
+});
+
+test("OpenTelemetry adapter drops sanitizer-rejected task events", () => {
+  const scope = createScopeHarness();
+  const fake = createFakeOtel();
+  const attachment = attachOpenTelemetry(scope, {
+    tracer: fake.tracer,
+    meter: fake.meter,
+    telemetry: {
+      sanitize(event) {
+        return event.type === "task:started" ? undefined : event;
+      },
+    },
+  });
+
+  scope.emit({ type: "task:started", taskId: "task-drop", scopeId: "scope-a", name: "drop", kind: "io", at: 1 });
+
+  assert.equal(fake.spans.length, 0);
+  assert.equal(attachment.droppedCount(), 1);
+});
+
 test("OpenTelemetry adapter covers default API and defensive event branches", async () => {
   const scope = createScopeHarness();
   const defaultAttachment = attachOpenTelemetry(scope);

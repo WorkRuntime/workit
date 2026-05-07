@@ -24,6 +24,7 @@ import {
   attachScopeSummaryExporter,
   type ScopeSummary,
   type TelemetryExportOptions,
+  type TaskEventSanitizer,
 } from "../observability/index.js";
 
 /** Options used to attach WorkJS events to OpenTelemetry. */
@@ -69,19 +70,25 @@ export function attachOpenTelemetry(
 
   const unsubscribeEvents = scope.onEvent((event) => {
     try {
-      handleTaskEvent(event, spans, tracer, taskCounter, taskDuration, opts.includeIds ?? false);
+      const sanitized = sanitizeTaskEvent(event, opts.telemetry?.sanitize);
+      if (sanitized === undefined) {
+        dropped++;
+        return;
+      }
+      handleTaskEvent(sanitized, spans, tracer, taskCounter, taskDuration, opts.includeIds ?? false);
       exported++;
     } catch {
       dropped++;
     }
   });
 
+  const summaryTelemetry = omitSanitizer(opts.telemetry);
   const summaryAttachment = attachScopeSummaryExporter(
     scope,
     (summary) => {
       recordScopeSummary(summary, scopeCounter, scopeDuration);
     },
-    opts.telemetry
+    summaryTelemetry
   );
 
   return {
@@ -101,6 +108,20 @@ export function attachOpenTelemetry(
       return spans.size;
     },
   };
+}
+
+function omitSanitizer(opts: TelemetryExportOptions | undefined): TelemetryExportOptions | undefined {
+  if (opts === undefined) return undefined;
+  const { sanitize: _sanitize, ...summaryTelemetry } = opts;
+  return summaryTelemetry;
+}
+
+function sanitizeTaskEvent(
+  event: TaskEvent,
+  sanitize: TaskEventSanitizer | undefined
+): TaskEvent | undefined {
+  if (sanitize === undefined) return event;
+  return sanitize(event);
 }
 
 function handleTaskEvent(

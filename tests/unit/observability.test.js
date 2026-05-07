@@ -209,6 +209,56 @@ test("head sampling decision applies to child scope events bubbling to the root 
   assert.ok(attachment.droppedCount() > 0);
 });
 
+test("telemetry exporter sanitizes events before export and drops rejected events", async () => {
+  const scope = createScopeHarness();
+  const exported = [];
+  const attachment = attachTelemetryExporter(
+    scope,
+    (event) => exported.push(event),
+    {
+      sampling: { mode: "all" },
+      sanitize(event) {
+        if (event.taskId === "drop-me") return undefined;
+        if (event.type === "task:failed") {
+          return { ...event, error: new Error("redacted") };
+        }
+        return event;
+      },
+    }
+  );
+
+  scope.emit({ ...failedEvent, taskId: "secret-error", error: new Error("token=secret") });
+  scope.emit({ ...failedEvent, taskId: "drop-me" });
+  await flushExporter();
+
+  assert.equal(exported.length, 1);
+  assert.equal(exported[0].error.message, "redacted");
+  assert.equal(attachment.exportedCount(), 1);
+  assert.equal(attachment.droppedCount(), 1);
+});
+
+test("telemetry exporter isolates sanitizer failures", async () => {
+  const scope = createScopeHarness();
+  const exported = [];
+  const attachment = attachTelemetryExporter(
+    scope,
+    (event) => exported.push(event),
+    {
+      sampling: { mode: "all" },
+      sanitize() {
+        throw new Error("redactor failed");
+      },
+    }
+  );
+
+  scope.emit(failedEvent);
+  await flushExporter();
+
+  assert.equal(exported.length, 0);
+  assert.equal(attachment.exportedCount(), 0);
+  assert.equal(attachment.droppedCount(), 1);
+});
+
 test("exporter circuit breaker opens drops while open and closes after half-open success", async () => {
   let now = 1_000;
   let attempts = 0;
