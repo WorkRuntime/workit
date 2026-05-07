@@ -155,6 +155,50 @@ test("run.timeout rejects with TimeoutError", async () => {
   );
 });
 
+test("run.uncancellable delays parent cancellation and rethrows it after completion", async () => {
+  const events = [];
+
+  await assert.rejects(
+    run.group(async (task) => {
+      await task(run.uncancellable(async (ctx) => {
+        events.push("started");
+        ctx.scope.cancel("outer-cancel");
+        await sleep(5, ctx.signal);
+        events.push("finished");
+        return "done";
+      }, { timeout: 100 }));
+    }),
+    (err) => err instanceof CancellationError
+      && err.reason.kind === "manual"
+      && err.reason.tag === "outer-cancel"
+  );
+
+  assert.deepEqual(events, ["started", "finished"]);
+});
+
+test("run.uncancellable timeout bounds the shield and aborts the inner signal", async () => {
+  let innerReason;
+
+  await assert.rejects(
+    run.group(async (task) => task(run.uncancellable(async (ctx) => {
+      try {
+        await sleep(1_000, ctx.signal);
+      } catch (err) {
+        innerReason = err;
+        throw err;
+      }
+    }, { timeout: 5 }))),
+    TimeoutError
+  );
+
+  assert.ok(innerReason instanceof TimeoutError);
+});
+
+test("run.uncancellable requires a positive timeout", () => {
+  assert.throws(() => run.uncancellable(async () => "never"), /timeout/);
+  assert.throws(() => run.uncancellable(async () => "never", { timeout: 0 }), /timeout/);
+});
+
 test("run.deadline rejects when the deadline is reached", async () => {
   await assert.rejects(
     run.group(async (task) => task(run.deadline(async (ctx) => {
@@ -309,7 +353,7 @@ test("run.circuitBreaker opens after repeated failures and recovers after reset"
 
   await assert.rejects(run.group(async (task) => task(wrapped)), /backend down/);
   await assert.rejects(run.group(async (task) => task(wrapped)), /backend down/);
-  await assert.rejects(run.group(async (task) => task(wrapped)), /Circuit breaker is open/);
+  await assert.rejects(run.group(async (task) => task(wrapped)), /Circuit open/);
   await sleep(30);
   assert.equal(await run.group(async (task) => task(wrapped)), "ok");
 });
@@ -369,7 +413,7 @@ test("run.circuitBreaker reopens when any admitted half-open probe fails", async
 
   const probes = await run.allSettled([wrapped, wrapped]);
   assert.deepEqual(probes.map((item) => item.status), ["fulfilled", "rejected"]);
-  await assert.rejects(run.group(async (task) => task(wrapped)), /Circuit breaker is open/);
+  await assert.rejects(run.group(async (task) => task(wrapped)), /Circuit open/);
 });
 
 test("run.circuitBreaker ignores stale half-open success after a probe failure", async () => {
@@ -395,7 +439,7 @@ test("run.circuitBreaker ignores stale half-open success after a probe failure",
 
   const probes = await run.allSettled([wrapped, wrapped]);
   assert.deepEqual(probes.map((item) => item.status), ["rejected", "fulfilled"]);
-  await assert.rejects(run.group(async (task) => task(wrapped)), /Circuit breaker is open/);
+  await assert.rejects(run.group(async (task) => task(wrapped)), /Circuit open/);
 });
 
 test("run.circuitBreaker ignores stale closed-call success after another call opens it", async () => {
@@ -411,7 +455,7 @@ test("run.circuitBreaker ignores stale closed-call success after another call op
 
   const settled = await run.allSettled([wrapped, wrapped]);
   assert.deepEqual(settled.map((item) => item.status), ["fulfilled", "rejected"]);
-  await assert.rejects(run.group(async (task) => task(wrapped)), /Circuit breaker is open/);
+  await assert.rejects(run.group(async (task) => task(wrapped)), /Circuit open/);
 });
 
 test("run.circuitBreaker ignores stale closed-call failure after another call opens it", async () => {
@@ -424,7 +468,7 @@ test("run.circuitBreaker ignores stale closed-call failure after another call op
 
   const settled = await run.allSettled([wrapped, wrapped]);
   assert.deepEqual(settled.map((item) => item.status), ["rejected", "rejected"]);
-  await assert.rejects(run.group(async (task) => task(wrapped)), /Circuit breaker is open/);
+  await assert.rejects(run.group(async (task) => task(wrapped)), /Circuit open/);
 });
 
 test("run.circuitBreaker ignores stale half-open failure after a newer recovery epoch", async () => {

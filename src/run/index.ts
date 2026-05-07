@@ -39,15 +39,15 @@ import { computeBackoffDelay, computeRetryDelay, normalizeRetry, sleep } from ".
 
 /** Runs all tasks concurrently and preserves input-order results. */
 async function all<T extends readonly TaskFn<unknown>[]>(tasks: T): Promise<TaskResults<T>> {
-  return await group(async (task) => {
+  return group(async (task) => {
     const handles = tasks.map((fn) => task(fn));
-    return await Promise.all(handles) as TaskResults<T>;
+    return Promise.all(handles) as Promise<TaskResults<T>>;
   });
 }
 
 /** Runs all tasks and collects every settlement without cancelling on failures. */
 async function allSettled<T>(tasks: TaskFn<T>[]): Promise<Settled<T>[]> {
-  return await group(async (task) => {
+  return group(async (task) => {
     const handles = tasks.map((fn) => task(async (ctx) => {
       try {
         return { status: "fulfilled", value: await fn(ctx) } satisfies Settled<T>;
@@ -58,7 +58,7 @@ async function allSettled<T>(tasks: TaskFn<T>[]): Promise<Settled<T>[]> {
         return { status: "rejected", reason: err } satisfies Settled<T>;
       }
     }));
-    return await Promise.all(handles);
+    return Promise.all(handles);
   });
 }
 
@@ -66,9 +66,9 @@ async function allSettled<T>(tasks: TaskFn<T>[]): Promise<Settled<T>[]> {
 async function race<T>(tasks: TaskFn<T>[]): Promise<T> {
   if (tasks.length === 0) throw new WorkAggregateError([], "run.race requires at least one task");
 
-  return await group(async (task) => {
+  return group(async (task) => {
     const handles = tasks.map((fn) => task(fn));
-    return await new Promise<T>((resolve, reject) => {
+    return new Promise<T>((resolve, reject) => {
       let settled = false;
       for (const handle of handles) {
         handle.then(
@@ -94,7 +94,7 @@ async function race<T>(tasks: TaskFn<T>[]): Promise<T> {
 async function any<T>(tasks: TaskFn<T>[]): Promise<T> {
   if (tasks.length === 0) throw new WorkAggregateError([], "run.any requires at least one task");
 
-  return await group(async (task) => {
+  return group(async (task) => {
     const scope = getCurrentScope();
     const errors: unknown[] = [];
     const handles = tasks.map((fn) => task(async (ctx) => {
@@ -109,7 +109,7 @@ async function any<T>(tasks: TaskFn<T>[]): Promise<T> {
       }
     }, { name: "any-candidate" }));
 
-    return await new Promise<T>((resolve, reject) => {
+    return new Promise<T>((resolve, reject) => {
       let pending = handles.length;
       let settled = false;
       for (const handle of handles) {
@@ -134,7 +134,7 @@ async function any<T>(tasks: TaskFn<T>[]): Promise<T> {
 
 /** Runs tasks sequentially and stops on the first failure. */
 async function series<T>(tasks: TaskFn<T>[]): Promise<T[]> {
-  return await group(async (task) => {
+  return group(async (task) => {
     const results: T[] = [];
     for (const fn of tasks) {
       results.push(await task(fn));
@@ -149,7 +149,7 @@ async function pool<T>(concurrency: number, tasks: TaskFn<T>[]): Promise<T[]> {
     throw new RangeError("run.pool concurrency must be a positive integer");
   }
 
-  return await group(async (task) => {
+  return group(async (task) => {
     const results = new Array<T>(tasks.length);
     let next = 0;
 
@@ -174,7 +174,7 @@ function timeout<T>(task: TaskFn<T>, duration: Duration): TaskFn<T> {
     const ctrl = new AbortController();
     const signal = AbortSignal.any([ctx.signal, ctrl.signal]);
 
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let timer!: ReturnType<typeof setTimeout>;
     const timeoutPromise = new Promise<never>((_resolve, reject) => {
       timer = setTimeout(() => {
         const err = new TimeoutError(timeoutMs);
@@ -189,10 +189,32 @@ function timeout<T>(task: TaskFn<T>, duration: Duration): TaskFn<T> {
         timeoutPromise,
       ]);
     } finally {
-      /* v8 ignore else -- timeoutPromise assigns the timer synchronously. */
-      if (timer !== undefined) clearTimeout(timer);
+      clearTimeout(timer);
     }
   };
+}
+
+/** Runs a task in a bounded cancellation shield. */
+function uncancellable<T>(task: TaskFn<T>, opts?: { timeout?: Duration }): TaskFn<T> {
+  const timeoutMs = parseDuration(opts?.timeout ?? 0);
+  if (timeoutMs <= 0) throw new RangeError("timeout");
+  return timeout(async (ctx) => {
+    const ctrl = new AbortController();
+    const signal = ctx.signal;
+    let parentReason: unknown;
+    const onAbort = () => signal.reason instanceof TimeoutError
+      ? ctrl.abort(signal.reason)
+      : parentReason = signal.reason;
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+    try {
+      const value = await task({ ...ctx, signal: ctrl.signal });
+      if (parentReason) throw parentReason;
+      return value;
+    } finally {
+      signal.removeEventListener("abort", onAbort);
+    }
+  }, timeoutMs);
 }
 
 /** Wraps a task with a deadline timestamp. */
@@ -288,7 +310,7 @@ function hedge<T>(task: TaskFn<T>, opts: HedgeOpts): TaskFn<T> {
             errors.push(err);
             completed++;
             if (!settled && completed === max) {
-              settle(() => reject(new WorkAggregateError(errors, "All hedged attempts failed")));
+              settle(() => reject(new WorkAggregateError(errors, "All hedges failed")));
             }
           }
         );
@@ -331,58 +353,57 @@ function bracket<R, T>(
 
 /** Wraps a task with a small in-process circuit breaker. */
 function circuitBreaker<T>(task: TaskFn<T>, opts: BreakerOpts): TaskFn<T> {
-  type BreakerState =
-    | { kind: "closed"; failures: number }
-    | { kind: "open"; openedUntil: number }
-    | { kind: "half_open"; epoch: number; admitted: number };
-
-  let state: BreakerState = { kind: "closed", failures: 0 };
-  let nextHalfOpenEpoch = 0;
+  let state = 0;
+  let failures = 0;
+  let openedUntil = 0;
+  let epoch = 0;
+  let admitted = 0;
   const maxHalfOpenCalls = opts.halfOpenMaxCalls ?? 1;
   const resetAfterMs = parseDuration(opts.resetAfter);
 
   const open = () => {
-    state = { kind: "open", openedUntil: Date.now() + resetAfterMs };
+    state = 1;
+    openedUntil = Date.now() + resetAfterMs;
   };
   const close = () => {
-    state = { kind: "closed", failures: 0 };
+    state = 0;
+    failures = 0;
   };
   const halfOpen = () => {
-    state = { kind: "half_open", epoch: ++nextHalfOpenEpoch, admitted: 0 };
+    state = 2;
+    epoch++;
+    admitted = 0;
   };
 
   return async (ctx) => {
-    if (state.kind === "open") {
-      if (Date.now() < state.openedUntil) throw new Error("Circuit breaker is open");
+    if (state === 1) {
+      if (Date.now() < openedUntil) throw new Error("Circuit open");
       halfOpen();
     }
 
-    if (state.kind === "half_open" && state.admitted >= maxHalfOpenCalls) {
-      throw new Error("Circuit breaker is half-open");
+    if (state === 2 && admitted >= maxHalfOpenCalls) {
+      throw new Error("Circuit half-open");
     }
 
-    const admission = state.kind === "half_open"
-      ? { kind: "half_open" as const, epoch: state.epoch }
-      : { kind: "closed" as const };
-    if (state.kind === "half_open") state.admitted++;
+    const halfOpenEpoch = state === 2 ? epoch : 0;
+    if (state === 2) admitted++;
 
     try {
       const value = await task(ctx);
-      if (admission.kind === "half_open") {
-        if (state.kind === "half_open" && state.epoch === admission.epoch) close();
-      } else if (state.kind === "closed") {
+      if (halfOpenEpoch > 0) {
+        if (state === 2 && epoch === halfOpenEpoch) close();
+      } else if (state === 0) {
         close();
       }
       return value;
     } catch (err) {
       if (err instanceof CancellationError) throw err;
-      if (admission.kind === "half_open") {
-        if (admission.epoch === nextHalfOpenEpoch) open();
+      if (halfOpenEpoch > 0) {
+        if (halfOpenEpoch === epoch) open();
         throw err;
       }
-      if (state.kind === "closed") {
-        const failures = state.failures + 1;
-        state = { kind: "closed", failures };
+      if (state === 0) {
+        failures++;
         if (failures >= opts.failureThreshold) open();
       }
       throw err;
@@ -392,8 +413,8 @@ function circuitBreaker<T>(task: TaskFn<T>, opts: BreakerOpts): TaskFn<T> {
 
 /** Opens a scope and passes the concrete scope to the body. */
 async function scope<R>(body: (scope: Scope) => Promise<R>, opts: ScopeOpts = {}): Promise<R> {
-  return await group(async (task) => {
-    return await task(async (ctx) => body(ctx.scope), { name: opts.name ?? "scope-body" });
+  return group(async (task) => {
+    return task(async (ctx) => body(ctx.scope), { name: opts.name ?? "scope-body" });
   }, opts);
 }
 
@@ -462,7 +483,7 @@ const context = {
 
   async with<T, R>(key: ContextKey<T>, value: T, body: () => Promise<R>): Promise<R> {
     const next = context.current().with(key, value);
-    return await group(async () => body(), { context: next });
+    return group(async () => body(), { context: next });
   },
 
   get<T>(key: ContextKey<T>): T | undefined {
@@ -489,6 +510,7 @@ export const run: RunNamespace = {
   series,
   pool,
   timeout,
+  uncancellable,
   deadline,
   retry,
   hedge,

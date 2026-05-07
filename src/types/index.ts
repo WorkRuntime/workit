@@ -443,6 +443,7 @@ export interface RunNamespace {
   series<T>(tasks: TaskFn<T>[]): Promise<T[]>;
   pool<T>(concurrency: number, tasks: TaskFn<T>[]): Promise<T[]>;
   timeout<T>(task: TaskFn<T>, duration: Duration): TaskFn<T>;
+  uncancellable<T>(task: TaskFn<T>, opts: { timeout: Duration }): TaskFn<T>;
   deadline<T>(task: TaskFn<T>, at: number | Date): TaskFn<T>;
   retry<T>(task: TaskFn<T>, opts: number | RetryOpts): TaskFn<T>;
   hedge<T>(task: TaskFn<T>, opts: HedgeOpts): TaskFn<T>;
