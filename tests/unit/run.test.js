@@ -212,6 +212,24 @@ test("run.circuitBreaker opens after repeated failures and recovers after reset"
   assert.equal(await run.group(async (task) => task(wrapped)), "ok");
 });
 
+test("run.circuitBreaker admits one half-open probe under concurrent pressure", async () => {
+  let probes = 0;
+  const wrapped = run.circuitBreaker(async (ctx) => {
+    probes++;
+    if (probes === 1) throw new Error("open breaker");
+    await sleep(20, ctx.signal);
+    return "probe-ok";
+  }, { failureThreshold: 1, resetAfter: 1, halfOpenMaxCalls: 1 });
+
+  await assert.rejects(run.group(async (task) => task(wrapped)), /open breaker/);
+  await sleep(5);
+
+  const settled = await run.allSettled(Array.from({ length: 100 }, () => wrapped));
+  assert.equal(settled.filter((item) => item.status === "fulfilled").length, 1);
+  assert.equal(settled.filter((item) => item.status === "rejected").length, 99);
+  assert.equal(probes, 2);
+});
+
 test("run.background requires a scope and keeps work owned by that scope", async () => {
   await assert.rejects(
     async () => run.background(async () => "outside"),

@@ -80,6 +80,10 @@ Reports are in scope when they affect:
 - package contents or supply-chain integrity
 - worker-thread offload boundaries
 
+Worker-thread offload is an explicit local execution boundary. `offload()`
+accepts only local file URLs or paths controlled by the application; inline
+`data:` modules and remote `http:`/`https:` modules are rejected before import.
+
 Out of scope:
 
 - vulnerabilities in downstream application code

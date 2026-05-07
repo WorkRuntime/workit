@@ -245,6 +245,7 @@ test("work().onCancel partial returns completed and cancelled item receipts", as
   const output = await work([1, 2])
     .inParallel(2)
     .withTimeout(1)
+    .onError("fail")
     .onCancel("partial")
     .do(async (item, ctx) => {
       if (item === 1) return "early";
@@ -264,6 +265,7 @@ test("work().onCancel partial returns completed and cancelled item receipts", as
 
   await assert.rejects(
     work([1])
+      .onError("fail")
       .onCancel("partial")
       .do(async () => {
         throw new Error("ordinary failure");
