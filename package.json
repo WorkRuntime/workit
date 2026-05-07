@@ -6,6 +6,14 @@
   "private": false,
   "license": "Apache-2.0",
   "author": "Admilson B. F. Cossa",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/WorkRuntime/workit"
+  },
+  "bugs": {
+    "url": "https://github.com/WorkRuntime/workit/issues"
+  },
+  "homepage": "https://github.com/WorkRuntime/workit#readme",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
