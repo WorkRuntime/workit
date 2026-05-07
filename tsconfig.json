@@ -20,6 +20,7 @@
     "skipLibCheck": true,
     "outDir": "dist",
     "rootDir": "src",
+    "types": ["node"],
     "lib": ["ES2022", "DOM"]
   },
   "include": ["src/**/*"]
