@@ -60,3 +60,25 @@ test("renderTree is pure over a supplied snapshot", () => {
   assert.match(output, /\[OK\] done \(succeeded, 4ms\)/);
   assert.match(output, /1 tasks/);
 });
+
+test("renderTree default options do not require Node process globals", () => {
+  const originalProcess = globalThis.process;
+  Object.defineProperty(globalThis, "process", { value: undefined, configurable: true });
+  try {
+    const output = renderTree({
+      id: "scope-no-process",
+      status: "running",
+      startedAt: 0,
+      pendingCount: 0,
+      completedCount: 0,
+      failedCount: 0,
+      cancelledCount: 0,
+      tasks: [],
+      scopes: [],
+    });
+
+    assert.match(output, /scope-no-process/);
+  } finally {
+    Object.defineProperty(globalThis, "process", { value: originalProcess, configurable: true });
+  }
+});

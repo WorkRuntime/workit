@@ -49,7 +49,7 @@ const UNICODE: Glyphs = {
 
 /** Renders a scope snapshot as a status tree plus aggregate summary. */
 export function renderTree(snapshot: ScopeSnapshot, opts: TreeOpts = {}): string {
-  const ascii = opts.ascii ?? (process.env.NO_UNICODE === "1" || process.stdout.isTTY === false);
+  const ascii = opts.ascii ?? defaultAscii();
   const glyphs = ascii ? ASCII : UNICODE;
   const maxDepth = opts.maxDepth ?? Number.POSITIVE_INFINITY;
   const lines = [snapshot.name ?? snapshot.id];
@@ -58,6 +58,13 @@ export function renderTree(snapshot: ScopeSnapshot, opts: TreeOpts = {}): string
   lines.push("");
   lines.push(renderSummary(snapshot, ascii));
   return lines.join("\n");
+}
+
+function defaultAscii(): boolean {
+  const runtime = globalThis as typeof globalThis & {
+    process?: { env?: { NO_UNICODE?: string }; stdout?: { isTTY?: boolean } };
+  };
+  return runtime.process?.env?.NO_UNICODE === "1" || runtime.process?.stdout?.isTTY === false;
 }
 
 function renderChildren(
