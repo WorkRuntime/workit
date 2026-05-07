@@ -144,9 +144,15 @@ try {
   await writeFile(join(temp, "strict-smoke.ts"), `
     import {
       ContextBagImpl,
+      CostBudget,
       createContextKey,
       group,
       run,
+      work,
+      type CancelReason,
+      type CancelledItem,
+      type ItemError,
+      type Settled,
       type TaskContext,
     } from "@workjs/core";
     import { embedAll, streamWithBackpressure } from "@workjs/core/ai";
@@ -180,6 +186,39 @@ try {
     if (embedded.mode !== "fail") throw new Error("unexpected embedAll mode");
     if (embedded.results[0]?.[0] !== 3) throw new Error("AI helper inference failed");
     if (streamed[0] !== "TYPED") throw new Error("AI stream helper inference failed");
+
+    const inferredVoid: void = await group(async () => {});
+    void inferredVoid;
+    // @ts-expect-error explicit group<string> bodies must return string.
+    await group<string>(async () => {});
+
+    await run.context.with(CostBudget, { spent: 0, limit: 1, unit: "USD" }, async () => {
+      const snapshot = run.context.budget(CostBudget);
+      if (snapshot === undefined) throw new Error("budget snapshot missing");
+      // @ts-expect-error public budget snapshots are readonly.
+      snapshot.spent = 1;
+    });
+
+    const failOutput: { mode: "fail"; results: number[] } = await work([1]).do(async (item) => item);
+    // @ts-expect-error fail output has no item errors without narrowing.
+    failOutput.errors;
+
+    const continueOutput: { mode: "continue"; results: number[]; errors: ItemError[] } =
+      await work([1]).onError("continue").do(async (item) => item);
+
+    const collectOutput: { mode: "collect"; results: Settled<number>[] } =
+      await work([1]).onError("collect").do(async (item) => item);
+
+    const partialOutput: { mode: "fail"; results: number[] } | {
+      mode: "partial";
+      results: number[];
+      errors: ItemError[];
+      cancelled: CancelledItem[];
+      reason?: CancelReason;
+    } = await work([1]).onCancel("partial").do(async (item) => item);
+    void continueOutput;
+    void collectOutput;
+    void partialOutput;
   `, "utf8");
 
   await execFileAsync(process.execPath, [tscCli, "--noEmit", "--project", "tsconfig.strict.json"], {

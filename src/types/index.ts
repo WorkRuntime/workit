@@ -158,11 +158,30 @@ export type TaskResults<T extends readonly TaskFn<unknown>[]> = {
 };
 
 /** Output shape for batch APIs that make failure handling explicit. */
-export type WorkOutput<R> =
-  | { mode: "fail"; results: R[] }
-  | { mode: "continue"; results: R[]; errors: ItemError[] }
-  | { mode: "collect"; results: Settled<R>[] }
-  | { mode: "partial"; results: R[]; errors: ItemError[]; cancelled: CancelledItem[]; reason?: CancelReason };
+export type WorkErrorMode = "fail" | "continue" | "collect";
+export type WorkCancelMode = "throw" | "partial";
+export type FailWorkOutput<R> = { mode: "fail"; results: R[] };
+export type ContinueWorkOutput<R> = { mode: "continue"; results: R[]; errors: ItemError[] };
+export type CollectWorkOutput<R> = { mode: "collect"; results: Settled<R>[] };
+export type PartialWorkOutput<R> = {
+  mode: "partial";
+  results: R[];
+  errors: ItemError[];
+  cancelled: CancelledItem[];
+  reason?: CancelReason;
+};
+export type WorkOutputFor<
+  R,
+  M extends WorkErrorMode = "fail",
+  C extends WorkCancelMode = "throw",
+> = M extends "collect"
+  ? CollectWorkOutput<R>
+  : M extends "continue"
+    ? ContinueWorkOutput<R>
+    : C extends "partial"
+      ? FailWorkOutput<R> | PartialWorkOutput<R>
+      : FailWorkOutput<R>;
+export type WorkOutput<R> = WorkOutputFor<R, WorkErrorMode, WorkCancelMode>;
 
 /** Item-level error captured by continuing batch work. */
 export interface ItemError {
@@ -268,9 +287,9 @@ export interface ContextBag {
 
 /** Mutable cooperative budget state stored in a scope context. */
 export interface BudgetState {
-  limit: number;
-  spent: number;
-  unit?: string;
+  readonly limit: number;
+  readonly spent: number;
+  readonly unit?: string;
 }
 
 // --- Task function and context --------------------------------------------
@@ -360,7 +379,7 @@ export interface TaskContext {
   consume<T extends BudgetState>(key: ContextKey<T>, amount: number): void;
 
   /** Returns active budget states visible to this task. */
-  budgets(): ReadonlyArray<{ key: string; state: BudgetState }>;
+  budgets(): ReadonlyArray<{ key: string; state: Readonly<BudgetState> }>;
 }
 
 // --- Task handle (Promise + control surface) -----------------------------
@@ -472,7 +491,7 @@ export interface RunNamespace {
     current(): ContextBag;
     with<T, R>(key: ContextKey<T>, value: T, body: () => Promise<R>): Promise<R>;
     get<T>(key: ContextKey<T>): T | undefined;
-    budget<T extends BudgetState>(key: ContextKey<T>): BudgetState | undefined;
+    budget<T extends BudgetState>(key: ContextKey<T>): Readonly<T> | undefined;
   };
 }
 
@@ -482,22 +501,27 @@ export interface WorkFactory {
 }
 
 /** Fluent builder for conservative, bounded batch work. */
-export interface WorkBuilder<I, O> {
-  inParallel(n: number): WorkBuilder<I, O>;
-  inSeries(): WorkBuilder<I, O>;
-  withConcurrencyLimit(n: number): WorkBuilder<I, O>;
-  withRateLimit(perSecond: number): WorkBuilder<I, O>;
-  withRetry(opts: number | RetryOpts): WorkBuilder<I, O>;
-  withTimeout(duration: Duration): WorkBuilder<I, O>;
-  withDeadline(at: number | Date): WorkBuilder<I, O>;
-  onError(strategy: "fail" | "continue" | "collect"): WorkBuilder<I, O>;
-  onCancel(strategy: "throw" | "partial"): WorkBuilder<I, O>;
-  onProgress(handler: (event: WorkProgressEvent<I>) => void): WorkBuilder<I, O>;
-  onItemDone<R>(handler: (event: WorkItemDoneEvent<I, R>) => void): WorkBuilder<I, O>;
-  map<R>(fn: (item: O, ctx: TaskContext) => R | Promise<R>): WorkBuilder<I, R>;
-  filter(fn: (item: O, ctx: TaskContext) => boolean | Promise<boolean>): WorkBuilder<I, O>;
-  tap(fn: (item: O, ctx: TaskContext) => void | Promise<void>): WorkBuilder<I, O>;
-  do<R>(fn: (item: O, ctx: TaskContext) => R | Promise<R>): Promise<WorkOutput<R>>;
+export interface WorkBuilder<
+  I,
+  O,
+  M extends WorkErrorMode = "fail",
+  C extends WorkCancelMode = "throw",
+> {
+  inParallel(n: number): WorkBuilder<I, O, M, C>;
+  inSeries(): WorkBuilder<I, O, M, C>;
+  withConcurrencyLimit(n: number): WorkBuilder<I, O, M, C>;
+  withRateLimit(perSecond: number): WorkBuilder<I, O, M, C>;
+  withRetry(opts: number | RetryOpts): WorkBuilder<I, O, M, C>;
+  withTimeout(duration: Duration): WorkBuilder<I, O, M, C>;
+  withDeadline(at: number | Date): WorkBuilder<I, O, M, C>;
+  onError<N extends WorkErrorMode>(strategy: N): WorkBuilder<I, O, N, C>;
+  onCancel<N extends WorkCancelMode>(strategy: N): WorkBuilder<I, O, M, N>;
+  onProgress(handler: (event: WorkProgressEvent<I>) => void): WorkBuilder<I, O, M, C>;
+  onItemDone<R>(handler: (event: WorkItemDoneEvent<I, R>) => void): WorkBuilder<I, O, M, C>;
+  map<R>(fn: (item: O, ctx: TaskContext) => R | Promise<R>): WorkBuilder<I, R, M, C>;
+  filter(fn: (item: O, ctx: TaskContext) => boolean | Promise<boolean>): WorkBuilder<I, O, M, C>;
+  tap(fn: (item: O, ctx: TaskContext) => void | Promise<void>): WorkBuilder<I, O, M, C>;
+  do<R>(fn: (item: O, ctx: TaskContext) => R | Promise<R>): Promise<WorkOutputFor<R, M, C>>;
   collect(): Promise<O[]>;
   stream(): AsyncIterable<O>;
 }

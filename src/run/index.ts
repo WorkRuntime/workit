@@ -490,14 +490,14 @@ const context = {
     return context.current().get(key);
   },
 
-  budget<T extends BudgetState>(key: ContextKey<T>): T | undefined {
+  budget<T extends BudgetState>(key: ContextKey<T>): Readonly<T> | undefined {
     const value = context.current().get(key);
     if (value === undefined) return undefined;
     return {
       spent: value.spent,
       limit: value.limit,
       ...(value.unit !== undefined ? { unit: value.unit } : {}),
-    } as T;
+    } as Readonly<T>;
   },
 };
 

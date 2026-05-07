@@ -19,9 +19,11 @@ import type {
   TaskContext,
   TaskFn,
   WorkBuilder,
+  WorkCancelMode,
+  WorkErrorMode,
   WorkFactory,
   WorkItemDoneEvent,
-  WorkOutput,
+  WorkOutputFor,
   WorkProgressEvent,
 } from "../types/index.js";
 import { CancellationError } from "../types/index.js";
@@ -58,53 +60,58 @@ type ActiveStreamSettlement<T> = StreamSettlement<T> & {
 export const work: WorkFactory = <I>(items: Iterable<I> | AsyncIterable<I>) =>
   new WorkBuilderImpl<I, I>(items, { transforms: [] });
 
-class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
+class WorkBuilderImpl<
+  I,
+  O,
+  M extends WorkErrorMode = "fail",
+  C extends WorkCancelMode = "throw",
+> implements WorkBuilder<I, O, M, C> {
   constructor(
     private readonly source: Iterable<I> | AsyncIterable<I>,
     private readonly cfg: WorkConfig
   ) {}
 
-  inParallel(n: number): WorkBuilder<I, O> {
+  inParallel(n: number): WorkBuilder<I, O, M, C> {
     assertConcurrency(n);
-    return new WorkBuilderImpl<I, O>(this.source, { ...this.cfg, concurrency: n });
+    return new WorkBuilderImpl<I, O, M, C>(this.source, { ...this.cfg, concurrency: n });
   }
 
-  inSeries(): WorkBuilder<I, O> {
+  inSeries(): WorkBuilder<I, O, M, C> {
     return this.inParallel(1);
   }
 
-  withConcurrencyLimit(n: number): WorkBuilder<I, O> {
+  withConcurrencyLimit(n: number): WorkBuilder<I, O, M, C> {
     return this.inParallel(n);
   }
 
-  withRateLimit(perSecond: number): WorkBuilder<I, O> {
+  withRateLimit(perSecond: number): WorkBuilder<I, O, M, C> {
     assertRateLimit(perSecond);
-    return new WorkBuilderImpl<I, O>(this.source, { ...this.cfg, rateLimitPerSecond: perSecond });
+    return new WorkBuilderImpl<I, O, M, C>(this.source, { ...this.cfg, rateLimitPerSecond: perSecond });
   }
 
-  withRetry(opts: number | RetryOpts): WorkBuilder<I, O> {
-    return new WorkBuilderImpl<I, O>(this.source, { ...this.cfg, retry: opts });
+  withRetry(opts: number | RetryOpts): WorkBuilder<I, O, M, C> {
+    return new WorkBuilderImpl<I, O, M, C>(this.source, { ...this.cfg, retry: opts });
   }
 
-  withTimeout(duration: Duration): WorkBuilder<I, O> {
-    return new WorkBuilderImpl<I, O>(this.source, { ...this.cfg, timeout: duration });
+  withTimeout(duration: Duration): WorkBuilder<I, O, M, C> {
+    return new WorkBuilderImpl<I, O, M, C>(this.source, { ...this.cfg, timeout: duration });
   }
 
-  withDeadline(at: number | Date): WorkBuilder<I, O> {
+  withDeadline(at: number | Date): WorkBuilder<I, O, M, C> {
     const deadlineAt = typeof at === "number" ? at : at.getTime();
-    return new WorkBuilderImpl<I, O>(this.source, { ...this.cfg, deadlineAt });
+    return new WorkBuilderImpl<I, O, M, C>(this.source, { ...this.cfg, deadlineAt });
   }
 
-  onError(strategy: "fail" | "continue" | "collect"): WorkBuilder<I, O> {
-    return new WorkBuilderImpl<I, O>(this.source, { ...this.cfg, errorMode: strategy });
+  onError<N extends WorkErrorMode>(strategy: N): WorkBuilder<I, O, N, C> {
+    return new WorkBuilderImpl<I, O, N, C>(this.source, { ...this.cfg, errorMode: strategy });
   }
 
-  onCancel(strategy: "throw" | "partial"): WorkBuilder<I, O> {
-    return new WorkBuilderImpl<I, O>(this.source, { ...this.cfg, cancelMode: strategy });
+  onCancel<N extends WorkCancelMode>(strategy: N): WorkBuilder<I, O, M, N> {
+    return new WorkBuilderImpl<I, O, M, N>(this.source, { ...this.cfg, cancelMode: strategy });
   }
 
-  onProgress(handler: (event: WorkProgressEvent<I>) => void): WorkBuilder<I, O> {
-    return new WorkBuilderImpl<I, O>(this.source, {
+  onProgress(handler: (event: WorkProgressEvent<I>) => void): WorkBuilder<I, O, M, C> {
+    return new WorkBuilderImpl<I, O, M, C>(this.source, {
       ...this.cfg,
       progressHandlers: [
         ...(this.cfg.progressHandlers ?? []),
@@ -113,8 +120,8 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
     });
   }
 
-  onItemDone<R>(handler: (event: WorkItemDoneEvent<I, R>) => void): WorkBuilder<I, O> {
-    return new WorkBuilderImpl<I, O>(this.source, {
+  onItemDone<R>(handler: (event: WorkItemDoneEvent<I, R>) => void): WorkBuilder<I, O, M, C> {
+    return new WorkBuilderImpl<I, O, M, C>(this.source, {
       ...this.cfg,
       itemDoneHandlers: [
         ...(this.cfg.itemDoneHandlers ?? []),
@@ -123,8 +130,8 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
     });
   }
 
-  map<R>(fn: (item: O, ctx: TaskContext) => R | Promise<R>): WorkBuilder<I, R> {
-    return new WorkBuilderImpl<I, R>(this.source, {
+  map<R>(fn: (item: O, ctx: TaskContext) => R | Promise<R>): WorkBuilder<I, R, M, C> {
+    return new WorkBuilderImpl<I, R, M, C>(this.source, {
       ...this.cfg,
       transforms: [...this.cfg.transforms, {
         kind: "map",
@@ -133,8 +140,8 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
     });
   }
 
-  filter(fn: (item: O, ctx: TaskContext) => boolean | Promise<boolean>): WorkBuilder<I, O> {
-    return new WorkBuilderImpl<I, O>(this.source, {
+  filter(fn: (item: O, ctx: TaskContext) => boolean | Promise<boolean>): WorkBuilder<I, O, M, C> {
+    return new WorkBuilderImpl<I, O, M, C>(this.source, {
       ...this.cfg,
       transforms: [...this.cfg.transforms, {
         kind: "filter",
@@ -143,8 +150,8 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
     });
   }
 
-  tap(fn: (item: O, ctx: TaskContext) => void | Promise<void>): WorkBuilder<I, O> {
-    return new WorkBuilderImpl<I, O>(this.source, {
+  tap(fn: (item: O, ctx: TaskContext) => void | Promise<void>): WorkBuilder<I, O, M, C> {
+    return new WorkBuilderImpl<I, O, M, C>(this.source, {
       ...this.cfg,
       transforms: [...this.cfg.transforms, {
         kind: "tap",
@@ -153,7 +160,7 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
     });
   }
 
-  async do<R>(fn: (item: O, ctx: TaskContext) => R | Promise<R>): Promise<WorkOutput<R>> {
+  async do<R>(fn: (item: O, ctx: TaskContext) => R | Promise<R>): Promise<WorkOutputFor<R, M, C>> {
     const items = await toArray(this.source);
     const mode = this.cfg.errorMode ?? "fail";
     const cancelMode = this.cfg.cancelMode ?? "throw";
@@ -162,7 +169,7 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
 
     if (mode === "fail" && cancelMode === "throw") {
       const raw = await run.pool(this.cfg.concurrency ?? 1, tasks);
-      return { mode: "fail", results: raw.filter(isNotSkipped) };
+      return { mode: "fail", results: raw.filter(isNotSkipped) } as WorkOutputFor<R, M, C>;
     }
 
     const settledTasks = tasks.map((task, index) => async (ctx: TaskContext) => {
@@ -183,7 +190,7 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
     });
 
     const settled = await run.pool(this.cfg.concurrency ?? 1, settledTasks);
-    if (mode === "collect") return { mode: "collect", results: settled };
+    if (mode === "collect") return { mode: "collect", results: settled } as WorkOutputFor<R, M, C>;
 
     const results: R[] = [];
     const errors: ItemError[] = [];
@@ -195,10 +202,10 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
       else cancelled.push({ index, item: items[index], reason: item.reason });
     }
     if (mode === "fail") {
-      if (cancelled.length === 0) return { mode: "fail", results };
-      return { mode: "partial", results, errors, cancelled, reason: cancelled[0]!.reason };
+      if (cancelled.length === 0) return { mode: "fail", results } as WorkOutputFor<R, M, C>;
+      return { mode: "partial", results, errors, cancelled, reason: cancelled[0]!.reason } as WorkOutputFor<R, M, C>;
     }
-    return { mode: "continue", results, errors };
+    return { mode: "continue", results, errors } as WorkOutputFor<R, M, C>;
   }
 
   async collect(): Promise<O[]> {

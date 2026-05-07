@@ -16,6 +16,9 @@ import { TelemetryBudget } from "../types/index.js";
 import { ContextBagImpl } from "./context.js";
 
 const MAX_EVENT_HANDLERS = 10_000;
+type MutableBudgetState<T extends BudgetState = BudgetState> = {
+  -readonly [K in keyof T]: T[K];
+};
 
 /**
  * Scope-local event stream with parent bubbling.
@@ -118,7 +121,7 @@ export class EventBus {
   }
 }
 
-function getTelemetryBudget(context: ContextBag): BudgetState | undefined {
+function getTelemetryBudget(context: ContextBag): MutableBudgetState | undefined {
   if (context instanceof ContextBagImpl) return context.getMutableBudget(TelemetryBudget);
-  return context.get(TelemetryBudget);
+  return context.get(TelemetryBudget) as MutableBudgetState | undefined;
 }

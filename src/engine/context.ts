@@ -13,10 +13,13 @@ import type { ContextKey, ContextBag, BudgetState } from "../types/index.js";
 
 const MAX_CONTEXT_KEY_NAME_LENGTH = 128;
 const MAX_BUDGET_UNIT_LENGTH = 32;
+type MutableBudgetState<T extends BudgetState = BudgetState> = {
+  -readonly [K in keyof T]: T[K];
+};
 
 interface BudgetCell {
   readonly kind: "budget-cell";
-  readonly state: BudgetState;
+  readonly state: MutableBudgetState;
 }
 
 /**
@@ -69,9 +72,9 @@ export class ContextBagImpl implements ContextBag {
   }
 
   /** Reads the mutable budget cell used by the engine's accounting path. */
-  getMutableBudget<T extends BudgetState>(key: ContextKey<T>): T | undefined {
+  getMutableBudget<T extends BudgetState>(key: ContextKey<T>): MutableBudgetState<T> | undefined {
     const value = this.entries.get(key.name);
-    if (isBudgetCell(value)) return value.state as T;
+    if (isBudgetCell(value)) return value.state as MutableBudgetState<T>;
     return undefined;
   }
 
@@ -132,12 +135,12 @@ function toPublicValue(value: unknown): unknown {
   return cloneBudgetState(value.state);
 }
 
-function cloneBudgetState(state: BudgetState): BudgetState {
+function cloneBudgetState<T extends BudgetState>(state: T): MutableBudgetState<T> {
   return {
     spent: state.spent,
     limit: state.limit,
     ...(state.unit !== undefined ? { unit: state.unit } : {}),
-  };
+  } as MutableBudgetState<T>;
 }
 
 function isBudgetCell(value: unknown): value is BudgetCell {

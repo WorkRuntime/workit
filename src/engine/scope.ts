@@ -47,6 +47,10 @@ import { ContextBagImpl } from "./context.js";
 import { EventBus } from "./event-bus.js";
 import { parseDuration } from "./duration.js";
 
+type MutableBudgetState<T extends BudgetState = BudgetState> = {
+  -readonly [K in keyof T]: T[K];
+};
+
 // --- ID generation ------------------------------------------------------
 let _nextId = 0;
 const makeScopeId = (): ScopeId => `scope-${++_nextId}` as ScopeId;
@@ -666,9 +670,9 @@ function findBudgetOwner<T extends BudgetState>(
 function getMutableBudgetState<T extends BudgetState>(
   context: ContextBag,
   key: ContextKey<T>
-): T | undefined {
+): MutableBudgetState<T> | undefined {
   if (context instanceof ContextBagImpl) return context.getMutableBudget(key);
-  return context.get(key);
+  return context.get(key) as MutableBudgetState<T> | undefined;
 }
 
 function getBudgetIdentity<T extends BudgetState>(
