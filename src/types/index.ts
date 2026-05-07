@@ -374,7 +374,7 @@ export interface TaskHandle<T> extends Promise<T> {
   cancel(reason?: CancelReason | string): void;
 }
 
-// --- Snapshots (for status() and tree()) ---------------------------------
+// --- Snapshots (for status() and renderTree()) ---------------------------
 
 /** Point-in-time task state returned by `Scope.status()`. */
 export interface TaskSnapshot {
@@ -404,7 +404,7 @@ export interface ScopeSnapshot {
   scopes: ScopeSnapshot[];
 }
 
-/** Rendering options for `scope.tree()` and `renderTree()`. */
+/** Rendering options for `renderTree()`. */
 export interface TreeOpts {
   ascii?: boolean;
   showDurations?: boolean;
@@ -420,9 +420,6 @@ export interface TaskOpts {
   name?: string;
   kind?: TaskKind;
   meta?: Record<string, unknown>;
-  timeout?: Duration;
-  deadline?: number | Date;
-  retry?: number | RetryOpts;
   idempotencyKey?: string;
   cleanupTimeout?: Duration;
 }
@@ -520,9 +517,6 @@ export interface Scope {
 
   /** Returns the current scope tree snapshot. */
   status(): ScopeSnapshot;
-
-  /** Renders the current scope tree as a human-readable status string. */
-  tree(opts?: TreeOpts): string;
 
   /** Subscribes to task and scope events emitted in this scope tree. */
   onEvent(handler: (e: TaskEvent) => void): Unsubscribe;

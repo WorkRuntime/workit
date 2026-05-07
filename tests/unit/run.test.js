@@ -141,7 +141,7 @@ test("run.retry rejects unsafe retry attempt counts at the policy boundary", asy
     run.group(async (task) => {
       await task(async () => "never", { retry: { times: 1_000_000 } });
     }),
-    /retry attempts/
+    /must use run.retry/
   );
 });
 
@@ -468,16 +468,10 @@ test("run.supervise restarts failures within the restart window", async () => {
   assert.equal(attempts, 3);
 });
 
-test("task options support idempotency retry timeout deadline and retry events", async () => {
-  let executions = 0;
+test("task options support idempotency and reject runtime policy shortcuts", async () => {
   let idempotentExecutions = 0;
-  const events = [];
 
   const result = await run.group(async (task) => {
-    await task(async (ctx) => {
-      ctx.scope.onEvent((event) => events.push(event));
-    }, { name: "observer" });
-
     const first = task(async () => {
       idempotentExecutions++;
       return "same-result";
@@ -488,45 +482,28 @@ test("task options support idempotency retry timeout deadline and retry events",
       return "wrong-result";
     }, { name: "same-b", idempotencyKey: "upload:1" });
 
-    const retried = task(async () => {
-      executions++;
-      if (executions < 2) throw new Error("retry task option");
-      return "retried";
-    }, {
-      name: "retried",
-      retry: { times: 2, initialDelay: 1, maxDelay: 1, jitter: false },
-    });
-
-    return [await first, await second, await retried];
+    return [await first, await second];
   });
 
-  assert.deepEqual(result, ["same-result", "same-result", "retried"]);
+  assert.deepEqual(result, ["same-result", "same-result"]);
   assert.equal(idempotentExecutions, 1);
-  assert.equal(executions, 2);
-  assert.ok(events.some((event) => event.type === "task:retrying" && event.attempt === 2));
 
   const afterSettlement = await taskAfterIdempotencySettlement();
   assert.deepEqual(afterSettlement, ["after-first", "after-second"]);
 
   await assert.rejects(
-    run.group(async (task) => task(async (ctx) => {
-      await sleep(50, ctx.signal);
-    }, { timeout: 1 })),
-    TimeoutError
+    run.group(async (task) => task(async () => "bad", { retry: 2 })),
+    /must use run.retry/
   );
 
   await assert.rejects(
-    run.group(async (task) => task(async (ctx) => {
-      await sleep(50, ctx.signal);
-    }, { deadline: Date.now() + 1 })),
-    TimeoutError
+    run.group(async (task) => task(async () => "bad", { timeout: 1 })),
+    /must use run.retry/
   );
 
   await assert.rejects(
-    run.group(async (task) => task(async (ctx) => {
-      await sleep(50, ctx.signal);
-    }, { deadline: new Date(Date.now() + 1) })),
-    TimeoutError
+    run.group(async (task) => task(async () => "bad", { deadline: Date.now() + 1 })),
+    /must use run.retry/
   );
 });
 
@@ -548,88 +525,76 @@ async function taskAfterIdempotencySettlement() {
   });
 }
 
-test("task option retry policies cover cancel-aware delay and backoff branches", async () => {
+test("run.retry policies cover cancel-aware delay and backoff branches", async () => {
   let fixedAttempts = 0;
-  assert.equal(await run.group(async (task) => task(async () => {
+  assert.equal(await run.group(async (task) => task(run.retry(async () => {
     fixedAttempts++;
     if (fixedAttempts < 2) throw new Error("fixed retry");
     return "fixed";
-  }, {
-    retry: { times: 2, backoff: "fixed", initialDelay: 1, maxDelay: 1, jitter: false },
-  })), "fixed");
+  }, { times: 2, backoff: "fixed", initialDelay: 1, maxDelay: 1, jitter: false }))), "fixed");
 
   let numericAttempts = 0;
-  assert.equal(await run.group(async (task) => task(async () => {
+  assert.equal(await run.group(async (task) => task(run.retry(async () => {
     numericAttempts++;
     if (numericAttempts < 2) throw new Error("numeric retry");
     return "numeric";
-  }, { retry: 2 })), "numeric");
+  }, 2))), "numeric");
 
   let linearAttempts = 0;
-  assert.equal(await run.group(async (task) => task(async () => {
+  assert.equal(await run.group(async (task) => task(run.retry(async () => {
     linearAttempts++;
     if (linearAttempts < 2) throw new Error("linear retry");
     return "linear";
-  }, {
-    retry: { times: 2, backoff: "linear", initialDelay: 1, maxDelay: 1, jitter: false },
-  })), "linear");
+  }, { times: 2, backoff: "linear", initialDelay: 1, maxDelay: 1, jitter: false }))), "linear");
 
   let functionAttempts = 0;
   const originalRandom = Math.random;
   Math.random = () => 0;
   try {
-    assert.equal(await run.group(async (task) => task(async () => {
+    assert.equal(await run.group(async (task) => task(run.retry(async () => {
       functionAttempts++;
       if (functionAttempts < 2) throw new Error("function retry");
       return "function";
-    }, {
-      retry: { times: 2, backoff: () => 1, initialDelay: 1, maxDelay: 1, jitter: true },
-    })), "function");
+    }, { times: 2, backoff: () => 1, initialDelay: 1, maxDelay: 1, jitter: true }))), "function");
   } finally {
     Math.random = originalRandom;
   }
 
   await assert.rejects(
     run.group(async (task) => {
-      await task(async (ctx) => {
+      await task(run.retry(async (ctx) => {
         ctx.scope.cancel("already-aborted-retry-delay");
         throw new Error("delay sees aborted signal");
-      }, {
-        retry: { times: 2, initialDelay: 1, maxDelay: 1, jitter: false },
-      });
+      }, { times: 2, initialDelay: 1, maxDelay: 1, jitter: false }));
     }),
     CancellationError
   );
 
   let noRetryAttempts = 0;
   await assert.rejects(
-    run.group(async (task) => task(async () => {
+    run.group(async (task) => task(run.retry(async () => {
       noRetryAttempts++;
-      throw new Error("task option retryIf false");
-    }, {
-      retry: { times: 2, retryIf: () => false },
-    })),
-    /task option retryIf false/
+      throw new Error("run retryIf false");
+    }, { times: 2, retryIf: () => false }))),
+    /run retryIf false/
   );
   assert.equal(noRetryAttempts, 1);
 
   let cancellationAttempts = 0;
   await assert.rejects(
-    run.group(async (task) => task(async () => {
+    run.group(async (task) => task(run.retry(async () => {
       cancellationAttempts++;
       throw new CancellationError({ kind: "manual", tag: "task-option-cancel" });
-    }, { retry: 2 })),
+    }, 2))),
     CancellationError
   );
   assert.equal(cancellationAttempts, 1);
 
   await assert.rejects(
     run.group(async (task) => {
-      const handle = task(async () => {
+      const handle = task(run.retry(async () => {
         throw new Error("delay is cancelled while sleeping");
-      }, {
-        retry: { times: 2, initialDelay: 50, maxDelay: 50, jitter: false },
-      });
+      }, { times: 2, initialDelay: 50, maxDelay: 50, jitter: false }));
       await sleep(5);
       handle.cancel("cancel-retry-delay");
       await handle;
@@ -665,12 +630,12 @@ test("retry delay listeners are removed after completed sleeps", async () => {
   let taskSignal;
   let taskAttempts = 0;
   await run.group(async (task) => {
-    await task(async (ctx) => {
+    await task(run.retry(async (ctx) => {
       taskAttempts++;
       taskSignal = ctx.signal;
-      if (taskAttempts === 1) throw new Error("task option retry");
+      if (taskAttempts === 1) throw new Error("scoped retry");
       return "task-ok";
-    }, { retry: { times: 2, initialDelay: 1, maxDelay: 1, jitter: false } }).catch(() => undefined);
+    }, { times: 2, initialDelay: 1, maxDelay: 1, jitter: false })).catch(() => undefined);
   });
   assert.equal(getEventListeners(taskSignal, "abort").length, 0);
 });

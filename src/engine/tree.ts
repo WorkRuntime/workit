@@ -4,9 +4,9 @@
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0
  *
- * Pure rendering over `ScopeSnapshot`; no task state is read here. This keeps
- * `scope.tree()` testable and lets future exporters reuse the same snapshot
- * contract without depending on the live engine.
+ * Pure rendering over `ScopeSnapshot`; no task state is read here. This lets
+ * diagnostics and future exporters reuse the same snapshot contract without
+ * depending on the live engine.
  */
 
 import type { ScopeSnapshot, TaskSnapshot, TreeOpts } from "../types/index.js";

@@ -28,11 +28,11 @@ import {
   BreakerOpts,
   DetachedOpts,
   BudgetState,
-  MAX_RETRY_ATTEMPTS,
 } from "../types/index.js";
 import { ContextBagImpl } from "../engine/context.js";
 import { ScopeImpl, getCurrentScope, group } from "../engine/scope.js";
 import { parseDuration } from "../engine/duration.js";
+import { computeBackoffDelay, computeRetryDelay, normalizeRetry, sleep } from "../engine/retry.js";
 
 /** Runs all tasks concurrently and preserves input-order results. */
 async function all<T extends readonly TaskFn<unknown>[]>(tasks: T): Promise<TaskResults<T>> {
@@ -212,7 +212,7 @@ function retry<T>(task: TaskFn<T>, opts: number | RetryOpts): TaskFn<T> {
         if (err instanceof CancellationError) throw err;
         if (attempt >= policy.times || !policy.retryIf(err, attempt)) throw err;
 
-        const delayMs = computeDelay(attempt, policy);
+        const delayMs = computeRetryDelay(attempt, policy);
         if (ctx.scope instanceof ScopeImpl) ctx.scope.emitTaskRetry(ctx.id, attempt + 1, err, delayMs);
         else ctx.report({ data: { retrying: true, attempt: attempt + 1, delayMs } });
         await sleep(delayMs, ctx.signal);
@@ -491,66 +491,6 @@ function cancelLosers<T>(handles: TaskHandle<T>[], winner: TaskHandle<T>): void 
   }
 }
 
-function normalizeRetry(opts: number | RetryOpts): Required<Pick<RetryOpts, "times" | "initialDelay" | "maxDelay" | "jitter" | "retryIf">> & {
-  backoff: NonNullable<RetryOpts["backoff"]>;
-} {
-  validateRetryPolicy(opts);
-  const raw = typeof opts === "number" ? { times: opts } : opts;
-  return {
-    times: raw.times,
-    backoff: raw.backoff ?? "exponential",
-    initialDelay: raw.initialDelay ?? 100,
-    maxDelay: raw.maxDelay ?? 30_000,
-    jitter: raw.jitter ?? true,
-    retryIf: raw.retryIf ?? (() => true),
-  };
-}
-
-function validateRetryPolicy(opts: number | RetryOpts): void {
-  const times = typeof opts === "number" ? opts : opts.times;
-  if (!Number.isInteger(times) || times < 1 || times > MAX_RETRY_ATTEMPTS) {
-    throw new RangeError(`retry attempts must be an integer between 1 and ${MAX_RETRY_ATTEMPTS}`);
-  }
-}
-
-function computeDelay(attempt: number, policy: ReturnType<typeof normalizeRetry>): number {
-  return computeBackoffDelay(attempt, policy.backoff, parseDuration(policy.initialDelay), parseDuration(policy.maxDelay), policy.jitter);
-}
-
-function computeBackoffDelay(
-  attempt: number,
-  backoff: RetryOpts["backoff"] = "fixed",
-  initialMs = 100,
-  maxMs = 30_000,
-  jitter = false
-): number {
-  let delay: number;
-  if (typeof backoff === "function") delay = parseDuration(backoff(attempt));
-  else if (backoff === "linear") delay = initialMs * attempt;
-  else if (backoff === "exponential") delay = initialMs * Math.pow(2, attempt - 1);
-  else delay = initialMs;
-  delay = Math.min(delay, maxMs);
-  return jitter ? delay * (0.5 + Math.random() * 0.5) : delay;
-}
-
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal.aborted) {
-      reject(signal.reason);
-      return;
-    }
-    const onAbort = () => {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", onAbort);
-      reject(signal.reason);
-    };
-    const timer = setTimeout(() => {
-      signal.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
-}
 
 function linkSignals(signals: AbortSignal[]): AbortSignal {
   return AbortSignal.any(signals);

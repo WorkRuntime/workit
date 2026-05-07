@@ -37,17 +37,15 @@ import type {
   ContextKey,
   BudgetState,
   Duration,
-  RetryOpts,
   Unsubscribe,
   TaskLogger,
   CleanupContext,
   CleanupOpts,
 } from "../types/index.js";
-import { CancellationError, BudgetExceededError, CostBudget, TimeoutError, MAX_RETRY_ATTEMPTS } from "../types/index.js";
+import { CancellationError, BudgetExceededError, CostBudget, TimeoutError } from "../types/index.js";
 import { ContextBagImpl } from "./context.js";
 import { EventBus } from "./event-bus.js";
 import { parseDuration } from "./duration.js";
-import { renderTree } from "./tree.js";
 
 // --- ID generation ------------------------------------------------------
 let _nextId = 0;
@@ -172,7 +170,7 @@ export class ScopeImpl implements Scope {
       const existing = this.idempotencyHandles.get(opts.idempotencyKey);
       if (existing !== undefined) return existing as TaskHandle<T>;
     }
-    if (opts.retry !== undefined) validateRetryPolicy(opts.retry);
+    assertNoTaskPolicyShortcuts(opts);
 
     const id = makeTaskId();
     const name = opts.name ?? "anonymous";
@@ -205,14 +203,12 @@ export class ScopeImpl implements Scope {
       this.context
     );
 
-    const executable = applyTaskPolicies(task, opts, this, id);
-
     const promise = (async () => {
       record.status = "running";
       let outcome: { ok: true; value: T } | { ok: false; error: unknown } | undefined;
       let terminalEvent: TaskEvent | undefined;
       try {
-        const value = await currentScope.run(this, () => executable(ctx));
+        const value = await currentScope.run(this, () => task(ctx));
         record.status = "succeeded";
         record.endedAt = Date.now();
         terminalEvent = { type: "task:succeeded", taskId: id, durationMs: record.endedAt - startedAt, at: record.endedAt };
@@ -473,11 +469,6 @@ export class ScopeImpl implements Scope {
     return snapshot;
   }
 
-  /** Renders this scope's current snapshot as a human-readable tree. */
-  tree(opts: import("../types/index.js").TreeOpts = {}): string {
-    return renderTree(this.status(), opts);
-  }
-
   // -- Build a TaskContext for a spawned task body ---------------------
 
   /** Builds the task-facing context object for one spawned task body. */
@@ -724,137 +715,11 @@ function assertBoundedString(label: string, value: string, maxLength: number): v
   }
 }
 
-function validateRetryPolicy(opts: number | RetryOpts): void {
-  const times = typeof opts === "number" ? opts : opts.times;
-  if (!Number.isInteger(times) || times < 1 || times > MAX_RETRY_ATTEMPTS) {
-    throw new RangeError(`retry attempts must be an integer between 1 and ${MAX_RETRY_ATTEMPTS}`);
+function assertNoTaskPolicyShortcuts(opts: TaskOpts): void {
+  const raw = opts as Record<string, unknown>;
+  if ("retry" in raw || "timeout" in raw || "deadline" in raw) {
+    throw new Error("Task retry, timeout, and deadline policies must use run.retry/run.timeout/run.deadline wrappers");
   }
-}
-
-// --- Task option policies ------------------------------------------------------
-
-/** Applies task-local resilience policies declared at the spawn boundary. */
-function applyTaskPolicies<T>(
-  task: TaskFn<T>,
-  opts: TaskOpts,
-  scope: ScopeImpl,
-  taskId: TaskId
-): TaskFn<T> {
-  let wrapped = task;
-  if (opts.retry !== undefined) wrapped = wrapRetry(wrapped, opts.retry, scope, taskId);
-  if (opts.timeout !== undefined) wrapped = wrapTimeout(wrapped, opts.timeout);
-  if (opts.deadline !== undefined) {
-    const at = typeof opts.deadline === "number" ? opts.deadline : opts.deadline.getTime();
-    wrapped = wrapTimeout(wrapped, Math.max(0, at - Date.now()));
-  }
-  return wrapped;
-}
-
-/** Wraps one task with a cancel-aware timeout. */
-function wrapTimeout<T>(task: TaskFn<T>, duration: Duration): TaskFn<T> {
-  const timeoutMs = parseDuration(duration);
-  return async (ctx) => {
-    const ctrl = new AbortController();
-    const signal = anySignal([ctx.signal, ctrl.signal]);
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeoutPromise = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => {
-        const err = new TimeoutError(timeoutMs);
-        ctrl.abort(err);
-        reject(err);
-      }, timeoutMs);
-    });
-
-    try {
-      return await Promise.race([task({ ...ctx, signal }), timeoutPromise]);
-    } finally {
-      /* v8 ignore if -- timeoutPromise assigns the timer synchronously. */
-      if (timer !== undefined) clearTimeout(timer);
-    }
-  };
-}
-
-/** Wraps one task with a cancel-aware retry policy and typed retry events. */
-function wrapRetry<T>(
-  task: TaskFn<T>,
-  opts: number | RetryOpts,
-  scope: ScopeImpl,
-  taskId: TaskId
-): TaskFn<T> {
-  const policy = normalizeRetry(opts);
-  return async (ctx) => {
-    let lastErr: unknown;
-    for (let attempt = 1; attempt <= policy.times; attempt++) {
-      scope.updateTaskAttempt(taskId, attempt);
-      try {
-        return await task({ ...ctx, attempt });
-      } catch (err) {
-        lastErr = err;
-        if (err instanceof CancellationError) throw err;
-        if (attempt >= policy.times || !policy.retryIf(err, attempt)) throw err;
-
-        const delayMs = computeDelay(attempt, policy);
-        scope.emitTaskRetry(taskId, attempt + 1, err, delayMs);
-        await sleep(delayMs, ctx.signal);
-      }
-    }
-    /* v8 ignore next -- normalizeRetry guarantees the loop executes at least once. */
-    throw lastErr;
-  };
-}
-
-function normalizeRetry(opts: number | RetryOpts): Required<Pick<RetryOpts, "times" | "initialDelay" | "maxDelay" | "jitter" | "retryIf">> & {
-  backoff: NonNullable<RetryOpts["backoff"]>;
-} {
-  validateRetryPolicy(opts);
-  const raw = typeof opts === "number" ? { times: opts } : opts;
-  return {
-    times: raw.times,
-    backoff: raw.backoff ?? "exponential",
-    initialDelay: raw.initialDelay ?? 100,
-    maxDelay: raw.maxDelay ?? 30_000,
-    jitter: raw.jitter ?? true,
-    retryIf: raw.retryIf ?? (() => true),
-  };
-}
-
-function computeDelay(attempt: number, policy: ReturnType<typeof normalizeRetry>): number {
-  return computeBackoffDelay(attempt, policy.backoff, parseDuration(policy.initialDelay), parseDuration(policy.maxDelay), policy.jitter);
-}
-
-function computeBackoffDelay(
-  attempt: number,
-  backoff: RetryOpts["backoff"] = "fixed",
-  initialMs = 100,
-  maxMs = 30_000,
-  jitter = false
-): number {
-  let delay: number;
-  if (typeof backoff === "function") delay = parseDuration(backoff(attempt));
-  else if (backoff === "linear") delay = initialMs * attempt;
-  else if (backoff === "exponential") delay = initialMs * Math.pow(2, attempt - 1);
-  else delay = initialMs;
-  delay = Math.min(delay, maxMs);
-  return jitter ? delay * (0.5 + Math.random() * 0.5) : delay;
-}
-
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal.aborted) {
-      reject(signal.reason);
-      return;
-    }
-    const onAbort = () => {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", onAbort);
-      reject(signal.reason);
-    };
-    const timer = setTimeout(() => {
-      signal.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
 }
 
 // --- run.group - the canonical scope opener -----------------------------------
