@@ -2,6 +2,7 @@
  * Virtual billion-item stream sample.
  *
  * @author Admilson B. F. Cossa
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Runs against the compiled package. The sample proves bounded production for a
  * huge logical source by consuming only a prefix and asserting the producer did

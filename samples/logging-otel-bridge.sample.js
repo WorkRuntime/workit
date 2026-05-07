@@ -2,6 +2,7 @@
  * OTel-shaped logging bridge sample.
  *
  * @author Admilson B. F. Cossa
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Runs against the compiled package. WorkJS core does not import OpenTelemetry;
  * applications can adapt task log events to an OTel log exporter at the edge.
