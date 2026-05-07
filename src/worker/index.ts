@@ -10,7 +10,8 @@
  */
 
 import { Worker } from "node:worker_threads";
-import type { TaskFn } from "../types/index.js";
+import { TimeoutError, type Duration, type TaskFn } from "../types/index.js";
+import { parseDuration } from "../engine/duration.js";
 import { normalizeWorkerModuleURL } from "./module-url.js";
 
 interface WorkerReply<R> {
@@ -23,6 +24,10 @@ interface WorkerReply<R> {
   };
 }
 
+interface OffloadOpts {
+  timeout?: Duration;
+}
+
 /**
  * Creates a task function that executes a local module export in a worker thread.
  *
@@ -33,10 +38,12 @@ interface WorkerReply<R> {
 export function offload<I, R>(
   moduleURL: string | URL,
   exportName: string,
-  input: I
+  input: I,
+  opts: OffloadOpts = {}
 ): TaskFn<R> {
   const moduleHref = normalizeWorkerModuleURL(moduleURL);
   assertPlainStructuredCloneData(input);
+  const timeoutMs = opts.timeout === undefined ? undefined : parseDuration(opts.timeout);
 
   return async (ctx) => {
     return await new Promise<R>((resolve, reject) => {
@@ -50,8 +57,10 @@ export function offload<I, R>(
       });
 
       let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
 
       const cleanup = () => {
+        if (timer !== undefined) clearTimeout(timer);
         ctx.signal.removeEventListener("abort", onAbort);
         worker.off("message", onMessage);
         worker.off("error", onError);
@@ -70,6 +79,13 @@ export function offload<I, R>(
         settle(() => {
           void worker.terminate();
           reject(ctx.signal.reason);
+        });
+      };
+
+      const onTimeout = () => {
+        settle(() => {
+          void worker.terminate();
+          reject(new TimeoutError(timeoutMs!));
         });
       };
 
@@ -93,6 +109,7 @@ export function offload<I, R>(
       };
 
       ctx.signal.addEventListener("abort", onAbort, { once: true });
+      if (timeoutMs !== undefined) timer = setTimeout(onTimeout, timeoutMs);
       worker.on("message", onMessage);
       worker.on("error", onError);
       worker.on("exit", onExit);

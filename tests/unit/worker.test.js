@@ -7,11 +7,11 @@
 
 import { test } from "vitest";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Worker } from "node:worker_threads";
-import { CancellationError, group } from "../../dist/index.js";
+import { CancellationError, group, TimeoutError } from "../../dist/index.js";
 import { offload } from "../../dist/worker/index.js";
 import { normalizeWorkerModuleURL } from "../../dist/worker/module-url.js";
 
@@ -69,6 +69,29 @@ test("offload preserves pre-start and in-flight cancellation", async () => {
           && err.reason.kind === "manual"
           && err.reason.tag === "in-flight-worker"
       );
+    }
+  );
+});
+
+test("offload timeout terminates non-cooperative worker code", async () => {
+  await withTempWorkerModule(
+    [
+      "import { writeFileSync } from 'node:fs';",
+      "export function ignoreAbort(input) {",
+      "  const end = Date.now() + 150;",
+      "  while (Date.now() < end) {}",
+      "  writeFileSync(input.marker, 'late');",
+      "  return 'late';",
+      "}",
+    ].join("\n"),
+    async (tempModuleURL, dir) => {
+      const marker = join(dir, "late-marker.txt");
+      await assert.rejects(
+        group(async (task) => task(offload(tempModuleURL, "ignoreAbort", { marker }, { timeout: 5 }))),
+        TimeoutError
+      );
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      await assert.rejects(access(marker));
     }
   );
 });
@@ -140,7 +163,7 @@ async function withTempWorkerModule(source, body) {
   const file = join(dir, "worker.mjs");
   await writeFile(file, source, "utf8");
   try {
-    await body(new URL(`file://${file.replaceAll("\\", "/")}`));
+    await body(new URL(`file://${file.replaceAll("\\", "/")}`), dir);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

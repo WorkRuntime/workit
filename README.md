@@ -297,7 +297,10 @@ runtime remains local-first and dependency-free.
 
 `sample:worker` demonstrates explicit CPU offload through `@workjs/core/worker`.
 WorkJS does not automatically route `kind: "cpu"` tasks to workers; worker
-execution is an explicit opt-in.
+execution is an explicit opt-in. Use `run.uncancellable(task, { timeout })` for
+short, signal-aware in-process shields. Use `offload(module, exportName, input,
+{ timeout })` when non-cooperative CPU work needs a hard worker-thread lifetime
+boundary.
 
 ## Runtime Requirements
 
