@@ -263,6 +263,64 @@ bounded concurrency, high-concurrency budget accounting, and a virtual
 billion-item stream source that proves bounded production when consumers stop
 early.
 
+## Public Proof
+
+Machine-readable public proof lives in `benchmarks/public-proof.json`. It links
+benchmark fixtures, stream and soak gates, package-consumer checks, executable
+claim fixtures, migration guides, and the runtime compatibility matrix to the
+commands that verify them.
+
+The public proof gate is:
+
+```sh
+npm run check:public-proof
+```
+
+This gate does not replace the benchmarks. It prevents the proof artifact and
+README from drifting away from the executable verification commands.
+
+## Migration Guides
+
+### From p-limit
+
+Use `run.pool(concurrency, tasks)` when you want bounded concurrency plus scope
+ownership, cancellation, cleanup, and result ordering. Keep `p-limit` if all you
+need is one small local semaphore and you do not need owned task trees.
+
+```ts
+const results = await run.pool(8, items.map((item) => async (ctx) => {
+  return await processItem(item, ctx.signal);
+}));
+```
+
+### From p-map
+
+Use `work(items).inParallel(n).do(fn)` when mapping needs retry, timeout, item
+errors, progress, or stream output. Use `onError("continue")` or
+`onError("collect")` when partial batch results are part of the contract.
+
+```ts
+const output = await work(items)
+  .inParallel(8)
+  .withRetry(3)
+  .onError("continue")
+  .do(async (item, ctx) => transform(item, ctx.signal));
+```
+
+### From RxJS
+
+Keep RxJS for rich observable transformation graphs. Use WorkJS when the problem
+is owned async work: scoped cancellation, cleanup, bounded provider calls,
+budgets, and task events. For stream-shaped provider work, start with
+`work(...).stream()` or the `/ai` stream helpers.
+
+### From Bottleneck
+
+Keep Bottleneck for distributed rate limits, reservoirs, and cluster-aware
+throttling. Use WorkJS for local structured concurrency with per-scope ownership,
+retry, timeout, and cleanup. Combine them by calling Bottleneck inside a WorkJS
+task when distributed rate policy is required.
+
 Visible sample scripts are available after build:
 
 ```sh
