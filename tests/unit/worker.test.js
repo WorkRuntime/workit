@@ -37,6 +37,10 @@ test("offload rejects inline and remote module URLs before worker import", () =>
     () => offload("https://example.test/worker.js", "x", undefined),
     /local file URL or path/
   );
+  assert.throws(
+    () => offload("file:///c:/lab/workJs/../workJs/samples/cpu-worker.sample-worker.js", "fibonacci", 10),
+    /parent directory/
+  );
   assert.equal(normalizeWorkerModuleURL("./local-worker.js"), "./local-worker.js");
   assert.equal(normalizeWorkerModuleURL("C:\\work\\local-worker.js"), "C:\\work\\local-worker.js");
 });

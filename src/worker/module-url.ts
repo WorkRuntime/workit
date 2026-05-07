@@ -16,6 +16,7 @@ const WINDOWS_DRIVE_PATH = /^[a-zA-Z]:[\\/]/u;
 export function normalizeWorkerModuleURL(moduleURL: string | URL): string {
   const href = moduleURL instanceof URL ? moduleURL.href : moduleURL;
   if (href.trim().length === 0) throw new TypeError("Worker moduleURL must not be empty");
+  assertNoParentTraversal(href);
 
   if (moduleURL instanceof URL) {
     assertAllowedProtocol(moduleURL.protocol);
@@ -32,5 +33,11 @@ export function normalizeWorkerModuleURL(moduleURL: string | URL): string {
 function assertAllowedProtocol(protocol: string): void {
   if (protocol !== "file:") {
     throw new TypeError("Worker moduleURL must be a local file URL or path");
+  }
+}
+
+function assertNoParentTraversal(href: string): void {
+  if (href.split(/[\\/]/u).includes("..")) {
+    throw new TypeError("Worker moduleURL must not contain parent directory segments");
   }
 }
