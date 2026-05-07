@@ -24,6 +24,7 @@ import {
   attachScopeSummaryExporter,
   type ScopeSummary,
   type TelemetryExportOptions,
+  type TaskEventSanitizer,
 } from "../observability/index.js";
 
 /** Options used to attach WorkJS events to OpenTelemetry. */
@@ -69,19 +70,25 @@ export function attachOpenTelemetry(
 
   const unsubscribeEvents = scope.onEvent((event) => {
     try {
-      handleTaskEvent(event, spans, tracer, taskCounter, taskDuration, opts.includeIds ?? false);
+      const sanitized = sanitizeTaskEvent(event, opts.telemetry?.sanitize);
+      if (sanitized === undefined) {
+        dropped++;
+        return;
+      }
+      handleTaskEvent(sanitized, spans, tracer, taskCounter, taskDuration, opts.includeIds ?? false);
       exported++;
     } catch {
       dropped++;
     }
   });
 
+  const summaryTelemetry = omitSanitizer(opts.telemetry);
   const summaryAttachment = attachScopeSummaryExporter(
     scope,
     (summary) => {
       recordScopeSummary(summary, scopeCounter, scopeDuration);
     },
-    opts.telemetry
+    summaryTelemetry
   );
 
   return {
@@ -101,6 +108,20 @@ export function attachOpenTelemetry(
       return spans.size;
     },
   };
+}
+
+function omitSanitizer(opts: TelemetryExportOptions | undefined): TelemetryExportOptions | undefined {
+  if (opts === undefined) return undefined;
+  const { sanitize: _sanitize, ...summaryTelemetry } = opts;
+  return summaryTelemetry;
+}
+
+function sanitizeTaskEvent(
+  event: TaskEvent,
+  sanitize: TaskEventSanitizer | undefined
+): TaskEvent | undefined {
+  if (sanitize === undefined) return event;
+  return sanitize(event);
 }
 
 function handleTaskEvent(
@@ -124,6 +145,12 @@ function handleTaskEvent(
     case "task:progress":
       recordProgress(spans.get(event.taskId)?.span, event);
       break;
+    case "task:cleanup_failed":
+      recordTaskCleanupFailure(spans.get(event.taskId)?.span, event);
+      break;
+    case "task:cleanup_timeout":
+      recordTaskCleanupTimeout(spans.get(event.taskId)?.span, event);
+      break;
     case "task:succeeded":
       finishTask(event.taskId, "succeeded", event.durationMs, spans, taskCounter, taskDuration);
       break;
@@ -134,6 +161,8 @@ function handleTaskEvent(
       cancelTask(event.taskId, event.reason, event.durationMs, spans, taskCounter, taskDuration);
       break;
     case "scope:opened":
+    case "scope:cleanup_failed":
+    case "scope:cleanup_timeout":
     case "scope:closing":
     case "scope:closed":
       break;
@@ -170,6 +199,20 @@ function recordProgress(span: Span | undefined, event: Extract<TaskEvent, { type
   const logLevel = extractLogLevel(event.data);
   if (logLevel !== undefined) attributes["workjs.log.level"] = logLevel;
   span.addEvent("workjs.task.progress", attributes);
+}
+
+function recordTaskCleanupFailure(span: Span | undefined, event: Extract<TaskEvent, { type: "task:cleanup_failed" }>): void {
+  if (span === undefined) return;
+  span.addEvent("workjs.task.cleanup_failed", {
+    "workjs.error.message": errorMessage(event.error),
+  });
+}
+
+function recordTaskCleanupTimeout(span: Span | undefined, event: Extract<TaskEvent, { type: "task:cleanup_timeout" }>): void {
+  if (span === undefined) return;
+  span.addEvent("workjs.task.cleanup_timeout", {
+    "workjs.cleanup.timeout_ms": event.timeoutMs,
+  });
 }
 
 function finishTask(

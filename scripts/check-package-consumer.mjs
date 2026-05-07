@@ -11,14 +11,13 @@
 import { execFile } from "node:child_process";
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { delimiter, dirname, join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { build } from "esbuild";
 
 const execFileAsync = promisify(execFile);
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const npmCli = join(dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
 const tscCli = join(ROOT, "node_modules", "typescript", "bin", "tsc");
 const bunCli = await findExecutable(["bun.exe", "bun"], [join(homedir(), ".bun", "bin", "bun.exe")]);
 const denoCli = await findExecutable(["deno.exe", "deno"], [join(homedir(), ".deno", "bin", "deno.exe")]);
@@ -37,7 +36,7 @@ if (wranglerCli === null) throw new Error("Cloudflare Worker dry-run fixture req
 const temp = await mkdtemp(join(tmpdir(), "workjs-consumer-"));
 
 try {
-  const { stdout } = await execFileAsync(process.execPath, [npmCli, "pack", "--json", "--pack-destination", temp], {
+  const { stdout } = await runNpm(["pack", "--json", "--pack-destination", temp], {
     cwd: ROOT,
     timeout: 120_000,
   });
@@ -45,8 +44,7 @@ try {
   const tarball = join(temp, pack.filename);
 
   await writeFile(join(temp, "package.json"), JSON.stringify({ type: "module" }), "utf8");
-  await execFileAsync(process.execPath, [
-    npmCli,
+  await runNpm([
     "install",
     "--ignore-scripts",
     tarball,
@@ -144,9 +142,15 @@ try {
   await writeFile(join(temp, "strict-smoke.ts"), `
     import {
       ContextBagImpl,
+      CostBudget,
       createContextKey,
       group,
       run,
+      work,
+      type CancelReason,
+      type CancelledItem,
+      type ItemError,
+      type Settled,
       type TaskContext,
     } from "@workjs/core";
     import { embedAll, streamWithBackpressure } from "@workjs/core/ai";
@@ -180,6 +184,39 @@ try {
     if (embedded.mode !== "fail") throw new Error("unexpected embedAll mode");
     if (embedded.results[0]?.[0] !== 3) throw new Error("AI helper inference failed");
     if (streamed[0] !== "TYPED") throw new Error("AI stream helper inference failed");
+
+    const inferredVoid: void = await group(async () => {});
+    void inferredVoid;
+    // @ts-expect-error explicit group<string> bodies must return string.
+    await group<string>(async () => {});
+
+    await run.context.with(CostBudget, { spent: 0, limit: 1, unit: "USD" }, async () => {
+      const snapshot = run.context.budget(CostBudget);
+      if (snapshot === undefined) throw new Error("budget snapshot missing");
+      // @ts-expect-error public budget snapshots are readonly.
+      snapshot.spent = 1;
+    });
+
+    const failOutput: { mode: "fail"; results: number[] } = await work([1]).do(async (item) => item);
+    // @ts-expect-error fail output has no item errors without narrowing.
+    failOutput.errors;
+
+    const continueOutput: { mode: "continue"; results: number[]; errors: ItemError[] } =
+      await work([1]).onError("continue").do(async (item) => item);
+
+    const collectOutput: { mode: "collect"; results: Settled<number>[] } =
+      await work([1]).onError("collect").do(async (item) => item);
+
+    const partialOutput: { mode: "fail"; results: number[] } | {
+      mode: "partial";
+      results: number[];
+      errors: ItemError[];
+      cancelled: CancelledItem[];
+      reason?: CancelReason;
+    } = await work([1]).onCancel("partial").do(async (item) => item);
+    void continueOutput;
+    void collectOutput;
+    void partialOutput;
   `, "utf8");
 
   await execFileAsync(process.execPath, [tscCli, "--noEmit", "--project", "tsconfig.strict.json"], {
@@ -534,6 +571,16 @@ async function execCli(executable, args, opts) {
     return await execFileAsync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", executable, ...args], opts);
   }
   return await execFileAsync(executable, args, opts);
+}
+
+async function runNpm(args, opts) {
+  if (process.env.npm_execpath !== undefined) {
+    return await execFileAsync(process.execPath, [process.env.npm_execpath, ...args], opts);
+  }
+
+  const npmCli = await findExecutable(["npm.cmd", "npm"], []);
+  if (npmCli === null) throw new Error("npm executable not found on PATH.");
+  return await execCli(npmCli, args, opts);
 }
 
 async function exists(path) {

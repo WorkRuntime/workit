@@ -42,6 +42,20 @@ const failedEvent = {
   at: 1,
 };
 
+const taskCleanupFailedEvent = {
+  type: "task:cleanup_failed",
+  taskId: "task-cleanup",
+  error: new Error("task cleanup failed"),
+  at: 1,
+};
+
+const scopeCleanupFailedEvent = {
+  type: "scope:cleanup_failed",
+  scopeId: "scope-cleanup",
+  error: new Error("scope cleanup failed"),
+  at: 1,
+};
+
 const cancelledEvent = {
   type: "task:cancelled",
   taskId: "task-cancelled",
@@ -73,10 +87,18 @@ test("default errors-and-slow sampling exports failures cancellations and slow s
   scope.emit(cancelledEvent);
   scope.emit(slowSuccessEvent);
   scope.emit(fastSuccessEvent);
+  scope.emit(taskCleanupFailedEvent);
+  scope.emit(scopeCleanupFailedEvent);
   await flushExporter();
 
-  assert.deepEqual(exported.map((event) => event.taskId), ["task-failed", "task-cancelled", "task-slow"]);
-  assert.equal(attachment.exportedCount(), 3);
+  assert.deepEqual(exported.map((event) => event.type), [
+    "task:failed",
+    "task:cancelled",
+    "task:succeeded",
+    "task:cleanup_failed",
+    "scope:cleanup_failed",
+  ]);
+  assert.equal(attachment.exportedCount(), 5);
   assert.equal(attachment.droppedCount(), 1);
   assert.equal(attachment.queuedCount(), 0);
   assert.equal(attachment.state(), "closed");
@@ -84,7 +106,7 @@ test("default errors-and-slow sampling exports failures cancellations and slow s
   attachment.unsubscribe();
   scope.emit(failedEvent);
   await flushExporter();
-  assert.equal(exported.length, 3);
+  assert.equal(exported.length, 5);
 });
 
 test("off and all sampling modes enforce explicit volume policy", async () => {
@@ -185,6 +207,56 @@ test("head sampling decision applies to child scope events bubbling to the root 
 
   await flushExporter();
   assert.ok(attachment.droppedCount() > 0);
+});
+
+test("telemetry exporter sanitizes events before export and drops rejected events", async () => {
+  const scope = createScopeHarness();
+  const exported = [];
+  const attachment = attachTelemetryExporter(
+    scope,
+    (event) => exported.push(event),
+    {
+      sampling: { mode: "all" },
+      sanitize(event) {
+        if (event.taskId === "drop-me") return undefined;
+        if (event.type === "task:failed") {
+          return { ...event, error: new Error("redacted") };
+        }
+        return event;
+      },
+    }
+  );
+
+  scope.emit({ ...failedEvent, taskId: "secret-error", error: new Error("token=secret") });
+  scope.emit({ ...failedEvent, taskId: "drop-me" });
+  await flushExporter();
+
+  assert.equal(exported.length, 1);
+  assert.equal(exported[0].error.message, "redacted");
+  assert.equal(attachment.exportedCount(), 1);
+  assert.equal(attachment.droppedCount(), 1);
+});
+
+test("telemetry exporter isolates sanitizer failures", async () => {
+  const scope = createScopeHarness();
+  const exported = [];
+  const attachment = attachTelemetryExporter(
+    scope,
+    (event) => exported.push(event),
+    {
+      sampling: { mode: "all" },
+      sanitize() {
+        throw new Error("redactor failed");
+      },
+    }
+  );
+
+  scope.emit(failedEvent);
+  await flushExporter();
+
+  assert.equal(exported.length, 0);
+  assert.equal(attachment.exportedCount(), 0);
+  assert.equal(attachment.droppedCount(), 1);
 });
 
 test("exporter circuit breaker opens drops while open and closes after half-open success", async () => {
@@ -385,8 +457,10 @@ test("scope summary exporter emits one aggregate record per closed scope", async
   scope.emit({ type: "task:succeeded", taskId: "task-a", durationMs: 1, at: 3 });
   scope.emit({ type: "task:retrying", taskId: "task-a", attempt: 2, error: new Error("retry"), nextDelayMs: 1, at: 3 });
   scope.emit({ type: "task:failed", taskId: "task-a", error: new Error("failed"), durationMs: 2, at: 4 });
+  scope.emit({ type: "task:cleanup_failed", taskId: "task-a", error: new Error("task cleanup failed"), at: 4 });
   scope.emit({ type: "task:started", taskId: "task-b", scopeId: "scope-a", name: "cancelled", kind: "io", at: 5 });
   scope.emit({ type: "task:cancelled", taskId: "task-b", reason: { kind: "manual", tag: "stop" }, durationMs: 1, at: 6 });
+  scope.emit({ type: "scope:cleanup_failed", scopeId: "scope-a", error: new Error("scope cleanup failed"), at: 6 });
   scope.emit({ type: "scope:closing", scopeId: "scope-a", reason: "errored", at: 7 });
   scope.emit({ type: "scope:closed", scopeId: "scope-a", durationMs: 9, droppedTelemetryEvents: 2, at: 8 });
   await flushExporter();
@@ -400,8 +474,15 @@ test("scope summary exporter emits one aggregate record per closed scope", async
     failed: 1,
     cancelled: 1,
     retried: 1,
+    cleanupFailed: 2,
   });
   assert.equal(summaries[0].droppedTelemetryEvents, 2);
+
+  scope.emit({ type: "scope:opened", scopeId: "scope-errored-closing", parentId: null, at: 8 });
+  scope.emit({ type: "scope:closing", scopeId: "scope-errored-closing", reason: "errored", at: 8 });
+  scope.emit({ type: "scope:closed", scopeId: "scope-errored-closing", durationMs: 1, at: 8 });
+  await flushExporter();
+  assert.equal(summaries[1].outcome, "errored");
 
   scope.emit({ type: "scope:opened", scopeId: "scope-b", parentId: "scope-a", at: 9 });
   scope.emit({ type: "task:started", taskId: "task-c", scopeId: "scope-b", name: "cancelled", kind: "io", at: 9 });
@@ -409,7 +490,29 @@ test("scope summary exporter emits one aggregate record per closed scope", async
   scope.emit({ type: "scope:closing", scopeId: "scope-b", reason: "cancelled", at: 10 });
   scope.emit({ type: "scope:closed", scopeId: "scope-b", durationMs: 1, at: 11 });
   await flushExporter();
-  assert.equal(summaries[1].outcome, "cancelled");
+  assert.equal(summaries[2].outcome, "cancelled");
+});
+
+test("scope summary exporter applies sanitizer drops before aggregation", async () => {
+  const scope = createScopeHarness();
+  const summaries = [];
+  const attachment = attachScopeSummaryExporter(
+    scope,
+    (summary) => summaries.push(summary),
+    {
+      sanitize() {
+        return undefined;
+      },
+    }
+  );
+
+  scope.emit({ type: "scope:opened", scopeId: "scope-drop", parentId: null, at: 1 });
+  scope.emit({ type: "scope:closed", scopeId: "scope-drop", durationMs: 1, at: 2 });
+  await flushExporter();
+
+  assert.equal(summaries.length, 0);
+  assert.equal(attachment.exportedCount(), 0);
+  assert.equal(attachment.droppedCount(), 2);
 });
 
 test("cardinality-safe metric exporter rejects unbounded labels", async () => {

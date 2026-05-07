@@ -22,26 +22,32 @@ import {
   Settled,
   TaskFn,
   TaskHandle,
+  TaskContext,
   TaskResults,
   TimeoutError,
   WorkAggregateError,
   BreakerOpts,
+  DetachedOpts,
+  BudgetState,
+  CleanupOpts,
+  CleanupContext,
 } from "../types/index.js";
 import { ContextBagImpl } from "../engine/context.js";
 import { ScopeImpl, getCurrentScope, group } from "../engine/scope.js";
 import { parseDuration } from "../engine/duration.js";
+import { computeBackoffDelay, computeRetryDelay, normalizeRetry, sleep } from "../engine/retry.js";
 
 /** Runs all tasks concurrently and preserves input-order results. */
 async function all<T extends readonly TaskFn<unknown>[]>(tasks: T): Promise<TaskResults<T>> {
-  return await group(async (task) => {
+  return group(async (task) => {
     const handles = tasks.map((fn) => task(fn));
-    return await Promise.all(handles) as TaskResults<T>;
+    return Promise.all(handles) as Promise<TaskResults<T>>;
   });
 }
 
 /** Runs all tasks and collects every settlement without cancelling on failures. */
 async function allSettled<T>(tasks: TaskFn<T>[]): Promise<Settled<T>[]> {
-  return await group(async (task) => {
+  return group(async (task) => {
     const handles = tasks.map((fn) => task(async (ctx) => {
       try {
         return { status: "fulfilled", value: await fn(ctx) } satisfies Settled<T>;
@@ -52,17 +58,17 @@ async function allSettled<T>(tasks: TaskFn<T>[]): Promise<Settled<T>[]> {
         return { status: "rejected", reason: err } satisfies Settled<T>;
       }
     }));
-    return await Promise.all(handles);
+    return Promise.all(handles);
   });
 }
 
 /** Returns the first task settlement and cancels the remaining tasks. */
 async function race<T>(tasks: TaskFn<T>[]): Promise<T> {
-  if (tasks.length === 0) throw new WorkAggregateError([], "run.race requires at least one task");
+  if (tasks.length === 0) throw new WorkAggregateError([], "run.race requires tasks");
 
-  return await group(async (task) => {
+  return group(async (task) => {
     const handles = tasks.map((fn) => task(fn));
-    return await new Promise<T>((resolve, reject) => {
+    return new Promise<T>((resolve, reject) => {
       let settled = false;
       for (const handle of handles) {
         handle.then(
@@ -86,9 +92,10 @@ async function race<T>(tasks: TaskFn<T>[]): Promise<T> {
 
 /** Returns the first successful task, rejecting only after every task fails. */
 async function any<T>(tasks: TaskFn<T>[]): Promise<T> {
-  if (tasks.length === 0) throw new WorkAggregateError([], "run.any requires at least one task");
+  if (tasks.length === 0) throw new WorkAggregateError([], "run.any requires tasks");
 
-  return await group(async (task) => {
+  return group(async (task) => {
+    const scope = getCurrentScope();
     const errors: unknown[] = [];
     const handles = tasks.map((fn) => task(async (ctx) => {
       try {
@@ -102,7 +109,7 @@ async function any<T>(tasks: TaskFn<T>[]): Promise<T> {
       }
     }, { name: "any-candidate" }));
 
-    return await new Promise<T>((resolve, reject) => {
+    return new Promise<T>((resolve, reject) => {
       let pending = handles.length;
       let settled = false;
       for (const handle of handles) {
@@ -112,7 +119,7 @@ async function any<T>(tasks: TaskFn<T>[]): Promise<T> {
           if (settlement.status !== "fulfilled") {
             if (pending === 0) {
               settled = true;
-              reject(new WorkAggregateError(errors));
+              reject(scope?.signal.aborted === true ? scope.signal.reason : new WorkAggregateError(errors));
             }
             return;
           }
@@ -127,7 +134,7 @@ async function any<T>(tasks: TaskFn<T>[]): Promise<T> {
 
 /** Runs tasks sequentially and stops on the first failure. */
 async function series<T>(tasks: TaskFn<T>[]): Promise<T[]> {
-  return await group(async (task) => {
+  return group(async (task) => {
     const results: T[] = [];
     for (const fn of tasks) {
       results.push(await task(fn));
@@ -139,10 +146,10 @@ async function series<T>(tasks: TaskFn<T>[]): Promise<T[]> {
 /** Runs tasks with bounded concurrency and preserves input-order results. */
 async function pool<T>(concurrency: number, tasks: TaskFn<T>[]): Promise<T[]> {
   if (!Number.isInteger(concurrency) || concurrency < 1) {
-    throw new RangeError("run.pool concurrency must be a positive integer");
+    throw new RangeError("run.pool positive integer");
   }
 
-  return await group(async (task) => {
+  return group(async (task) => {
     const results = new Array<T>(tasks.length);
     let next = 0;
 
@@ -165,9 +172,9 @@ function timeout<T>(task: TaskFn<T>, duration: Duration): TaskFn<T> {
   const timeoutMs = parseDuration(duration);
   return async (ctx) => {
     const ctrl = new AbortController();
-    const signal = linkSignals([ctx.signal, ctrl.signal]);
+    const signal = AbortSignal.any([ctx.signal, ctrl.signal]);
 
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let timer!: ReturnType<typeof setTimeout>;
     const timeoutPromise = new Promise<never>((_resolve, reject) => {
       timer = setTimeout(() => {
         const err = new TimeoutError(timeoutMs);
@@ -182,10 +189,32 @@ function timeout<T>(task: TaskFn<T>, duration: Duration): TaskFn<T> {
         timeoutPromise,
       ]);
     } finally {
-      /* v8 ignore else -- timeoutPromise assigns the timer synchronously. */
-      if (timer !== undefined) clearTimeout(timer);
+      clearTimeout(timer);
     }
   };
+}
+
+/** Runs a task in a bounded cancellation shield. */
+function uncancellable<T>(task: TaskFn<T>, opts?: { timeout?: Duration }): TaskFn<T> {
+  const timeoutMs = parseDuration(opts?.timeout ?? 0);
+  if (timeoutMs <= 0) throw new RangeError("timeout");
+  return timeout(async (ctx) => {
+    const ctrl = new AbortController();
+    const signal = ctx.signal;
+    let parentReason: unknown;
+    const onAbort = () => signal.reason instanceof TimeoutError
+      ? ctrl.abort(signal.reason)
+      : parentReason = signal.reason;
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+    try {
+      const value = await task({ ...ctx, signal: ctrl.signal });
+      if (parentReason) throw parentReason;
+      return value;
+    } finally {
+      signal.removeEventListener("abort", onAbort);
+    }
+  }, timeoutMs);
 }
 
 /** Wraps a task with a deadline timestamp. */
@@ -208,7 +237,7 @@ function retry<T>(task: TaskFn<T>, opts: number | RetryOpts): TaskFn<T> {
         if (err instanceof CancellationError) throw err;
         if (attempt >= policy.times || !policy.retryIf(err, attempt)) throw err;
 
-        const delayMs = computeDelay(attempt, policy);
+        const delayMs = computeRetryDelay(attempt, policy);
         if (ctx.scope instanceof ScopeImpl) ctx.scope.emitTaskRetry(ctx.id, attempt + 1, err, delayMs);
         else ctx.report({ data: { retrying: true, attempt: attempt + 1, delayMs } });
         await sleep(delayMs, ctx.signal);
@@ -268,7 +297,7 @@ function hedge<T>(task: TaskFn<T>, opts: HedgeOpts): TaskFn<T> {
         if (settled) return;
         const ctrl = new AbortController();
         controllers.push(ctrl);
-        const signal = linkSignals([ctx.signal, ctrl.signal]);
+        const signal = AbortSignal.any([ctx.signal, ctrl.signal]);
         task({ ...ctx, signal, attempt }).then(
           (value) => {
             settle(() => {
@@ -281,7 +310,7 @@ function hedge<T>(task: TaskFn<T>, opts: HedgeOpts): TaskFn<T> {
             errors.push(err);
             completed++;
             if (!settled && completed === max) {
-              settle(() => reject(new WorkAggregateError(errors, "All hedged attempts failed")));
+              settle(() => reject(new WorkAggregateError(errors, "All hedges failed")));
             }
           }
         );
@@ -308,37 +337,74 @@ function fallback<T>(primary: TaskFn<T>, secondary: TaskFn<T>): TaskFn<T> {
   };
 }
 
+/** Acquires a resource, uses it, and releases it through bounded task cleanup. */
+function bracket<R, T>(
+  acquire: (ctx: TaskContext) => R | Promise<R>,
+  use: (resource: R, ctx: TaskContext) => T | Promise<T>,
+  release: (resource: R, ctx: CleanupContext) => void | Promise<void>,
+  opts?: CleanupOpts
+): TaskFn<T> {
+  return async (ctx) => {
+    const resource = await acquire(ctx);
+    ctx.defer((cleanupCtx) => release(resource, cleanupCtx), opts);
+    return use(resource, ctx);
+  };
+}
+
 /** Wraps a task with a small in-process circuit breaker. */
 function circuitBreaker<T>(task: TaskFn<T>, opts: BreakerOpts): TaskFn<T> {
+  let state = 0;
   let failures = 0;
-  let state: "closed" | "open" | "half_open" = "closed";
   let openedUntil = 0;
-  let halfOpenCalls = 0;
+  let epoch = 0;
+  let admitted = 0;
+  const maxHalfOpenCalls = opts.halfOpenMaxCalls ?? 1;
+  const resetAfterMs = parseDuration(opts.resetAfter);
+
+  const open = () => {
+    state = 1;
+    openedUntil = Date.now() + resetAfterMs;
+  };
+  const close = () => {
+    state = 0;
+    failures = 0;
+  };
+  const halfOpen = () => {
+    state = 2;
+    epoch++;
+    admitted = 0;
+  };
 
   return async (ctx) => {
-    if (state === "open") {
-      if (Date.now() < openedUntil) throw new Error("Circuit breaker is open");
-      state = "half_open";
-      halfOpenCalls = 0;
+    if (state === 1) {
+      if (Date.now() < openedUntil) throw new Error("Circuit open");
+      halfOpen();
     }
 
-    if (state === "half_open" && halfOpenCalls >= (opts.halfOpenMaxCalls ?? 1)) {
-      throw new Error("Circuit breaker is half-open");
+    if (state === 2 && admitted >= maxHalfOpenCalls) {
+      throw new Error("Circuit half-open");
     }
 
-    if (state === "half_open") halfOpenCalls++;
+    const halfOpenEpoch = state === 2 ? epoch : 0;
+    if (state === 2) admitted++;
 
     try {
       const value = await task(ctx);
-      failures = 0;
-      state = "closed";
+      if (halfOpenEpoch > 0) {
+        if (state === 2 && epoch === halfOpenEpoch) close();
+      } else if (state === 0) {
+        close();
+      }
       return value;
     } catch (err) {
       if (err instanceof CancellationError) throw err;
-      failures++;
-      if (failures >= opts.failureThreshold || state === "half_open") {
-        state = "open";
-        openedUntil = Date.now() + parseDuration(opts.resetAfter);
+      if (halfOpenEpoch > 0) {
+        if (halfOpenEpoch === epoch) open();
+        throw err;
+      }
+      if (state === 0) {
+        failures++;
+        if (failures >= opts.failureThreshold) open();
       }
       throw err;
     }
@@ -347,22 +413,30 @@ function circuitBreaker<T>(task: TaskFn<T>, opts: BreakerOpts): TaskFn<T> {
 
 /** Opens a scope and passes the concrete scope to the body. */
 async function scope<R>(body: (scope: Scope) => Promise<R>, opts: ScopeOpts = {}): Promise<R> {
-  return await group(async (task) => {
-    return await task(async (ctx) => body(ctx.scope), { name: opts.name ?? "scope-body" });
+  return group(async (task) => {
+    return task(async (ctx) => body(ctx.scope), { name: opts.name ?? "scope-body" });
   }, opts);
 }
 
 /** Spawns background work in the current scope. */
 function background<T>(task: TaskFn<T>): TaskHandle<T> {
   const current = getCurrentScope();
-  if (!current) throw new Error("run.background requires an active WorkJS scope");
+  if (!current) throw new Error("requires an active WorkJS scope");
   return current.spawn(task, { name: "background" }, true);
 }
 
+const DEFAULT_DETACHED_MAX_LIFETIME_MS = 300_000;
+
 /** Spawns explicitly detached work in a root scope. */
-function detached<T>(task: TaskFn<T>): TaskHandle<T> {
-  const root = new ScopeImpl(null, { name: "detached" });
-  const handle = root.spawn(task, { name: "detached" });
+function detached<T>(task: TaskFn<T>, opts: DetachedOpts = {}): TaskHandle<T> {
+  const root = new ScopeImpl(null, {
+    name: opts.name ?? "detached",
+    ...(opts.cleanupTimeout !== undefined ? { cleanupTimeout: opts.cleanupTimeout } : {}),
+  });
+  const boundedTask = opts.maxLifetime === false
+    ? task
+    : timeout(task, opts.maxLifetime ?? DEFAULT_DETACHED_MAX_LIFETIME_MS);
+  const handle = root.spawn(boundedTask, { name: opts.name ?? "detached" });
   void handle.finally(() => root.close()).catch(() => undefined);
   return handle;
 }
@@ -409,11 +483,21 @@ const context = {
 
   async with<T, R>(key: ContextKey<T>, value: T, body: () => Promise<R>): Promise<R> {
     const next = context.current().with(key, value);
-    return await group(async () => body(), { context: next });
+    return group(async () => body(), { context: next });
   },
 
   get<T>(key: ContextKey<T>): T | undefined {
     return context.current().get(key);
+  },
+
+  budget<T extends BudgetState>(key: ContextKey<T>): Readonly<T> | undefined {
+    const value = context.current().get(key);
+    if (value === undefined) return undefined;
+    return {
+      spent: value.spent,
+      limit: value.limit,
+      ...(value.unit !== undefined ? { unit: value.unit } : {}),
+    } as Readonly<T>;
   },
 };
 
@@ -426,10 +510,12 @@ export const run: RunNamespace = {
   series,
   pool,
   timeout,
+  uncancellable,
   deadline,
   retry,
   hedge,
   fallback,
+  bracket,
   circuitBreaker,
   group,
   scope,
@@ -443,56 +529,4 @@ function cancelLosers<T>(handles: TaskHandle<T>[], winner: TaskHandle<T>): void 
   for (const handle of handles) {
     if (handle !== winner) handle.cancel({ kind: "race_lost", winnerId: winner.id });
   }
-}
-
-function normalizeRetry(opts: number | RetryOpts): Required<Pick<RetryOpts, "times" | "initialDelay" | "maxDelay" | "jitter" | "retryIf">> & {
-  backoff: NonNullable<RetryOpts["backoff"]>;
-} {
-  const raw = typeof opts === "number" ? { times: opts } : opts;
-  return {
-    times: Math.max(1, raw.times),
-    backoff: raw.backoff ?? "exponential",
-    initialDelay: raw.initialDelay ?? 100,
-    maxDelay: raw.maxDelay ?? 30_000,
-    jitter: raw.jitter ?? true,
-    retryIf: raw.retryIf ?? (() => true),
-  };
-}
-
-function computeDelay(attempt: number, policy: ReturnType<typeof normalizeRetry>): number {
-  return computeBackoffDelay(attempt, policy.backoff, parseDuration(policy.initialDelay), parseDuration(policy.maxDelay), policy.jitter);
-}
-
-function computeBackoffDelay(
-  attempt: number,
-  backoff: RetryOpts["backoff"] = "fixed",
-  initialMs = 100,
-  maxMs = 30_000,
-  jitter = false
-): number {
-  let delay: number;
-  if (typeof backoff === "function") delay = parseDuration(backoff(attempt));
-  else if (backoff === "linear") delay = initialMs * attempt;
-  else if (backoff === "exponential") delay = initialMs * Math.pow(2, attempt - 1);
-  else delay = initialMs;
-  delay = Math.min(delay, maxMs);
-  return jitter ? delay * (0.5 + Math.random() * 0.5) : delay;
-}
-
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal.aborted) {
-      reject(signal.reason);
-      return;
-    }
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener("abort", () => {
-      clearTimeout(timer);
-      reject(signal.reason);
-    }, { once: true });
-  });
-}
-
-function linkSignals(signals: AbortSignal[]): AbortSignal {
-  return AbortSignal.any(signals);
 }

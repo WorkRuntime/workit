@@ -6,6 +6,7 @@
  */
 
 import { parentPort, workerData } from "node:worker_threads";
+import { normalizeWorkerModuleURL } from "./module-url.js";
 
 interface WorkerRequest {
   moduleURL: string;
@@ -19,7 +20,7 @@ if (port === null) throw new Error("WorkJS worker runner requires parentPort");
 const request = workerData as WorkerRequest;
 
 try {
-  const mod = await import(request.moduleURL) as Record<string, unknown>;
+  const mod = await import(normalizeWorkerModuleURL(request.moduleURL)) as Record<string, unknown>;
   const fn = mod[request.exportName];
   if (typeof fn !== "function") {
     throw new TypeError(`Worker export "${request.exportName}" is not a function`);

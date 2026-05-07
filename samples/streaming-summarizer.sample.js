@@ -14,6 +14,8 @@ import { work } from "../dist/index.js";
 let produced = 0;
 let active = 0;
 let maxActive = 0;
+const TAKE = 12;
+const CONCURRENCY = 5;
 
 async function* documents() {
   for (let index = 0; index < 50; index++) {
@@ -25,38 +27,48 @@ async function* documents() {
 const summaries = [];
 
 for await (const summary of work(documents())
-  .inParallel(5)
+  .inParallel(CONCURRENCY)
   .withRetry(2)
   .withTimeout("500ms")
   .map(async (doc, ctx) => {
     active++;
-    maxActive = Math.max(maxActive, active);
-    await sleep(1, ctx.signal);
-    active--;
-    return `summary:${doc.id}`;
+    try {
+      maxActive = Math.max(maxActive, active);
+      await sleep(1, ctx.signal);
+      return `summary:${doc.id}`;
+    } finally {
+      active--;
+    }
   })
   .stream()) {
   summaries.push(summary);
-  if (summaries.length === 12) break;
+  if (summaries.length === TAKE) break;
 }
 
-assert.equal(summaries.length, 12);
-assert.ok(produced <= 15);
-assert.equal(maxActive, 5);
+assert.equal(summaries.length, TAKE);
+assert.ok(produced <= TAKE + CONCURRENCY - 1);
+assert.equal(maxActive, CONCURRENCY);
+assert.equal(active, 0);
 
 process.stdout.write(`${JSON.stringify({
   sample: "streaming-summarizer",
   summaries: summaries.length,
   produced,
   maxActive,
+  active,
 })}\n`);
 
 function sleep(ms, signal) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener("abort", () => {
+    const onAbort = () => {
       clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
       reject(signal.reason);
-    }, { once: true });
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
   });
 }

@@ -37,15 +37,19 @@ import type {
   ContextKey,
   BudgetState,
   Duration,
-  RetryOpts,
   Unsubscribe,
   TaskLogger,
+  CleanupContext,
+  CleanupOpts,
 } from "../types/index.js";
 import { CancellationError, BudgetExceededError, CostBudget, TimeoutError } from "../types/index.js";
 import { ContextBagImpl } from "./context.js";
 import { EventBus } from "./event-bus.js";
 import { parseDuration } from "./duration.js";
-import { renderTree } from "./tree.js";
+
+type MutableBudgetState<T extends BudgetState = BudgetState> = {
+  -readonly [K in keyof T]: T[K];
+};
 
 // --- ID generation ------------------------------------------------------
 let _nextId = 0;
@@ -54,6 +58,12 @@ const makeTaskId = (): TaskId => `task-${++_nextId}` as TaskId;
 const MAX_TASK_NAME_LENGTH = 128;
 const MAX_IDEMPOTENCY_KEY_LENGTH = 512;
 const MAX_DEFERS_PER_OWNER = 10_000;
+const DEFAULT_CLEANUP_TIMEOUT_MS = 30_000;
+
+interface CleanupRecord {
+  readonly cleanup: (ctx: CleanupContext) => void | Promise<void>;
+  readonly timeoutMs: number;
+}
 
 // --- AsyncLocalStorage for current scope ------------------------------
 const currentScope = new AsyncLocalStorage<ScopeImpl>();
@@ -65,11 +75,6 @@ const currentScope = new AsyncLocalStorage<ScopeImpl>();
  */
 export function getCurrentScope(): ScopeImpl | null {
   return currentScope.getStore() ?? null;
-}
-
-/** Links multiple abort signals into one signal without changing their owners. */
-function anySignal(signals: AbortSignal[]): AbortSignal {
-  return AbortSignal.any(signals);
 }
 
 // --- Internal task record (engine-side mirror of TaskHandle) -----------
@@ -108,8 +113,9 @@ export class ScopeImpl implements Scope {
   private readonly tasks = new Map<TaskId, TaskRecord>();
   private readonly childScopes = new Set<ScopeImpl>();
   private readonly idempotencyHandles = new Map<string, TaskHandle<unknown>>();
-  private readonly defers: Array<() => void | Promise<void>> = [];
+  private readonly defers: CleanupRecord[] = [];
   private readonly cancelHandlers = new Set<(r: CancelReason) => void>();
+  private readonly cleanupTimeoutMs: number;
   private state: "running" | "cancelling" | "closed" = "running";
   private readonly startedAt = Date.now();
   private deadlineAt?: number;
@@ -126,8 +132,11 @@ export class ScopeImpl implements Scope {
     this.parent = parent;
     this.context = opts.context ?? parent?.context ?? new ContextBagImpl();
     this.name = opts.name;
+    this.cleanupTimeoutMs = opts.cleanupTimeout !== undefined
+      ? parseDuration(opts.cleanupTimeout)
+      : parent?.cleanupTimeoutMs ?? DEFAULT_CLEANUP_TIMEOUT_MS;
     this.signal = parent
-      ? anySignal([parent.signal, this.ownAbort.signal])
+      ? AbortSignal.any([parent.signal, this.ownAbort.signal])
       : this.ownAbort.signal;
     this.bus = new EventBus(parent?.bus ?? null);
 
@@ -160,17 +169,26 @@ export class ScopeImpl implements Scope {
       const existing = this.idempotencyHandles.get(opts.idempotencyKey);
       if (existing !== undefined) return existing as TaskHandle<T>;
     }
+    assertNoTaskPolicyShortcuts(opts);
 
     const id = makeTaskId();
     const name = opts.name ?? "anonymous";
     const kind = opts.kind ?? "io";
+    if (kind !== "io" && kind !== "llm" && kind !== "tool" && kind !== "cpu" && kind !== "custom") {
+      throw new RangeError("task kind");
+    }
     const startedAt = Date.now();
+    const cleanupTimeoutMs = opts.cleanupTimeout !== undefined
+      ? parseDuration(opts.cleanupTimeout)
+      : this.cleanupTimeoutMs;
 
-    const taskAbort = new AbortController();
-    const taskSignal = anySignal([this.signal, taskAbort.signal]);
-    const defers: Array<() => void | Promise<void>> = [];
+    const defers: CleanupRecord[] = [];
+    let taskAbort: AbortController | undefined;
+    let taskSignal: AbortSignal | undefined;
 
-    const ctx = this.makeTaskContext(id, name, kind, taskSignal, defers);
+    const getTaskSignal = () => taskSignal ||= AbortSignal.any([this.signal, (taskAbort ||= new AbortController()).signal]);
+
+    const ctx = this.makeTaskContext(id, name, kind, getTaskSignal, defers, cleanupTimeoutMs);
 
     const record: TaskRecord<T> = {
       id, name, kind,
@@ -178,7 +196,10 @@ export class ScopeImpl implements Scope {
       attempt: 1,
       startedAt,
       promise: undefined as unknown as Promise<T>,
-      cancel: (reason) => taskAbort.abort(new CancellationError(reason)),
+      cancel: (reason) => {
+        getTaskSignal();
+        taskAbort!.abort(new CancellationError(reason));
+      },
       background,
       ...(opts.meta !== undefined ? { meta: opts.meta } : {}),
     };
@@ -189,51 +210,85 @@ export class ScopeImpl implements Scope {
       this.context
     );
 
-    const executable = applyTaskPolicies(task, opts, this, id);
-
     const promise = (async () => {
       record.status = "running";
+      let outcome: { ok: true; value: T } | { ok: false; error: unknown } | undefined;
+      let terminalEvent: TaskEvent | undefined;
       try {
-        const value = await currentScope.run(this, () => executable(ctx));
+        const value = await currentScope.run(this, () => task(ctx));
         record.status = "succeeded";
         record.endedAt = Date.now();
-        this.bus.emit(
-          { type: "task:succeeded", taskId: id, durationMs: record.endedAt - startedAt, at: record.endedAt },
-          this.context
-        );
-        return value;
+        terminalEvent = { type: "task:succeeded", taskId: id, durationMs: record.endedAt - startedAt, at: record.endedAt };
+        outcome = { ok: true, value };
       } catch (err) {
         record.endedAt = Date.now();
-        if (err instanceof CancellationError) {
+        if (err instanceof TimeoutError) {
+          record.status = "failed";
+          if (!record.background && this.firstChildFailure === undefined) {
+            this.firstChildFailure = err;
+            this.cancel({ kind: "sibling_failed", siblingId: id, error: err });
+          }
+          terminalEvent = {
+            type: "task:failed",
+            taskId: id,
+            error: err,
+            durationMs: record.endedAt - startedAt,
+            at: record.endedAt,
+          };
+        } else if (err instanceof CancellationError) {
           record.status = "cancelled";
-          this.bus.emit(
-            { type: "task:cancelled", taskId: id, reason: err.reason, durationMs: record.endedAt - startedAt, at: record.endedAt },
-            this.context
-          );
+          terminalEvent = {
+            type: "task:cancelled",
+            taskId: id,
+            reason: err.reason,
+            durationMs: record.endedAt - startedAt,
+            at: record.endedAt,
+          };
         } else {
           record.status = "failed";
           if (!record.background && this.firstChildFailure === undefined) {
             this.firstChildFailure = err;
             this.cancel({ kind: "sibling_failed", siblingId: id, error: err });
           }
-          this.bus.emit(
-            { type: "task:failed", taskId: id, error: err, durationMs: record.endedAt - startedAt, at: record.endedAt },
-            this.context
-          );
+          terminalEvent = {
+            type: "task:failed",
+            taskId: id,
+            error: err,
+            durationMs: record.endedAt - startedAt,
+            at: record.endedAt,
+          };
         }
-        throw err;
-      } finally {
+        outcome = { ok: false, error: err };
+      }
+
+      try {
         // Run defers LIFO; errors logged, never thrown (I5)
         while (defers.length > 0) {
-          const fn = defers.pop()!;
-          try { await fn(); } catch (cleanupErr) {
+          const record = defers.pop()!;
+          try {
+            if (await runCleanup(record) === "timed_out") {
+              this.bus.emit(
+                { type: "task:cleanup_timeout", taskId: id, timeoutMs: record.timeoutMs, at: Date.now() },
+                this.context
+              );
+            }
+          } catch (cleanupErr) {
             this.bus.emit(
-              { type: "task:failed", taskId: id, error: cleanupErr, durationMs: 0, at: Date.now() },
+              { type: "task:cleanup_failed", taskId: id, error: cleanupErr, at: Date.now() },
               this.context
             );
           }
         }
+      } finally {
+        if (opts.idempotencyKey !== undefined) this.idempotencyHandles.delete(opts.idempotencyKey);
       }
+
+      /* v8 ignore next -- each task execution path assigns a terminal event. */
+      if (terminalEvent !== undefined) this.bus.emit(terminalEvent, this.context);
+      /* v8 ignore next -- each task execution path assigns an outcome. */
+      if (outcome === undefined) throw new Error("Task outcome missing");
+      if (outcome.ok) return outcome.value;
+      throw outcome.error;
     })();
 
     record.promise = promise;
@@ -242,7 +297,7 @@ export class ScopeImpl implements Scope {
     const handle = promise as TaskHandle<T>;
     Object.defineProperty(handle, "id", { value: id });
     Object.defineProperty(handle, "name", { value: name });
-    Object.defineProperty(handle, "signal", { value: taskSignal });
+    Object.defineProperty(handle, "signal", { get: getTaskSignal });
     Object.defineProperty(handle, "status", { get: () => record.status });
     Object.defineProperty(handle, "cancel", {
       value: (reason: CancelReason | string = "manual") => {
@@ -287,15 +342,18 @@ export class ScopeImpl implements Scope {
       this.cancel({
         kind: "deadline",
         deadlineAt: this.deadlineAt!,
-        elapsedMs: Date.now() - this.startedAt,
+        elapsedMs: Math.max(0, Date.now() - this.startedAt),
       });
     }, ms);
   }
 
   /** Registers scope-level cleanup to run in reverse registration order. */
-  defer(cleanup: () => void | Promise<void>): void {
+  defer(cleanup: (ctx: CleanupContext) => void | Promise<void>, opts: CleanupOpts = {}): void {
     assertCanAddDefer(this.defers.length);
-    this.defers.push(cleanup);
+    this.defers.push({
+      cleanup,
+      timeoutMs: opts.timeout !== undefined ? parseDuration(opts.timeout) : this.cleanupTimeoutMs,
+    });
   }
 
   /** Subscribes to this scope tree's typed event stream. */
@@ -336,10 +394,17 @@ export class ScopeImpl implements Scope {
 
     // Run defers LIFO, errors logged not thrown (I5)
     while (this.defers.length > 0) {
-      const fn = this.defers.pop()!;
-      try { await fn(); } catch (err) {
+      const record = this.defers.pop()!;
+      try {
+        if (await runCleanup(record) === "timed_out") {
+          this.bus.emit(
+            { type: "scope:cleanup_timeout", scopeId: this.id, timeoutMs: record.timeoutMs, at: Date.now() },
+            this.context
+          );
+        }
+      } catch (err) {
         this.bus.emit(
-          { type: "task:failed", taskId: makeTaskId(), error: err, durationMs: 0, at: Date.now() },
+          { type: "scope:cleanup_failed", scopeId: this.id, error: err, at: Date.now() },
           this.context
         );
       }
@@ -411,11 +476,6 @@ export class ScopeImpl implements Scope {
     return snapshot;
   }
 
-  /** Renders this scope's current snapshot as a human-readable tree. */
-  tree(opts: import("../types/index.js").TreeOpts = {}): string {
-    return renderTree(this.status(), opts);
-  }
-
   // -- Build a TaskContext for a spawned task body ---------------------
 
   /** Builds the task-facing context object for one spawned task body. */
@@ -423,21 +483,25 @@ export class ScopeImpl implements Scope {
     id: TaskId,
     name: string,
     kind: TaskKind,
-    signal: AbortSignal,
-    defers: Array<() => void | Promise<void>>
+    getSignal: () => AbortSignal,
+    defers: CleanupRecord[],
+    cleanupTimeoutMs: number
   ): import("../types/index.js").TaskContext {
     const scope = this;
     const log = makeTaskLogger(scope, id);
     return {
-      signal,
+      get signal() { return getSignal(); },
       scope,
       attempt: 1,
       id, name, kind,
       context: this.context,
       log,
-      defer(fn) {
+      defer(fn, opts = {}) {
         assertCanAddDefer(defers.length);
-        defers.push(fn);
+        defers.push({
+          cleanup: fn,
+          timeoutMs: opts.timeout !== undefined ? parseDuration(opts.timeout) : cleanupTimeoutMs,
+        });
       },
       report(p) {
         scope.bus.emit({
@@ -606,9 +670,9 @@ function findBudgetOwner<T extends BudgetState>(
 function getMutableBudgetState<T extends BudgetState>(
   context: ContextBag,
   key: ContextKey<T>
-): T | undefined {
+): MutableBudgetState<T> | undefined {
   if (context instanceof ContextBagImpl) return context.getMutableBudget(key);
-  return context.get(key);
+  return context.get(key) as MutableBudgetState<T> | undefined;
 }
 
 function getBudgetIdentity<T extends BudgetState>(
@@ -620,7 +684,7 @@ function getBudgetIdentity<T extends BudgetState>(
 
 function assertBudgetCharge(amount: number): void {
   if (!Number.isFinite(amount) || amount < 0) {
-    throw new RangeError("Budget charge amount must be a finite non-negative number");
+    throw new RangeError("finite non-negative");
   }
 }
 
@@ -630,130 +694,39 @@ function assertCanAddDefer(currentCount: number): void {
   }
 }
 
+async function runCleanup(record: CleanupRecord): Promise<"completed" | "timed_out"> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<"timed_out">((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort(new TimeoutError(record.timeoutMs));
+      resolve("timed_out");
+    }, record.timeoutMs);
+  });
+  const cleanup = Promise.resolve()
+    .then(() => record.cleanup({ signal: controller.signal, timeoutMs: record.timeoutMs }))
+    .then(() => "completed" as const);
+  void cleanup.catch(() => undefined);
+
+  try {
+    return await Promise.race([cleanup, timeout]);
+  } finally {
+    /* v8 ignore next -- cleanup timeout assigns the timer synchronously. */
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 function assertBoundedString(label: string, value: string, maxLength: number): void {
   if (value.length === 0 || value.length > maxLength) {
     throw new RangeError(`${label} must be 1-${maxLength} characters`);
   }
 }
 
-// --- Task option policies ------------------------------------------------------
-
-/** Applies task-local resilience policies declared at the spawn boundary. */
-function applyTaskPolicies<T>(
-  task: TaskFn<T>,
-  opts: TaskOpts,
-  scope: ScopeImpl,
-  taskId: TaskId
-): TaskFn<T> {
-  let wrapped = task;
-  if (opts.retry !== undefined) wrapped = wrapRetry(wrapped, opts.retry, scope, taskId);
-  if (opts.timeout !== undefined) wrapped = wrapTimeout(wrapped, opts.timeout);
-  if (opts.deadline !== undefined) {
-    const at = typeof opts.deadline === "number" ? opts.deadline : opts.deadline.getTime();
-    wrapped = wrapTimeout(wrapped, Math.max(0, at - Date.now()));
+function assertNoTaskPolicyShortcuts(opts: TaskOpts): void {
+  const raw = opts as Record<string, unknown>;
+  if ("retry" in raw || "timeout" in raw || "deadline" in raw) {
+    throw new Error("must use run.retry");
   }
-  return wrapped;
-}
-
-/** Wraps one task with a cancel-aware timeout. */
-function wrapTimeout<T>(task: TaskFn<T>, duration: Duration): TaskFn<T> {
-  const timeoutMs = parseDuration(duration);
-  return async (ctx) => {
-    const ctrl = new AbortController();
-    const signal = anySignal([ctx.signal, ctrl.signal]);
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const timeoutPromise = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => {
-        const err = new TimeoutError(timeoutMs);
-        ctrl.abort(err);
-        reject(err);
-      }, timeoutMs);
-    });
-
-    try {
-      return await Promise.race([task({ ...ctx, signal }), timeoutPromise]);
-    } finally {
-      /* v8 ignore if -- timeoutPromise assigns the timer synchronously. */
-      if (timer !== undefined) clearTimeout(timer);
-    }
-  };
-}
-
-/** Wraps one task with a cancel-aware retry policy and typed retry events. */
-function wrapRetry<T>(
-  task: TaskFn<T>,
-  opts: number | RetryOpts,
-  scope: ScopeImpl,
-  taskId: TaskId
-): TaskFn<T> {
-  const policy = normalizeRetry(opts);
-  return async (ctx) => {
-    let lastErr: unknown;
-    for (let attempt = 1; attempt <= policy.times; attempt++) {
-      scope.updateTaskAttempt(taskId, attempt);
-      try {
-        return await task({ ...ctx, attempt });
-      } catch (err) {
-        lastErr = err;
-        if (err instanceof CancellationError) throw err;
-        if (attempt >= policy.times || !policy.retryIf(err, attempt)) throw err;
-
-        const delayMs = computeDelay(attempt, policy);
-        scope.emitTaskRetry(taskId, attempt + 1, err, delayMs);
-        await sleep(delayMs, ctx.signal);
-      }
-    }
-    /* v8 ignore next -- normalizeRetry guarantees the loop executes at least once. */
-    throw lastErr;
-  };
-}
-
-function normalizeRetry(opts: number | RetryOpts): Required<Pick<RetryOpts, "times" | "initialDelay" | "maxDelay" | "jitter" | "retryIf">> & {
-  backoff: NonNullable<RetryOpts["backoff"]>;
-} {
-  const raw = typeof opts === "number" ? { times: opts } : opts;
-  return {
-    times: Math.max(1, raw.times),
-    backoff: raw.backoff ?? "exponential",
-    initialDelay: raw.initialDelay ?? 100,
-    maxDelay: raw.maxDelay ?? 30_000,
-    jitter: raw.jitter ?? true,
-    retryIf: raw.retryIf ?? (() => true),
-  };
-}
-
-function computeDelay(attempt: number, policy: ReturnType<typeof normalizeRetry>): number {
-  return computeBackoffDelay(attempt, policy.backoff, parseDuration(policy.initialDelay), parseDuration(policy.maxDelay), policy.jitter);
-}
-
-function computeBackoffDelay(
-  attempt: number,
-  backoff: RetryOpts["backoff"] = "fixed",
-  initialMs = 100,
-  maxMs = 30_000,
-  jitter = false
-): number {
-  let delay: number;
-  if (typeof backoff === "function") delay = parseDuration(backoff(attempt));
-  else if (backoff === "linear") delay = initialMs * attempt;
-  else if (backoff === "exponential") delay = initialMs * Math.pow(2, attempt - 1);
-  else delay = initialMs;
-  delay = Math.min(delay, maxMs);
-  return jitter ? delay * (0.5 + Math.random() * 0.5) : delay;
-}
-
-function sleep(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal.aborted) {
-      reject(signal.reason);
-      return;
-    }
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener("abort", () => {
-      clearTimeout(timer);
-      reject(signal.reason);
-    }, { once: true });
-  });
 }
 
 // --- run.group - the canonical scope opener -----------------------------------
@@ -792,7 +765,7 @@ export async function group<R>(
     result = await currentScope.run(scope, () => body(spawner));
   } catch (err) {
     bodyError = err;
-    if (!(err instanceof CancellationError)) {
+    if (!(err instanceof CancellationError) || err instanceof TimeoutError) {
       scope.cancel({ kind: "parent_failed", error: err });
     }
   }

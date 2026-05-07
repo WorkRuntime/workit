@@ -4,9 +4,9 @@
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0
  *
- * Pure rendering over `ScopeSnapshot`; no task state is read here. This keeps
- * `scope.tree()` testable and lets future exporters reuse the same snapshot
- * contract without depending on the live engine.
+ * Pure rendering over `ScopeSnapshot`; no task state is read here. This lets
+ * diagnostics and future exporters reuse the same snapshot contract without
+ * depending on the live engine.
  */
 
 import type { ScopeSnapshot, TaskSnapshot, TreeOpts } from "../types/index.js";
@@ -49,7 +49,7 @@ const UNICODE: Glyphs = {
 
 /** Renders a scope snapshot as a status tree plus aggregate summary. */
 export function renderTree(snapshot: ScopeSnapshot, opts: TreeOpts = {}): string {
-  const ascii = opts.ascii ?? (process.env.NO_UNICODE === "1" || process.stdout.isTTY === false);
+  const ascii = opts.ascii ?? defaultAscii();
   const glyphs = ascii ? ASCII : UNICODE;
   const maxDepth = opts.maxDepth ?? Number.POSITIVE_INFINITY;
   const lines = [snapshot.name ?? snapshot.id];
@@ -58,6 +58,13 @@ export function renderTree(snapshot: ScopeSnapshot, opts: TreeOpts = {}): string
   lines.push("");
   lines.push(renderSummary(snapshot, ascii));
   return lines.join("\n");
+}
+
+function defaultAscii(): boolean {
+  const runtime = globalThis as typeof globalThis & {
+    process?: { env?: { NO_UNICODE?: string }; stdout?: { isTTY?: boolean } };
+  };
+  return runtime.process?.env?.NO_UNICODE === "1" || runtime.process?.stdout?.isTTY === false;
 }
 
 function renderChildren(

@@ -13,6 +13,12 @@ development line until a stable support policy is published.
 
 Do not open a public issue for suspected vulnerabilities.
 
+Security contact: admilsoncossa@gmail.com
+
+PGP encryption: request the maintainer's current public key through the security
+contact before sending secrets, exploit details that include credentials, or
+tenant-sensitive material. Do not attach secrets to an unencrypted first report.
+
 Send a private report to the project maintainer with:
 
 - affected version or commit
@@ -36,6 +42,7 @@ The core package must keep these guarantees:
 - zero runtime dependencies
 - no core networking imports or remote telemetry clients
 - bounded exporter queues for opt-in telemetry bridges
+- caller-owned telemetry sanitizers before events leave the process
 - no skipped or focused tests in release verification
 - 100% statement, branch, function, and line coverage
 - CycloneDX SBOM generation and validation
@@ -68,6 +75,16 @@ npm publish --provenance --access public --dry-run
 The package must not publish source maps, local docs, tests, secrets, temporary
 files, debug output, or private agent instructions.
 
+Release tags must be signed. The release operator must create the version tag
+only after the scoped release commit is clean and verified:
+
+```sh
+git tag -s vX.Y.Z -m "Release vX.Y.Z"
+git tag -v vX.Y.Z
+```
+
+Unsigned release tags are not valid release evidence.
+
 ## Responsible Disclosure Scope
 
 Reports are in scope when they affect:
@@ -79,6 +96,19 @@ Reports are in scope when they affect:
 - telemetry exporter isolation
 - package contents or supply-chain integrity
 - worker-thread offload boundaries
+
+Worker-thread offload is an explicit local execution boundary. `offload()`
+accepts only local file URLs or paths controlled by the application; inline and remote module URLs
+are rejected before import, and parent directory traversal is
+rejected before the worker starts. Worker input must be plain structured-clone data.
+Primitives, arrays, plain objects, `Map`, `Set`, dates, regexps, buffers,
+and typed arrays are accepted. Functions, symbols, class instances, and objects
+with custom prototypes are rejected before worker startup. When `offload()` is
+given a timeout, WorkJS terminates the worker thread on timeout so
+non-cooperative worker code cannot keep running in-process. In-process helpers
+such as `run.uncancellable()` remain cooperative shields; JavaScript code that
+ignores abort signals cannot be forcibly stopped without a worker/process
+boundary.
 
 Out of scope:
 

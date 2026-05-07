@@ -7,6 +7,7 @@
 
 import { test } from "vitest";
 import assert from "node:assert/strict";
+import { getEventListeners } from "node:events";
 import { CancellationError, work } from "../../dist/index.js";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -119,6 +120,25 @@ test("work().stream is backpressured over virtual billion sources and respects c
   assert.equal(active, 0);
 });
 
+test("work().stream yields each item when it is ready instead of waiting for the whole batch", async () => {
+  const yielded = [];
+  const startedAt = Date.now();
+
+  for await (const item of work([1, 2])
+    .inParallel(2)
+    .map(async (value) => {
+      await sleep(value === 1 ? 40 : 1);
+      return value;
+    })
+    .stream()) {
+    yielded.push({ item, elapsedMs: Date.now() - startedAt });
+  }
+
+  assert.deepEqual(yielded.map((entry) => entry.item), [2, 1]);
+  assert.ok(yielded[0].elapsedMs < yielded[1].elapsedMs);
+  assert.ok(yielded[0].elapsedMs < 30);
+});
+
 test("work().stream propagates failures and cancels active siblings", async () => {
   let slowCancelled = false;
 
@@ -183,6 +203,22 @@ test("work().withRateLimit spaces item starts while preserving bounded concurren
   assert.throws(() => work([1]).withRateLimit(0), /positive finite/);
 });
 
+test("work().withRateLimit removes abort listeners after completed waits", async () => {
+  const signals = [];
+
+  const output = await work([1, 2])
+    .inParallel(2)
+    .withRateLimit(20)
+    .do(async (item, ctx) => {
+      signals.push(ctx.signal);
+      return item;
+    });
+
+  assert.deepEqual(output.results, [1, 2]);
+  assert.equal(signals.length, 2);
+  assert.equal(getEventListeners(signals[1], "abort").length, 0);
+});
+
 test("work fluent progress and completion hooks observe item-level outcomes", async () => {
   const progress = [];
   const done = [];
@@ -228,6 +264,7 @@ test("work().onCancel partial returns completed and cancelled item receipts", as
   const output = await work([1, 2])
     .inParallel(2)
     .withTimeout(1)
+    .onError("fail")
     .onCancel("partial")
     .do(async (item, ctx) => {
       if (item === 1) return "early";
@@ -247,6 +284,7 @@ test("work().onCancel partial returns completed and cancelled item receipts", as
 
   await assert.rejects(
     work([1])
+      .onError("fail")
       .onCancel("partial")
       .do(async () => {
         throw new Error("ordinary failure");

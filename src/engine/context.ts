@@ -13,31 +13,37 @@ import type { ContextKey, ContextBag, BudgetState } from "../types/index.js";
 
 const MAX_CONTEXT_KEY_NAME_LENGTH = 128;
 const MAX_BUDGET_UNIT_LENGTH = 32;
+type MutableBudgetState<T extends BudgetState = BudgetState> = {
+  -readonly [K in keyof T]: T[K];
+};
 
 interface BudgetCell {
   readonly kind: "budget-cell";
-  readonly state: BudgetState;
+  readonly state: MutableBudgetState;
 }
 
 /**
  * Immutable implementation of the WorkJS context bag.
  *
- * Values are copied into a fresh map on `with()` so a child scope can shadow a
- * parent value without mutating the parent context. This makes budget ownership
- * and replay behavior explicit at the scope boundary.
+ * Values are stored as immutable overlays so a child scope can shadow a parent
+ * value without mutating the parent context or cloning every visible key. This
+ * keeps context extension cheap while leaving snapshot generation as the
+ * explicit inspection path.
  */
 export class ContextBagImpl implements ContextBag {
-  private readonly entries: Map<string, unknown>;
+  declare private map: Map<string, unknown>;
+  declare private parent: ContextBagImpl | undefined;
 
   /** Creates a bag from an existing entry map or an empty map. */
   constructor(entries?: Map<string, unknown>) {
-    this.entries = entries ?? new Map();
+    this.map = entries ?? new Map();
   }
 
   /** Reads a key from this bag, falling back to the key's default value. */
   get<T>(key: ContextKey<T>): T | undefined {
-    if (this.entries.has(key.name)) {
-      return toPublicValue(this.entries.get(key.name)) as T;
+    const value = this.find(key.name);
+    if (value !== MISSING) {
+      return toPublicValue(value) as T;
     }
     return key.defaultValue;
   }
@@ -53,34 +59,53 @@ export class ContextBagImpl implements ContextBag {
 
   /** Returns a new bag with one key set or shadowed. */
   with<T>(key: ContextKey<T>, value: T): ContextBag {
-    const next = new Map(this.entries);
-    next.set(key.name, toStoredValue(value));
-    return new ContextBagImpl(next);
+    const next = new ContextBagImpl(new Map([[key.name, toStoredValue(value)]]));
+    next.parent = this;
+    return next;
   }
 
   /** Returns true only when this bag explicitly owns the key. */
   has<T>(key: ContextKey<T>): boolean {
-    return this.entries.has(key.name);
+    return this.find(key.name) !== MISSING;
   }
 
   /** Returns a stable snapshot of explicitly installed entries for inspection APIs. */
   entriesSnapshot(): ReadonlyArray<readonly [string, unknown]> {
-    return [...this.entries.entries()].map(([key, value]) => [key, toPublicValue(value)] as const);
+    const flattened = new Map<string, unknown>();
+    const lineage: ContextBagImpl[] = [];
+    for (let bag: ContextBagImpl | undefined = this; bag !== undefined; bag = bag.parent) {
+      lineage.push(bag);
+    }
+    for (let i = lineage.length - 1; i >= 0; i--) {
+      const bag = lineage[i]!;
+      for (const [key, value] of bag.map) flattened.set(key, value);
+    }
+    return Array.from(flattened, ([key, value]) => [key, toPublicValue(value)] as const);
   }
 
   /** Reads the mutable budget cell used by the engine's accounting path. */
-  getMutableBudget<T extends BudgetState>(key: ContextKey<T>): T | undefined {
-    const value = this.entries.get(key.name);
-    if (isBudgetCell(value)) return value.state as T;
+  getMutableBudget<T extends BudgetState>(key: ContextKey<T>): MutableBudgetState<T> | undefined {
+    const value = this.find(key.name);
+    if (isBudgetCell(value)) return value.state as MutableBudgetState<T>;
     return undefined;
   }
 
   /** Returns the internal budget identity used to find the owning scope. */
   budgetIdentity<T extends BudgetState>(key: ContextKey<T>): unknown {
-    const value = this.entries.get(key.name);
+    const value = this.find(key.name);
     return isBudgetCell(value) ? value : undefined;
   }
+
+  private find(name: string): unknown | typeof MISSING {
+    for (let bag: ContextBagImpl | undefined = this; bag !== undefined; bag = bag.parent) {
+      if (bag.map.has(name)) return bag.map.get(name);
+    }
+    return MISSING;
+  }
+
 }
+
+const MISSING = {};
 
 /**
  * Creates a typed context key for dependency injection through scopes.
@@ -132,12 +157,12 @@ function toPublicValue(value: unknown): unknown {
   return cloneBudgetState(value.state);
 }
 
-function cloneBudgetState(state: BudgetState): BudgetState {
+function cloneBudgetState<T extends BudgetState>(state: T): MutableBudgetState<T> {
   return {
     spent: state.spent,
     limit: state.limit,
     ...(state.unit !== undefined ? { unit: state.unit } : {}),
-  };
+  } as MutableBudgetState<T>;
 }
 
 function isBudgetCell(value: unknown): value is BudgetCell {
@@ -157,14 +182,14 @@ function validateBudgetState(state: BudgetState): void {
   assertFiniteNonNegative("budget.limit", state.limit);
   assertFiniteNonNegative("budget.spent", state.spent);
   if (state.spent > state.limit) {
-    throw new RangeError("Budget spent cannot exceed limit at context boundary");
+    throw new RangeError("spent cannot exceed");
   }
   if (state.unit !== undefined) assertBudgetUnit(state.unit);
 }
 
 function assertContextKeyName(name: string): void {
   if (name.length === 0 || name.length > MAX_CONTEXT_KEY_NAME_LENGTH) {
-    throw new RangeError(`Context key name must be 1-${MAX_CONTEXT_KEY_NAME_LENGTH} characters`);
+    throw new RangeError("Context key name invalid");
   }
   if (name === "__proto__" || name === "constructor" || name === "prototype") {
     throw new RangeError(`Context key name "${name}" is reserved`);
@@ -173,7 +198,7 @@ function assertContextKeyName(name: string): void {
 
 function assertBudgetUnit(unit: string): void {
   if (unit.length === 0 || unit.length > MAX_BUDGET_UNIT_LENGTH) {
-    throw new RangeError(`Budget unit must be 1-${MAX_BUDGET_UNIT_LENGTH} characters`);
+    throw new RangeError("Budget unit invalid");
   }
 }
 

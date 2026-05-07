@@ -1,0 +1,99 @@
+{
+  "author": "Admilson B. F. Cossa",
+  "spdxLicense": "Apache-2.0",
+  "artifact": "workjs-public-proof",
+  "version": 1,
+  "evidenceCommands": [
+    "npm run check:benchmark",
+    "npm run check:1b",
+    "npm run check:stream-memory",
+    "npm run check:soak",
+    "npm run check:package-consumer",
+    "npm run check:claims"
+  ],
+  "benchmarkFixtures": [
+    {
+      "id": "group-one-task",
+      "command": "npm run check:benchmark",
+      "minimumOpsPerSecond": 5000
+    },
+    {
+      "id": "run-all-32",
+      "command": "npm run check:benchmark",
+      "minimumOpsPerSecond": 500
+    },
+    {
+      "id": "one-billion-logical-stream",
+      "command": "npm run check:1b",
+      "minimumLogicalItemsPerSecond": 100000000
+    },
+    {
+      "id": "slow-consumer-stream-memory",
+      "command": "npm run check:stream-memory",
+      "maximumHeapGrowthBytes": 67108864
+    },
+    {
+      "id": "runtime-soak-100k",
+      "command": "npm run check:soak",
+      "logicalTasks": 100000
+    }
+  ],
+  "migrationGuides": [
+    "p-limit",
+    "p-map",
+    "RxJS",
+    "Bottleneck"
+  ],
+  "crossRuntimeMatrix": [
+    {
+      "runtime": "Node.js ESM",
+      "status": "supported",
+      "evidence": "npm run check:package-consumer"
+    },
+    {
+      "runtime": "Node.js CommonJS",
+      "status": "supported",
+      "evidence": "npm run check:package-consumer"
+    },
+    {
+      "runtime": "Express",
+      "status": "supported fixture",
+      "evidence": "npm run check:package-consumer"
+    },
+    {
+      "runtime": "Fastify",
+      "status": "supported fixture",
+      "evidence": "npm run check:package-consumer"
+    },
+    {
+      "runtime": "tRPC",
+      "status": "supported fixture",
+      "evidence": "npm run check:package-consumer"
+    },
+    {
+      "runtime": "Next.js route",
+      "status": "supported fixture",
+      "evidence": "npm run check:claims"
+    },
+    {
+      "runtime": "Vercel AI SDK handler",
+      "status": "supported fixture",
+      "evidence": "npm run check:package-consumer"
+    },
+    {
+      "runtime": "AWS Lambda handler",
+      "status": "supported fixture",
+      "evidence": "npm run check:claims"
+    },
+    {
+      "runtime": "Azure Functions handler",
+      "status": "supported fixture",
+      "evidence": "npm run check:claims"
+    },
+    {
+      "runtime": "Browser and edge workers",
+      "status": "explicit unsupported boundary",
+      "evidence": "npm run check:package-consumer"
+    }
+  ]
+}

@@ -16,6 +16,9 @@ import { TelemetryBudget } from "../types/index.js";
 import { ContextBagImpl } from "./context.js";
 
 const MAX_EVENT_HANDLERS = 10_000;
+type MutableBudgetState<T extends BudgetState = BudgetState> = {
+  -readonly [K in keyof T]: T[K];
+};
 
 /**
  * Scope-local event stream with parent bubbling.
@@ -82,15 +85,18 @@ export class EventBus {
   }
 
   private dispatch(event: TaskEvent): void {
-    for (const h of this.handlers) {
-      try { h(event); } catch { /* observer errors must not affect tasks */ }
+    for (let bus: EventBus | null = this; bus !== null; bus = bus.parent) {
+      for (const h of bus.handlers) {
+        try { h(event); } catch { /* observer errors must not affect tasks */ }
+      }
     }
-    if (this.parent) this.parent.dispatch(event);
   }
 
   private hasAnyHandler(): boolean {
-    if (this.handlers.size > 0) return true;
-    return this.parent ? this.parent.hasAnyHandler() : false;
+    for (let bus: EventBus | null = this; bus !== null; bus = bus.parent) {
+      if (bus.handlers.size > 0) return true;
+    }
+    return false;
   }
 
   private emitOverrunWarning(budget: BudgetState): void {
@@ -115,7 +121,7 @@ export class EventBus {
   }
 }
 
-function getTelemetryBudget(context: ContextBag): BudgetState | undefined {
+function getTelemetryBudget(context: ContextBag): MutableBudgetState | undefined {
   if (context instanceof ContextBagImpl) return context.getMutableBudget(TelemetryBudget);
-  return context.get(TelemetryBudget);
+  return context.get(TelemetryBudget) as MutableBudgetState | undefined;
 }

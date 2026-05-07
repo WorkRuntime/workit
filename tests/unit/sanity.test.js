@@ -48,6 +48,48 @@ test("defer blocks run in LIFO order on success", async () => {
   assert.deepEqual(order, ["c", "b", "a"]);
 });
 
+test("cleanup defers are deadline bounded and observable", async () => {
+  const events = [];
+  let taskCleanupSignalAborted;
+  let scopeCleanupSignalAborted;
+  const result = await group(async (task) => {
+    await task(async (ctx) => {
+      ctx.scope.onEvent((event) => events.push(event));
+    });
+
+    await task(async (ctx) => {
+      ctx.defer(async () => {
+        await new Promise(() => {});
+      });
+      return "task-cleanup-override";
+    }, { cleanupTimeout: 5 });
+
+    const value = await task(async (ctx) => {
+      ctx.defer((cleanup) => {
+        taskCleanupSignalAborted = cleanup.signal.aborted;
+      });
+      ctx.defer(async () => {
+        await new Promise(() => {});
+      }, { timeout: 4 });
+      ctx.scope.defer((cleanup) => {
+        scopeCleanupSignalAborted = cleanup.signal.aborted;
+      });
+      ctx.scope.defer(async () => {
+        await new Promise(() => {});
+      }, { timeout: 6 });
+      return "cleaned";
+    });
+    return value;
+  }, { cleanupTimeout: 10 });
+
+  assert.equal(result, "cleaned");
+  assert.equal(taskCleanupSignalAborted, false);
+  assert.equal(scopeCleanupSignalAborted, false);
+  assert.ok(events.some((event) => event.type === "task:cleanup_timeout" && event.timeoutMs === 5));
+  assert.ok(events.some((event) => event.type === "task:cleanup_timeout" && event.timeoutMs === 4));
+  assert.ok(events.some((event) => event.type === "scope:cleanup_timeout" && event.timeoutMs === 6));
+});
+
 test("scope cannot resolve before children settle", async () => {
   let childDone = false;
   const start = Date.now();
@@ -280,6 +322,23 @@ test("concurrent budget charges land at exact total", async () => {
   });
 
   assert.equal(Math.round(context.get(CostBudget).spent * 100), 100);
+});
+
+test("budget snapshots are read from runtime context instead of caller input objects", async () => {
+  const installedBudget = { spent: 0, limit: 100, unit: "USD" };
+  let runtimeBudget;
+
+  await run.context.with(CostBudget, installedBudget, async () => {
+    await group(async (task) => {
+      await task(async (ctx) => {
+        ctx.consumeCost(50);
+      });
+    });
+    runtimeBudget = run.context.budget(CostBudget);
+  });
+
+  assert.equal(installedBudget.spent, 0);
+  assert.deepEqual(runtimeBudget, { spent: 50, limit: 100, unit: "USD" });
 });
 
 // --- Telemetry budget ----------------------------------------------------------

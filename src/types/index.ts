@@ -50,6 +50,9 @@ const TIMEOUT_ERROR_BRAND = Symbol.for("workjs.error.TimeoutError");
 const BUDGET_ERROR_BRAND = Symbol.for("workjs.error.BudgetExceededError");
 const AGGREGATE_ERROR_BRAND = Symbol.for("workjs.error.WorkAggregateError");
 
+/** Maximum configured retry attempts accepted by WorkJS retry policies. */
+export const MAX_RETRY_ATTEMPTS = 1_000;
+
 function hasErrorBrand(value: unknown, brand: symbol): boolean {
   return typeof value === "object" && value !== null && (value as Record<symbol, unknown>)[brand] === true;
 }
@@ -71,7 +74,13 @@ export class CancellationError extends Error {
   }
 }
 
-/** Cancellation error raised by timeout policies. */
+/**
+ * Error raised by timeout policies.
+ *
+ * It extends `CancellationError` so timeout abort signals preserve their typed
+ * reason, but task settlement records timeout as failure, not user/parent
+ * cancellation.
+ */
 export class TimeoutError extends CancellationError {
   readonly [TIMEOUT_ERROR_BRAND] = true;
   readonly timeoutMs: number;
@@ -149,11 +158,30 @@ export type TaskResults<T extends readonly TaskFn<unknown>[]> = {
 };
 
 /** Output shape for batch APIs that make failure handling explicit. */
-export type WorkOutput<R> =
-  | { mode: "fail"; results: R[] }
-  | { mode: "continue"; results: R[]; errors: ItemError[] }
-  | { mode: "collect"; results: Settled<R>[] }
-  | { mode: "partial"; results: R[]; errors: ItemError[]; cancelled: CancelledItem[]; reason?: CancelReason };
+export type WorkErrorMode = "fail" | "continue" | "collect";
+export type WorkCancelMode = "throw" | "partial";
+export type FailWorkOutput<R> = { mode: "fail"; results: R[] };
+export type ContinueWorkOutput<R> = { mode: "continue"; results: R[]; errors: ItemError[] };
+export type CollectWorkOutput<R> = { mode: "collect"; results: Settled<R>[] };
+export type PartialWorkOutput<R> = {
+  mode: "partial";
+  results: R[];
+  errors: ItemError[];
+  cancelled: CancelledItem[];
+  reason?: CancelReason;
+};
+export type WorkOutputFor<
+  R,
+  M extends WorkErrorMode = "fail",
+  C extends WorkCancelMode = "throw",
+> = M extends "collect"
+  ? CollectWorkOutput<R>
+  : M extends "continue"
+    ? ContinueWorkOutput<R>
+    : C extends "partial"
+      ? FailWorkOutput<R> | PartialWorkOutput<R>
+      : FailWorkOutput<R>;
+export type WorkOutput<R> = WorkOutputFor<R, WorkErrorMode, WorkCancelMode>;
 
 /** Item-level error captured by continuing batch work. */
 export interface ItemError {
@@ -214,10 +242,14 @@ export type TaskEvent =
   | { type: "task:started"; taskId: TaskId; scopeId: ScopeId; name: string; kind: TaskKind; at: number }
   | { type: "task:retrying"; taskId: TaskId; attempt: number; error: unknown; nextDelayMs: number; at: number }
   | { type: "task:progress"; taskId: TaskId; pct?: number; message?: string; data?: unknown; at: number }
+  | { type: "task:cleanup_failed"; taskId: TaskId; error: unknown; at: number }
+  | { type: "task:cleanup_timeout"; taskId: TaskId; timeoutMs: number; at: number }
   | { type: "task:succeeded"; taskId: TaskId; durationMs: number; at: number }
   | { type: "task:failed"; taskId: TaskId; error: unknown; durationMs: number; at: number }
   | { type: "task:cancelled"; taskId: TaskId; reason: CancelReason; durationMs: number; at: number }
   | { type: "scope:opened"; scopeId: ScopeId; parentId: ScopeId | null; at: number }
+  | { type: "scope:cleanup_failed"; scopeId: ScopeId; error: unknown; at: number }
+  | { type: "scope:cleanup_timeout"; scopeId: ScopeId; timeoutMs: number; at: number }
   | { type: "scope:closing"; scopeId: ScopeId; reason: "completed" | "errored" | "cancelled"; at: number }
   | { type: "scope:closed"; scopeId: ScopeId; durationMs: number; droppedTelemetryEvents?: number; at: number };
 
@@ -255,9 +287,9 @@ export interface ContextBag {
 
 /** Mutable cooperative budget state stored in a scope context. */
 export interface BudgetState {
-  limit: number;
-  spent: number;
-  unit?: string;
+  readonly limit: number;
+  readonly spent: number;
+  readonly unit?: string;
 }
 
 // --- Task function and context --------------------------------------------
@@ -267,6 +299,7 @@ export type TaskFn<T> = (ctx: TaskContext) => Promise<T>;
 
 /** Retry policy for cancel-aware task wrappers. */
 export interface RetryOpts {
+  /** Maximum attempts including the first try. WorkJS rejects values above its safety cap. */
   times: number;
   backoff?: "fixed" | "linear" | "exponential" | ((attempt: number) => Duration);
   initialDelay?: Duration;
@@ -286,6 +319,25 @@ export interface BreakerOpts {
   failureThreshold: number;
   resetAfter: Duration;
   halfOpenMaxCalls?: number;
+}
+
+/** Signal and timing metadata passed to cleanup defers. */
+export interface CleanupContext {
+  readonly signal: AbortSignal;
+  readonly timeoutMs: number;
+}
+
+/** Per-cleanup override for bounded defer execution. */
+export interface CleanupOpts {
+  timeout?: Duration;
+}
+
+/** Policy for explicitly detached root work. */
+export interface DetachedOpts {
+  name?: string;
+  /** Maximum detached handle lifetime. Use `false` only for intentionally unbounded roots. */
+  maxLifetime?: Duration | false;
+  cleanupTimeout?: Duration;
 }
 
 /** Runtime contract exposed to a task body. */
@@ -315,7 +367,7 @@ export interface TaskContext {
   readonly log: TaskLogger;
 
   /** Registers cleanup that runs in LIFO order when the task settles. */
-  defer(cleanup: () => void | Promise<void>): void;
+  defer(cleanup: (ctx: CleanupContext) => void | Promise<void>, opts?: CleanupOpts): void;
 
   /** Emits a task progress event without changing task state. */
   report(progress: ProgressReport): void;
@@ -327,7 +379,7 @@ export interface TaskContext {
   consume<T extends BudgetState>(key: ContextKey<T>, amount: number): void;
 
   /** Returns active budget states visible to this task. */
-  budgets(): ReadonlyArray<{ key: string; state: BudgetState }>;
+  budgets(): ReadonlyArray<{ key: string; state: Readonly<BudgetState> }>;
 }
 
 // --- Task handle (Promise + control surface) -----------------------------
@@ -341,7 +393,7 @@ export interface TaskHandle<T> extends Promise<T> {
   cancel(reason?: CancelReason | string): void;
 }
 
-// --- Snapshots (for status() and tree()) ---------------------------------
+// --- Snapshots (for status() and renderTree()) ---------------------------
 
 /** Point-in-time task state returned by `Scope.status()`. */
 export interface TaskSnapshot {
@@ -371,7 +423,7 @@ export interface ScopeSnapshot {
   scopes: ScopeSnapshot[];
 }
 
-/** Rendering options for `scope.tree()` and `renderTree()`. */
+/** Rendering options for `renderTree()`. */
 export interface TreeOpts {
   ascii?: boolean;
   showDurations?: boolean;
@@ -387,10 +439,8 @@ export interface TaskOpts {
   name?: string;
   kind?: TaskKind;
   meta?: Record<string, unknown>;
-  timeout?: Duration;
-  deadline?: number | Date;
-  retry?: number | RetryOpts;
   idempotencyKey?: string;
+  cleanupTimeout?: Duration;
 }
 
 // --- Scope options --------------------------------------------------------
@@ -400,6 +450,7 @@ export interface ScopeOpts {
   name?: string;
   deadline?: Duration;
   context?: ContextBag;
+  cleanupTimeout?: Duration;
 }
 
 /** Public run namespace implemented by `src/run`. */
@@ -411,10 +462,17 @@ export interface RunNamespace {
   series<T>(tasks: TaskFn<T>[]): Promise<T[]>;
   pool<T>(concurrency: number, tasks: TaskFn<T>[]): Promise<T[]>;
   timeout<T>(task: TaskFn<T>, duration: Duration): TaskFn<T>;
+  uncancellable<T>(task: TaskFn<T>, opts: { timeout: Duration }): TaskFn<T>;
   deadline<T>(task: TaskFn<T>, at: number | Date): TaskFn<T>;
   retry<T>(task: TaskFn<T>, opts: number | RetryOpts): TaskFn<T>;
   hedge<T>(task: TaskFn<T>, opts: HedgeOpts): TaskFn<T>;
   fallback<T>(primary: TaskFn<T>, secondary: TaskFn<T>): TaskFn<T>;
+  bracket<R, T>(
+    acquire: (ctx: TaskContext) => R | Promise<R>,
+    use: (resource: R, ctx: TaskContext) => T | Promise<T>,
+    release: (resource: R, ctx: CleanupContext) => void | Promise<void>,
+    opts?: CleanupOpts
+  ): TaskFn<T>;
   circuitBreaker<T>(task: TaskFn<T>, opts: BreakerOpts): TaskFn<T>;
   group<R>(body: (task: {
     <T>(fn: TaskFn<T>, opts?: TaskOpts): TaskHandle<T>;
@@ -422,7 +480,7 @@ export interface RunNamespace {
   }) => Promise<R>, opts?: ScopeOpts): Promise<R>;
   scope<R>(body: (scope: Scope) => Promise<R>, opts?: ScopeOpts): Promise<R>;
   background<T>(task: TaskFn<T>): TaskHandle<T>;
-  detached<T>(task: TaskFn<T>): TaskHandle<T>;
+  detached<T>(task: TaskFn<T>, opts?: DetachedOpts): TaskHandle<T>;
   supervise<T>(task: TaskFn<T>, opts?: {
     restartOn?: "error" | "always" | ((err: unknown) => boolean);
     maxRestarts?: number;
@@ -433,6 +491,7 @@ export interface RunNamespace {
     current(): ContextBag;
     with<T, R>(key: ContextKey<T>, value: T, body: () => Promise<R>): Promise<R>;
     get<T>(key: ContextKey<T>): T | undefined;
+    budget<T extends BudgetState>(key: ContextKey<T>): Readonly<T> | undefined;
   };
 }
 
@@ -442,22 +501,27 @@ export interface WorkFactory {
 }
 
 /** Fluent builder for conservative, bounded batch work. */
-export interface WorkBuilder<I, O> {
-  inParallel(n: number): WorkBuilder<I, O>;
-  inSeries(): WorkBuilder<I, O>;
-  withConcurrencyLimit(n: number): WorkBuilder<I, O>;
-  withRateLimit(perSecond: number): WorkBuilder<I, O>;
-  withRetry(opts: number | RetryOpts): WorkBuilder<I, O>;
-  withTimeout(duration: Duration): WorkBuilder<I, O>;
-  withDeadline(at: number | Date): WorkBuilder<I, O>;
-  onError(strategy: "fail" | "continue" | "collect"): WorkBuilder<I, O>;
-  onCancel(strategy: "throw" | "partial"): WorkBuilder<I, O>;
-  onProgress(handler: (event: WorkProgressEvent<I>) => void): WorkBuilder<I, O>;
-  onItemDone<R>(handler: (event: WorkItemDoneEvent<I, R>) => void): WorkBuilder<I, O>;
-  map<R>(fn: (item: O, ctx: TaskContext) => R | Promise<R>): WorkBuilder<I, R>;
-  filter(fn: (item: O, ctx: TaskContext) => boolean | Promise<boolean>): WorkBuilder<I, O>;
-  tap(fn: (item: O, ctx: TaskContext) => void | Promise<void>): WorkBuilder<I, O>;
-  do<R>(fn: (item: O, ctx: TaskContext) => R | Promise<R>): Promise<WorkOutput<R>>;
+export interface WorkBuilder<
+  I,
+  O,
+  M extends WorkErrorMode = "fail",
+  C extends WorkCancelMode = "throw",
+> {
+  inParallel(n: number): WorkBuilder<I, O, M, C>;
+  inSeries(): WorkBuilder<I, O, M, C>;
+  withConcurrencyLimit(n: number): WorkBuilder<I, O, M, C>;
+  withRateLimit(perSecond: number): WorkBuilder<I, O, M, C>;
+  withRetry(opts: number | RetryOpts): WorkBuilder<I, O, M, C>;
+  withTimeout(duration: Duration): WorkBuilder<I, O, M, C>;
+  withDeadline(at: number | Date): WorkBuilder<I, O, M, C>;
+  onError<N extends WorkErrorMode>(strategy: N): WorkBuilder<I, O, N, C>;
+  onCancel<N extends WorkCancelMode>(strategy: N): WorkBuilder<I, O, M, N>;
+  onProgress(handler: (event: WorkProgressEvent<I>) => void): WorkBuilder<I, O, M, C>;
+  onItemDone<R>(handler: (event: WorkItemDoneEvent<I, R>) => void): WorkBuilder<I, O, M, C>;
+  map<R>(fn: (item: O, ctx: TaskContext) => R | Promise<R>): WorkBuilder<I, R, M, C>;
+  filter(fn: (item: O, ctx: TaskContext) => boolean | Promise<boolean>): WorkBuilder<I, O, M, C>;
+  tap(fn: (item: O, ctx: TaskContext) => void | Promise<void>): WorkBuilder<I, O, M, C>;
+  do<R>(fn: (item: O, ctx: TaskContext) => R | Promise<R>): Promise<WorkOutputFor<R, M, C>>;
   collect(): Promise<O[]>;
   stream(): AsyncIterable<O>;
 }
@@ -480,13 +544,10 @@ export interface Scope {
   deadline(duration: Duration): void;
 
   /** Registers scope-level cleanup that runs in LIFO order on close. */
-  defer(cleanup: () => void | Promise<void>): void;
+  defer(cleanup: (ctx: CleanupContext) => void | Promise<void>, opts?: CleanupOpts): void;
 
   /** Returns the current scope tree snapshot. */
   status(): ScopeSnapshot;
-
-  /** Renders the current scope tree as a human-readable status string. */
-  tree(opts?: TreeOpts): string;
 
   /** Subscribes to task and scope events emitted in this scope tree. */
   onEvent(handler: (e: TaskEvent) => void): Unsubscribe;

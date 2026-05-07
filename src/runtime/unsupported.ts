@@ -113,6 +113,7 @@ export const run = Object.freeze({
     current: unsupportedFunction("run.context.current"),
     with: unsupportedFunction("run.context.with"),
     get: unsupportedFunction("run.context.get"),
+    budget: unsupportedFunction("run.context.budget"),
   }),
 });
 

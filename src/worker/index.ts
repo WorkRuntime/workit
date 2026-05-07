@@ -5,11 +5,14 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * CPU-heavy work is never routed to workers automatically. Callers opt in by
- * pointing WorkJS at a module export that can run in a Node worker thread.
+ * pointing WorkJS at a local, application-controlled module export that can run
+ * in a Node worker thread.
  */
 
 import { Worker } from "node:worker_threads";
-import type { TaskFn } from "../types/index.js";
+import { TimeoutError, type Duration, type TaskFn } from "../types/index.js";
+import { parseDuration } from "../engine/duration.js";
+import { normalizeWorkerModuleURL } from "./module-url.js";
 
 interface WorkerReply<R> {
   ok: boolean;
@@ -21,13 +24,26 @@ interface WorkerReply<R> {
   };
 }
 
-/** Creates a task function that executes a module export in a worker thread. */
+interface OffloadOpts {
+  timeout?: Duration;
+}
+
+/**
+ * Creates a task function that executes a local module export in a worker thread.
+ *
+ * `moduleURL` must be a file URL or path controlled by the application at build
+ * time. WorkJS rejects inline and remote URL schemes because worker offload is
+ * an execution boundary, not a user-input module loader.
+ */
 export function offload<I, R>(
   moduleURL: string | URL,
   exportName: string,
-  input: I
+  input: I,
+  opts: OffloadOpts = {}
 ): TaskFn<R> {
-  const moduleHref = moduleURL instanceof URL ? moduleURL.href : moduleURL;
+  const moduleHref = normalizeWorkerModuleURL(moduleURL);
+  assertPlainStructuredCloneData(input);
+  const timeoutMs = opts.timeout === undefined ? undefined : parseDuration(opts.timeout);
 
   return async (ctx) => {
     return await new Promise<R>((resolve, reject) => {
@@ -41,8 +57,10 @@ export function offload<I, R>(
       });
 
       let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
 
       const cleanup = () => {
+        if (timer !== undefined) clearTimeout(timer);
         ctx.signal.removeEventListener("abort", onAbort);
         worker.off("message", onMessage);
         worker.off("error", onError);
@@ -50,6 +68,7 @@ export function offload<I, R>(
       };
 
       const settle = (fn: () => void) => {
+        /* v8 ignore next -- guards against duplicate terminal worker events. */
         if (settled) return;
         settled = true;
         cleanup();
@@ -63,6 +82,13 @@ export function offload<I, R>(
         });
       };
 
+      const onTimeout = () => {
+        settle(() => {
+          void worker.terminate();
+          reject(new TimeoutError(timeoutMs!));
+        });
+      };
+
       const onMessage = (reply: WorkerReply<R>) => {
         settle(() => {
           if (reply.ok) resolve(reply.value as R);
@@ -70,17 +96,20 @@ export function offload<I, R>(
         });
       };
 
+      /* v8 ignore next -- module failures are reported by the runner message path. */
       const onError = (err: Error) => {
         settle(() => reject(err));
       };
 
       const onExit = (code: number) => {
+        /* v8 ignore next -- normal zero exits are settled through the message path. */
         if (code !== 0) {
           settle(() => reject(new Error(`Worker stopped with exit code ${code}`)));
         }
       };
 
       ctx.signal.addEventListener("abort", onAbort, { once: true });
+      if (timeoutMs !== undefined) timer = setTimeout(onTimeout, timeoutMs);
       worker.on("message", onMessage);
       worker.on("error", onError);
       worker.on("exit", onExit);
@@ -89,8 +118,55 @@ export function offload<I, R>(
 }
 
 function toError(serialized: WorkerReply<unknown>["error"]): Error {
+  /* v8 ignore next -- the runner always serializes a message for failed replies. */
   const err = new Error(serialized?.message ?? "Worker task failed");
   err.name = serialized?.name ?? "WorkerTaskError";
   if (serialized?.stack !== undefined) err.stack = serialized.stack;
   return err;
+}
+
+function assertPlainStructuredCloneData(value: unknown, seen = new WeakSet<object>()): void {
+  if (value === null || value === undefined) return;
+  const type = typeof value;
+  if (type === "string" || type === "number" || type === "boolean" || type === "bigint") return;
+  if (type === "symbol" || type === "function") {
+    throw new TypeError("Worker offload input must be plain structured-clone data");
+  }
+
+  const object = value as object;
+  if (seen.has(object)) return;
+  seen.add(object);
+
+  if (isCloneSafeBuiltIn(object)) return;
+  if (Array.isArray(object)) {
+    for (const item of object) assertPlainStructuredCloneData(item, seen);
+    return;
+  }
+  if (object instanceof Map) {
+    for (const [key, item] of object) {
+      assertPlainStructuredCloneData(key, seen);
+      assertPlainStructuredCloneData(item, seen);
+    }
+    return;
+  }
+  if (object instanceof Set) {
+    for (const item of object) assertPlainStructuredCloneData(item, seen);
+    return;
+  }
+
+  const proto = Object.getPrototypeOf(object);
+  if (proto !== Object.prototype && proto !== null) {
+    throw new TypeError("Worker offload input must be plain structured-clone data");
+  }
+  for (const item of Object.values(object as Record<string, unknown>)) {
+    assertPlainStructuredCloneData(item, seen);
+  }
+}
+
+function isCloneSafeBuiltIn(value: object): boolean {
+  return value instanceof Date
+    || value instanceof RegExp
+    || value instanceof ArrayBuffer
+    || (typeof SharedArrayBuffer !== "undefined" && value instanceof SharedArrayBuffer)
+    || ArrayBuffer.isView(value);
 }

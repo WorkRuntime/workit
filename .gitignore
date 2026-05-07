@@ -5,6 +5,7 @@
 # Local agent instructions and private specification context.
 AGENTS.md
 docs/
+.claude/
 
 # Environment and secrets.
 .env

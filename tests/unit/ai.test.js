@@ -9,10 +9,13 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import { CancellationError, ContextBagImpl, group } from "../../dist/index.js";
 import {
+  AgentToolCalls,
   BadBatchError,
   OpenAITokens,
   embedAll,
   embedAllBisection,
+  runAgent,
+  streamLLM,
   streamWithBackpressure,
   transcribeStream,
   wrapAI,
@@ -493,4 +496,156 @@ test("streamWithBackpressure uses task signals when no external signal is provid
   }
 
   assert.deepEqual(output, ["PLAIN"]);
+});
+
+test("runAgent records replayable tool events and consumes AI budgets", async () => {
+  const context = new ContextBagImpl()
+    .with(OpenAITokens, { spent: 0, limit: 10, unit: "tokens" })
+    .with(AgentToolCalls, { spent: 0, limit: 2, unit: "tool_calls" });
+
+  const agentRun = await group(async () => runAgent(async (agent) => {
+    const value = await agent.tool("search", { q: "workjs" }, async (input, ctx) => {
+      assert.equal(ctx.kind, "tool");
+      return `found:${input.q}`;
+    }, {
+      tokens: 3,
+      toolCalls: 1,
+    });
+    return value;
+  }), { context });
+
+  assert.equal(agentRun.result, "found:workjs");
+  assert.deepEqual(agentRun.events.map((event) => event.type), [
+    "agent:started",
+    "agent:tool_started",
+    "agent:tool_succeeded",
+    "agent:completed",
+  ]);
+  assert.deepEqual(agentRun.events.map((event) => event.seq), [1, 2, 3, 4]);
+  assert.equal(context.get(OpenAITokens).spent, 3);
+  assert.equal(context.get(AgentToolCalls).spent, 1);
+});
+
+test("runAgent records failed tool events", async () => {
+  const agentRun = await runAgent(async (agent) => {
+    await assert.rejects(
+      agent.tool("fail", undefined, async () => {
+        throw new Error("tool down");
+      }),
+      /tool down/
+    );
+    return "handled";
+  });
+
+  assert.equal(agentRun.result, "handled");
+  assert.deepEqual(agentRun.events.map((event) => event.type), [
+    "agent:started",
+    "agent:tool_started",
+    "agent:tool_failed",
+    "agent:completed",
+  ]);
+});
+
+test("runAgent composes tool retry timeout and cancellation events", async () => {
+  let attempts = 0;
+  const retryRun = await runAgent(async (agent) => {
+    return await agent.tool("retry", undefined, async () => {
+      attempts++;
+      if (attempts === 1) throw new Error("retry once");
+      return "retried";
+    }, {
+      retry: { times: 2, initialDelay: 1, maxDelay: 1, jitter: false },
+      timeout: 100,
+    });
+  });
+
+  assert.equal(retryRun.result, "retried");
+  assert.equal(attempts, 2);
+
+  const cancelRun = await runAgent(async (agent) => {
+    await assert.rejects(
+      agent.tool("cancel", undefined, async () => {
+        throw new CancellationError({ kind: "manual", tag: "tool-stop" });
+      }),
+      CancellationError
+    );
+    return "cancel-observed";
+  });
+
+  assert.equal(cancelRun.events.some((event) => event.type === "agent:tool_cancelled"), true);
+});
+
+test("runAgent surfaces body failures", async () => {
+  await assert.rejects(
+    runAgent(async () => {
+      throw new Error("agent body failed");
+    }),
+    /agent body failed/
+  );
+});
+
+test("streamLLM streams provider chunks inside a WorkJS task", async () => {
+  const chunks = [];
+  const iterator = streamLLM("hello", {
+    async *stream(input, ctx) {
+      assert.equal(ctx.kind, "llm");
+      yield input;
+      yield " world";
+    },
+  })[Symbol.asyncIterator]();
+
+  chunks.push((await iterator.next()).value);
+  chunks.push((await iterator.next()).value);
+
+  assert.deepEqual(chunks, ["hello", " world"]);
+  assert.deepEqual(await iterator.next(), { done: true, value: undefined });
+});
+
+test("streamLLM completes when the provider yields no chunks", async () => {
+  const iterator = streamLLM("empty", {
+    async *stream() {}
+  })[Symbol.asyncIterator]();
+
+  assert.deepEqual(await iterator.next(), { done: true, value: undefined });
+});
+
+test("streamLLM composes caller cancellation signals", async () => {
+  const controller = new AbortController();
+  let sawComposedSignal = false;
+  const iterator = streamLLM("hello", {
+    async *stream(input, ctx) {
+      sawComposedSignal = ctx.signal instanceof AbortSignal && ctx.signal !== controller.signal;
+      yield input;
+    },
+  }, { signal: controller.signal })[Symbol.asyncIterator]();
+
+  assert.deepEqual(await iterator.next(), { value: "hello", done: false });
+  assert.deepEqual(await iterator.next(), { done: true, value: undefined });
+  assert.equal(sawComposedSignal, true);
+});
+
+test("streamLLM surfaces provider failures and closes cleanly when consumer stops early", async () => {
+  await assert.rejects(
+    async () => {
+      for await (const _chunk of streamLLM("bad", {
+        async *stream() {
+          throw new Error("llm stream failed");
+        },
+      })) {
+        // unreachable
+      }
+    },
+    /llm stream failed/
+  );
+
+  const iterator = streamLLM("early", {
+    async *stream(input) {
+      yield input;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      yield "late";
+    },
+  })[Symbol.asyncIterator]();
+
+  assert.deepEqual(await iterator.next(), { value: "early", done: false });
+  assert.deepEqual(await iterator.return(), { value: undefined, done: true });
 });

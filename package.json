@@ -25,10 +25,20 @@
       },
       "default": "./dist/runtime/unsupported.js"
     },
+    "./channel": {
+      "types": "./dist/channel/index.d.ts",
+      "import": "./dist/channel/index.js",
+      "require": "./dist-cjs/channel/index.cjs"
+    },
     "./observability": {
       "types": "./dist/observability/index.d.ts",
       "import": "./dist/observability/index.js",
       "require": "./dist-cjs/observability/index.cjs"
+    },
+    "./diagnostics": {
+      "types": "./dist/diagnostics/index.d.ts",
+      "import": "./dist/diagnostics/index.js",
+      "require": "./dist-cjs/diagnostics/index.cjs"
     },
     "./otel": {
       "types": "./dist/otel/index.d.ts",
@@ -59,18 +69,25 @@
     "build": "npm run clean && tsc && node scripts/build-cjs.mjs && node scripts/generate-sbom.mjs",
     "typecheck": "tsc --noEmit",
     "check:no-network": "node scripts/check-no-network.mjs",
+    "check:headers": "node scripts/check-file-headers.mjs",
     "check:security": "node scripts/check-security.mjs",
     "check:vulnerabilities": "node scripts/check-vulnerabilities.mjs",
     "check:sbom": "npm run build && node scripts/check-sbom.mjs",
     "check:tests": "node scripts/check-tests.mjs",
     "check:api": "npm run build && node scripts/check-api-surface.mjs",
     "check:size": "npm run build && node scripts/check-bundle-size.mjs",
+    "report:size": "npm run build && node scripts/report-bundle-size.mjs",
     "check:benchmark": "npm run build && node scripts/check-benchmark.mjs",
+    "check:context-performance": "npm run build && node scripts/check-context-performance.mjs",
     "check:1b": "npm run build && node scripts/check-1b-benchmark.mjs",
     "check:leak": "npm run build && node --expose-gc scripts/check-leak.mjs",
+    "check:stream-memory": "npm run build && node --expose-gc scripts/check-stream-memory.mjs",
+    "check:soak": "npm run build && node --expose-gc scripts/check-soak.mjs",
     "check:exporter-stress": "npm run build && node --expose-gc scripts/check-exporter-stress.mjs",
     "check:package-consumer": "npm run build && node scripts/check-package-consumer.mjs",
     "check:claims": "npm run build && node scripts/check-claim-fixtures.mjs",
+    "check:public-proof": "node scripts/check-public-proof.mjs",
+    "check:worker-contract": "node scripts/check-worker-contract-docs.mjs",
     "check:release-policy": "npm run build && node scripts/check-release-provenance.mjs",
     "check:release": "npm run build && node scripts/check-release-provenance.mjs --registry-dry-run",
     "pack:dry": "npm pack --dry-run --json",
@@ -96,9 +113,10 @@
     "sample:next": "npm run build && node samples/next-server-route.sample.js",
     "sample:otel": "npm run build && node samples/otel-adapter.sample.js",
     "sample:logging": "npm run build && node samples/logging-otel-bridge.sample.js",
+    "soak:24h": "npm run build && node --expose-gc scripts/soak-24h.mjs",
     "test": "npm run build && vitest run",
     "test:coverage": "npm run build && vitest run --coverage",
-    "verify": "npm run typecheck && npm run check:no-network && npm run check:tests && npm test && npm run check:security && npm run check:vulnerabilities && npm run check:sbom && npm run check:api && npm run check:size && npm run check:benchmark && npm run check:1b && npm run check:leak && npm run check:exporter-stress && npm run check:package-consumer && npm run check:claims && npm run check:release-policy && npm run pack:dry"
+    "verify": "npm run typecheck && npm run check:no-network && npm run check:headers && npm run check:tests && npm test && npm run check:security && npm run check:vulnerabilities && npm run check:sbom && npm run check:api && npm run check:size && npm run check:benchmark && npm run check:context-performance && npm run check:1b && npm run check:leak && npm run check:stream-memory && npm run check:soak && npm run check:exporter-stress && npm run check:package-consumer && npm run check:claims && npm run check:public-proof && npm run check:worker-contract && npm run check:release-policy && npm run pack:dry"
   },
   "engines": {
     "node": ">=20.11"
@@ -117,6 +135,7 @@
     "@vitest/coverage-v8": "4.1.5",
     "esbuild": "0.28.0",
     "typescript": "5.9.3",
-    "vitest": "4.1.5"
+    "vitest": "4.1.5",
+    "wrangler": "4.89.1"
   }
 }

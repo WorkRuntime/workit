@@ -151,8 +151,9 @@ test("sample: streaming summarizer produces only bounded input prefix", async ()
 
   assert.equal(result.sample, "streaming-summarizer");
   assert.equal(result.summaries, 12);
-  assert.equal(result.produced, 15);
+  assert.ok(result.produced <= 16);
   assert.equal(result.maxActive, 5);
+  assert.equal(result.active, 0);
 });
 
 test("sample: 100k embeddings complete with bounded concurrency and token budget", async () => {

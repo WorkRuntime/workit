@@ -32,7 +32,8 @@ export type {
   CancelReason, TaskEvent, Unsubscribe, ProgressReport, TaskLogger,
   Settled, Duration, TaskResults, WorkOutput, ItemError, CancelledItem,
   WorkProgressEvent, WorkItemDoneEvent,
-  RetryOpts, HedgeOpts, BreakerOpts, RunNamespace, WorkFactory, WorkBuilder, TreeOpts,
+  RetryOpts, HedgeOpts, BreakerOpts, CleanupContext, CleanupOpts, DetachedOpts,
+  RunNamespace, WorkFactory, WorkBuilder, TreeOpts,
 } from "./types/index.js";
 
 // Errors

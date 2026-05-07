@@ -9,15 +9,13 @@
  */
 
 import { execFile } from "node:child_process";
-import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
-const npmCli = join(dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
 
 let stdout = "";
 try {
-  ({ stdout } = await execFileAsync(process.execPath, [npmCli, "audit", "--omit=dev", "--json"], {
+  ({ stdout } = await runNpm(["audit", "--omit=dev", "--json"], {
     timeout: 120_000,
     maxBuffer: 10 * 1024 * 1024,
   }));
@@ -34,3 +32,11 @@ if (total !== 0) {
 }
 
 console.log("vulnerability-gate: npm production audit passed with 0 findings");
+
+async function runNpm(args, opts) {
+  if (process.env.npm_execpath !== undefined) {
+    return await execFileAsync(process.execPath, [process.env.npm_execpath, ...args], opts);
+  }
+
+  return await execFileAsync(process.platform === "win32" ? "npm.cmd" : "npm", args, opts);
+}

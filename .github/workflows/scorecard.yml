@@ -1,0 +1,27 @@
+# OSSF Scorecard workflow.
+# Author: Admilson B. F. Cossa
+# SPDX-License-Identifier: Apache-2.0
+
+name: OSSF Scorecard
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "19 3 * * 1"
+
+permissions:
+  contents: read
+  id-token: write
+  security-events: write
+
+jobs:
+  scorecard:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Scorecard
+        uses: ossf/scorecard-action@ea651e62978af7915d09fe2e282747c798bf2dab
+        with:
+          results_file: scorecard.sarif
+          results_format: sarif
+          publish_results: true

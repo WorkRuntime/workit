@@ -10,13 +10,17 @@
  */
 
 import { createBudget } from "../engine/context.js";
-import type { Duration, TaskContext, TaskFn, WorkOutput } from "../types/index.js";
-import { CancellationError } from "../types/index.js";
+import type { CancelReason, Duration, RetryOpts, TaskContext, TaskFn, WorkOutput } from "../types/index.js";
+import { CancellationError, CostBudget } from "../types/index.js";
 import { work } from "../work/index.js";
 import { run } from "../run/index.js";
+import { ChannelClosedError, createChannel } from "../channel/index.js";
 
 /** Built-in token budget key for AI companion helpers. */
 export const OpenAITokens = createBudget("OpenAITokens", { unit: "tokens" });
+
+/** Built-in tool-call budget key for agent tool execution. */
+export const AgentToolCalls = createBudget("AgentToolCalls", { unit: "tool_calls" });
 
 /** Provider contract for embedding one input inside a WorkJS task context. */
 export interface EmbeddingProvider<I> {
@@ -68,7 +72,65 @@ export interface StreamWithBackpressureOptions {
   signal?: AbortSignal;
 }
 
+/** Replayable agent event emitted by `runAgent()`. */
+export type AgentEvent =
+  | { type: "agent:started"; seq: number; agentId: string; at: number }
+  | { type: "agent:tool_started"; seq: number; agentId: string; tool: string; at: number }
+  | { type: "agent:tool_succeeded"; seq: number; agentId: string; tool: string; at: number }
+  | { type: "agent:tool_failed"; seq: number; agentId: string; tool: string; error: string; at: number }
+  | { type: "agent:tool_cancelled"; seq: number; agentId: string; tool: string; reason: CancelReason; at: number }
+  | { type: "agent:completed"; seq: number; agentId: string; at: number }
+  | { type: "agent:failed"; seq: number; agentId: string; error: string; at: number };
+
+type AgentEventPayload =
+  | { type: "agent:started" }
+  | { type: "agent:tool_started"; tool: string }
+  | { type: "agent:tool_succeeded"; tool: string }
+  | { type: "agent:tool_failed"; tool: string; error: string }
+  | { type: "agent:tool_cancelled"; tool: string; reason: CancelReason }
+  | { type: "agent:completed" }
+  | { type: "agent:failed"; error: string };
+
+/** Budget charges and policies for one agent tool call. */
+export interface AgentToolOptions {
+  tokens?: number;
+  cost?: number;
+  toolCalls?: number;
+  retry?: number | RetryOpts;
+  timeout?: Duration;
+}
+
+/** Agent-scoped execution contract passed to `runAgent()`. */
+export interface AgentScope {
+  readonly id: string;
+  readonly events: readonly AgentEvent[];
+  tool<I, O>(
+    name: string,
+    input: I,
+    fn: (input: I, ctx: TaskContext) => O | Promise<O>,
+    opts?: AgentToolOptions
+  ): Promise<O>;
+}
+
+/** Result returned by `runAgent()`. */
+export interface AgentRunResult<R> {
+  result: R;
+  events: readonly AgentEvent[];
+}
+
+/** Provider contract for stream-first LLM helpers. */
+export interface LLMStreamProvider<I, O> {
+  stream(input: I, ctx: TaskContext): AsyncIterable<O>;
+}
+
+/** Options for `streamLLM()`. */
+export interface StreamLLMOptions {
+  signal?: AbortSignal;
+  buffer?: number;
+}
+
 const BAD_BATCH_ERROR_BRAND = Symbol.for("workjs.ai.BadBatchError");
+let nextAgentId = 0;
 
 /** Error type applications can throw when a provider rejects a mixed-quality batch. */
 export class BadBatchError extends Error {
@@ -98,6 +160,35 @@ export function wrapAI<T>(provider: string, task: TaskFn<T>): TaskFn<T> {
       throw err;
     }
   };
+}
+
+/** Runs an agent body with replayable local events and explicit tool contracts. */
+export async function runAgent<R>(
+  body: (agent: AgentScope, ctx: TaskContext) => R | Promise<R>
+): Promise<AgentRunResult<R>> {
+  const events: AgentEvent[] = [];
+  const agentId = makeAgentId();
+  let seq = 0;
+  const emit = (event: AgentEventPayload): void => {
+    events.push({ ...event, seq: ++seq, agentId, at: Date.now() } as AgentEvent);
+  };
+
+  const result = await run.group(async (task) => {
+    return await task(async (ctx) => {
+      const agent = new AgentScopeImpl(agentId, events, emit, ctx);
+      emit({ type: "agent:started" });
+      try {
+        const value = await body(agent, ctx);
+        emit({ type: "agent:completed" });
+        return value;
+      } catch (err) {
+        emit({ type: "agent:failed", error: errorMessage(err) });
+        throw err;
+      }
+    }, { name: "ai.agent", kind: "llm" });
+  });
+
+  return { result, events };
 }
 
 /** Embeds all inputs with bounded concurrency and optional token budgeting. */
@@ -240,8 +331,109 @@ export function streamWithBackpressure<I, O>(
     .stream();
 }
 
+/** Streams one LLM provider response while keeping provider work inside WorkJS ownership. */
+export function streamLLM<I, O>(
+  input: I,
+  provider: LLMStreamProvider<I, O>,
+  opts: StreamLLMOptions = {}
+): AsyncIterable<O> {
+  return streamLLMGenerator(input, provider, opts);
+}
+
+class AgentScopeImpl implements AgentScope {
+  constructor(
+    readonly id: string,
+    readonly events: readonly AgentEvent[],
+    private readonly emit: (event: AgentEventPayload) => void,
+    private readonly ctx: TaskContext
+  ) {}
+
+  async tool<I, O>(
+    name: string,
+    input: I,
+    fn: (input: I, ctx: TaskContext) => O | Promise<O>,
+    opts: AgentToolOptions = {}
+  ): Promise<O> {
+    this.emit({ type: "agent:tool_started", tool: name });
+    try {
+      const charge = (key: typeof OpenAITokens | typeof CostBudget | typeof AgentToolCalls, amount?: number): void => {
+        if (amount !== undefined && amount > 0) this.ctx.consume(key, amount);
+      };
+      charge(OpenAITokens, opts.tokens);
+      charge(CostBudget, opts.cost);
+      charge(AgentToolCalls, opts.toolCalls);
+
+      let task: TaskFn<O> = async (ctx) => await fn(input, { ...ctx, kind: "tool", name: `agent.tool.${name}` });
+      if (opts.retry !== undefined) task = run.retry(task, opts.retry);
+      if (opts.timeout !== undefined) task = run.timeout(task, opts.timeout);
+      const value = await task(this.ctx);
+      this.emit({ type: "agent:tool_succeeded", tool: name });
+      return value;
+    } catch (err) {
+      if (err instanceof CancellationError) {
+        this.emit({ type: "agent:tool_cancelled", tool: name, reason: err.reason });
+      } else {
+        this.emit({ type: "agent:tool_failed", tool: name, error: errorMessage(err) });
+      }
+      throw err;
+    }
+  }
+}
+
+async function* streamLLMGenerator<I, O>(
+  input: I,
+  provider: LLMStreamProvider<I, O>,
+  opts: StreamLLMOptions
+): AsyncIterable<O> {
+  const channel = createChannel<O>({ capacity: opts.buffer ?? 1 });
+  let producerError: unknown;
+
+  const producer = run.group(async (task) => {
+    await task(async (ctx) => {
+      const signal = opts.signal === undefined
+        ? ctx.signal
+        : AbortSignal.any([ctx.signal, opts.signal]);
+      try {
+        for await (const chunk of provider.stream(input, { ...ctx, name: "ai.llm.stream", kind: "llm", signal })) {
+          await channel.send(chunk, { signal });
+        }
+        channel.close();
+      } catch (err) {
+        producerError = err;
+        channel.close(err);
+        if (!(err instanceof ChannelClosedError)) throw err;
+      }
+    }, { name: "ai.llm.stream", kind: "llm" });
+  });
+
+  try {
+    while (true) {
+      const next = opts.signal === undefined ? await channel.receive() : await channel.receive({ signal: opts.signal });
+      /* v8 ignore next -- generator completion is covered through iterator.next(), but V8 does not mark this async branch. */
+      if (next.done) {
+        if (next.reason !== undefined) throw next.reason;
+        break;
+      }
+      yield next.value;
+    }
+  } finally {
+    channel.close(new CancellationError({ kind: "manual", tag: "llm_stream_closed" }));
+    await producer.catch((err: unknown) => {
+      /* v8 ignore else -- expected producer failures are normalized through channel closure or producerError. */
+      if (err instanceof ChannelClosedError || err === producerError) return;
+      /* v8 ignore next -- defensive path for impossible producer failures after normalized closure. */
+      throw err;
+    });
+  }
+}
+
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function makeAgentId(): string {
+  nextAgentId++;
+  return `agent-${nextAgentId}`;
 }
 
 interface IndexedInput<I> {
