@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Run Scorecard
-        uses: ossf/scorecard-action@ea651e62978af7915d09fe2e282747c798bf2dab
+        uses: ossf/scorecard-action@f49aabe0b5af0936a0987cfb85d86b75731b0186
         with:
           results_file: scorecard.sarif
           results_format: sarif
