@@ -61,11 +61,11 @@ try {
   });
 
   await writeFile(join(temp, "smoke.mjs"), `
-    import { run, work, group } from "workjs";
-    import { embedAll, streamWithBackpressure } from "workjs/ai";
-    import { attachTelemetryExporter } from "workjs/observability";
-    import { attachOpenTelemetry } from "workjs/otel";
-    import { offload } from "workjs/worker";
+    import { run, work, group } from "@workjs/core";
+    import { embedAll, streamWithBackpressure } from "@workjs/core/ai";
+    import { attachTelemetryExporter } from "@workjs/core/observability";
+    import { attachOpenTelemetry } from "@workjs/core/otel";
+    import { offload } from "@workjs/core/worker";
 
     const result = await run.all([async () => "sdk", async () => "ok"]);
     const batch = await work([1, 2]).inParallel(2).do(async (item) => item * 2);
@@ -109,7 +109,7 @@ try {
   });
 
   await writeFile(join(temp, "cjs-smoke.cjs"), `
-    const { run, work } = require("workjs");
+    const { run, work } = require("@workjs/core");
 
     (async () => {
       const values = await run.all([async () => "cjs", async () => "ok"]);
@@ -148,8 +148,8 @@ try {
       group,
       run,
       type TaskContext,
-    } from "workjs";
-    import { embedAll, streamWithBackpressure } from "workjs/ai";
+    } from "@workjs/core";
+    import { embedAll, streamWithBackpressure } from "@workjs/core/ai";
 
     const RequestKey = createContextKey<{ requestId: string }>("request");
 
@@ -188,7 +188,7 @@ try {
   });
 
   await writeFile(join(temp, "bun-fixture.mjs"), `
-    import { run } from "workjs";
+    import { run } from "@workjs/core";
 
     const result = await run.all([async () => "bun", async () => "ok"]);
     if (result.join(":") !== "bun:ok") throw new Error("Bun runtime fixture failed");
@@ -200,7 +200,7 @@ try {
   });
 
   await writeFile(join(temp, "deno-fixture.mjs"), `
-    import { run } from "workjs";
+    import { run } from "@workjs/core";
 
     const result = await run.all([async () => "deno", async () => "ok"]);
     if (result.join(":") !== "deno:ok") throw new Error("Deno runtime fixture failed");
@@ -212,7 +212,7 @@ try {
   });
 
   await writeFile(join(temp, "aws-fixture.mjs"), `
-    import { work } from "workjs";
+    import { work } from "@workjs/core";
 
     export async function handler(event) {
       const output = await work(event.records).inParallel(2).onError("continue").do(async (record) => ({
@@ -228,7 +228,7 @@ try {
   `, "utf8");
 
   await writeFile(join(temp, "azure-fixture.mjs"), `
-    import { run } from "workjs";
+    import { run } from "@workjs/core";
 
     export async function handler(context, request) {
       const names = request.body.names;
@@ -242,7 +242,7 @@ try {
   `, "utf8");
 
   await writeFile(join(temp, "next-fixture.mjs"), `
-    import { run } from "workjs";
+    import { run } from "@workjs/core";
 
     export async function POST(request) {
       const payload = await request.json();
@@ -257,7 +257,7 @@ try {
   await writeFile(join(temp, "express-fixture.mjs"), `
     import express from "express";
     import { request as httpRequest } from "node:http";
-    import { run } from "workjs";
+    import { run } from "@workjs/core";
 
     let disconnectCancelled = false;
     const app = express();
@@ -337,7 +337,7 @@ try {
 
   await writeFile(join(temp, "fastify-fixture.mjs"), `
     import Fastify from "fastify";
-    import { work } from "workjs";
+    import { work } from "@workjs/core";
 
     const app = Fastify();
     app.post("/items", async (request) => {
@@ -361,7 +361,7 @@ try {
 
   await writeFile(join(temp, "trpc-fixture.mjs"), `
     import { initTRPC } from "@trpc/server";
-    import { run } from "workjs";
+    import { run } from "@workjs/core";
 
     const t = initTRPC.create();
     const router = t.router({
@@ -381,7 +381,7 @@ try {
   await writeFile(join(temp, "vercel-ai-fixture.mjs"), `
     import { streamText } from "ai";
     import { MockLanguageModelV3, simulateReadableStream } from "ai/test";
-    import { run } from "workjs";
+    import { run } from "@workjs/core";
 
     let modelSawAbort = false;
     const model = new MockLanguageModelV3({
@@ -443,8 +443,8 @@ try {
   }
 
   await writeFile(join(temp, "browser-entry.mjs"), `
-    import { group } from "workjs";
-    import { offload } from "workjs/worker";
+    import { group } from "@workjs/core";
+    import { offload } from "@workjs/core/worker";
     globalThis.__workjsBrowserSmoke = [typeof group, typeof offload];
   `, "utf8");
 
@@ -465,7 +465,7 @@ try {
   }
 
   await writeFile(join(temp, "cloudflare-worker.mjs"), `
-    import { group } from "workjs";
+    import { group } from "@workjs/core";
 
     export default {
       async fetch() {

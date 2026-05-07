@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * This subpath is intentionally opt-in. The core package never imports
- * OpenTelemetry; applications that want OTel import `workjs/otel` and provide
+ * OpenTelemetry; applications that want OTel import `@workjs/core/otel` and provide
  * or configure the OpenTelemetry API in their runtime.
  */
 

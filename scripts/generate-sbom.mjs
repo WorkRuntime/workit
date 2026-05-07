@@ -22,7 +22,7 @@ if (runtimeDependencies.length > 0) {
   throw new Error(`SBOM generation requires zero runtime dependencies; found ${runtimeDependencies.join(", ")}`);
 }
 
-const bomRef = `pkg:npm/${packageJson.name}@${packageJson.version}`;
+const bomRef = packagePurl(packageJson.name, packageJson.version);
 const lockDigest = createHash("sha256")
   .update(JSON.stringify({
     name: rootLock.name,
@@ -68,4 +68,10 @@ const sbom = {
 };
 
 await mkdir("dist", { recursive: true });
-await writeFile(join("dist", "workjs.sbom.cdx.json"), `${JSON.stringify(sbom, null, 2)}\n`, "utf8");
+await writeFile(join("dist", "workjs-core.sbom.cdx.json"), `${JSON.stringify(sbom, null, 2)}\n`, "utf8");
+
+function packagePurl(name, version) {
+  if (!name.startsWith("@")) return `pkg:npm/${name}@${version}`;
+  const [scope, packageName] = name.split("/");
+  return `pkg:npm/${encodeURIComponent(scope)}/${packageName}@${version}`;
+}

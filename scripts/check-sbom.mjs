@@ -13,8 +13,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const packageJson = JSON.parse(await readFile("package.json", "utf8"));
-const sbom = JSON.parse(await readFile("dist/workjs.sbom.cdx.json", "utf8"));
-const rootRef = `pkg:npm/${packageJson.name}@${packageJson.version}`;
+const sbom = JSON.parse(await readFile("dist/workjs-core.sbom.cdx.json", "utf8"));
+const rootRef = packagePurl(packageJson.name, packageJson.version);
 
 assert.equal(sbom.bomFormat, "CycloneDX", "SBOM must use CycloneDX");
 assert.equal(sbom.specVersion, "1.6", "SBOM spec version changed");
@@ -31,3 +31,9 @@ const runtimeDependencyCount = sbom.metadata.component.properties
 assert.equal(runtimeDependencyCount, "0", "SBOM runtime dependency property must be zero");
 
 console.log("sbom-gate: CycloneDX release SBOM validated");
+
+function packagePurl(name, version) {
+  if (!name.startsWith("@")) return `pkg:npm/${name}@${version}`;
+  const [scope, packageName] = name.split("/");
+  return `pkg:npm/${encodeURIComponent(scope)}/${packageName}@${version}`;
+}

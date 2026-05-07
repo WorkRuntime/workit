@@ -16,6 +16,7 @@ const packageJson = JSON.parse(await readFile("package.json", "utf8"));
 const workflow = await readFile(".github/workflows/release-provenance.yml", "utf8");
 const requireRegistryDryRun = process.argv.includes("--registry-dry-run");
 
+assert.equal(packageJson.name, "@workjs/core", "release package identity must remain @workjs/core");
 assert.equal(packageJson.private, true, "package.json must remain private until final release approval");
 assert.equal(packageJson.publishConfig?.access, "public", "publishConfig.access must be public");
 assert.equal(packageJson.license, "Apache-2.0", "release license must remain Apache-2.0");
@@ -32,5 +33,5 @@ if (!requireRegistryDryRun) {
 }
 
 throw new Error(
-  "npm registry dry-run is intentionally blocked while package.json has private: true. Finish release evaluations, choose an owned package identity, then flip private to false in a scoped release commit."
+  "npm registry dry-run is intentionally blocked while package.json has private: true. Finish release evaluations, prove @workjs npm scope ownership, then flip private to false in a scoped release commit."
 );

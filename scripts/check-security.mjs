@@ -23,6 +23,10 @@ if (runtimeDependencies.length > 0) {
   failures.push(`Runtime dependencies must stay empty: ${runtimeDependencies.join(", ")}`);
 }
 
+if (packageLock.name !== packageJson.name || rootLock.name !== packageJson.name) {
+  failures.push("package-lock package name must match package.json");
+}
+
 for (const [name, version] of Object.entries(packageJson.devDependencies ?? {})) {
   if (/^[~^*]/.test(version) || version.includes(" - ") || version === "latest") {
     failures.push(`Development dependency "${name}" must be pinned, found "${version}"`);

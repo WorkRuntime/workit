@@ -58,8 +58,8 @@ npm pack --dry-run --json
 The provenance workflow is defined in `.github/workflows/release-provenance.yml`.
 Registry dry-runs and real publication are intentionally blocked while
 `package.json` has `private: true`. Final release requires a separate scoped
-commit that chooses an owned package identity, flips `private` to `false`, and
-runs:
+commit that proves `@workjs` npm scope ownership, flips `private` to `false`,
+and runs:
 
 ```sh
 npm publish --provenance --access public --dry-run

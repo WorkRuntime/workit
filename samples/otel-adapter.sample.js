@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Uses fake tracer and meter objects so the sample proves the real
- * `workjs/otel` import without requiring an OpenTelemetry collector.
+ * `@workjs/core/otel` import without requiring an OpenTelemetry collector.
  */
 
 import { run } from "../dist/index.js";

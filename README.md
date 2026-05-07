@@ -63,7 +63,7 @@ import {
   TelemetryBudget,
   TokenBudget,
   LatencyBudget,
-} from "workjs";
+} from "@workjs/core";
 ```
 
 | Export | Purpose |
@@ -78,15 +78,15 @@ import {
 Subpath exports:
 
 ```ts
-import { embedAll, transcribeStream, wrapAI } from "workjs/ai";
-import { attachTelemetryExporter } from "workjs/observability";
-import { attachOpenTelemetry } from "workjs/otel";
+import { embedAll, transcribeStream, wrapAI } from "@workjs/core/ai";
+import { attachTelemetryExporter } from "@workjs/core/observability";
+import { attachOpenTelemetry } from "@workjs/core/otel";
 ```
 
 ## Core Example
 
 ```ts
-import { group } from "workjs";
+import { group } from "@workjs/core";
 
 const result = await group(async (task) => {
   const profile = task(async (ctx) => {
@@ -115,7 +115,7 @@ registered cleanup before returning or throwing.
 ## Run Helpers
 
 ```ts
-import { run } from "workjs";
+import { run } from "@workjs/core";
 
 const fastest = await run.race([
   run.timeout(callPrimary, "800ms"),
@@ -140,7 +140,7 @@ model.
 ## Work Builder
 
 ```ts
-import { work } from "workjs";
+import { work } from "@workjs/core";
 
 const output = await work(documents)
   .inParallel(8)
@@ -160,7 +160,7 @@ timeouts, and error collection are explicit choices.
 ## Budgets And Context
 
 ```ts
-import { CostBudget, TokenBudget, group, run } from "workjs";
+import { CostBudget, TokenBudget, group, run } from "@workjs/core";
 
 await run.context.with(CostBudget, { spent: 0, limit: 100 }, async () =>
   run.context.with(TokenBudget, { spent: 0, limit: 10_000 }, async () =>
@@ -182,7 +182,7 @@ explicitly provide a replacement budget.
 ## AI Helpers
 
 ```ts
-import { embedAll } from "workjs/ai";
+import { embedAll } from "@workjs/core/ai";
 
 const embeddings = await embedAll(chunks, {
   countTokens: (chunk) => chunk.tokenCount,
@@ -203,7 +203,7 @@ runtime.
 ## Observability Export
 
 ```ts
-import { attachTelemetryExporter } from "workjs/observability";
+import { attachTelemetryExporter } from "@workjs/core/observability";
 
 const attachment = attachTelemetryExporter(scope, async (event) => {
   await telemetry.write(event);
@@ -291,11 +291,11 @@ npm run sample:logging
 ```
 
 `sample:logging` demonstrates adapting WorkJS task log events to OTel-shaped log
-records without importing OpenTelemetry into the core package. `workjs/otel` is
+records without importing OpenTelemetry into the core package. `@workjs/core/otel` is
 an opt-in adapter subpath with `@opentelemetry/api` as an optional peer; the root
 runtime remains local-first and dependency-free.
 
-`sample:worker` demonstrates explicit CPU offload through `workjs/worker`.
+`sample:worker` demonstrates explicit CPU offload through `@workjs/core/worker`.
 WorkJS does not automatically route `kind: "cpu"` tasks to workers; worker
 execution is an explicit opt-in.
 
@@ -347,7 +347,8 @@ gates are green.
 
 WorkJS is not ready for public release until these decisions are complete:
 
-- npm package identity; the unscoped `workjs` name already exists on npm
+- npm scope ownership; the package identity is `@workjs/core`, while the
+  unscoped `workjs` name already exists on npm
 - benchmark methodology publication
 - public API stability policy
 
