@@ -2,6 +2,7 @@
  * Runtime benchmark smoke check for WorkJS.
  *
  * @author Admilson B. F. Cossa
+ * SPDX-License-Identifier: Apache-2.0
  *
  * This gate measures the compiled artifact with conservative thresholds. It is
  * designed to catch obvious performance regressions in CI, not to replace the

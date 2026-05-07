@@ -1,5 +1,6 @@
 # EditorConfig keeps cross-editor formatting deterministic.
 # Author: Admilson B. F. Cossa
+# SPDX-License-Identifier: Apache-2.0
 
 root = true
 

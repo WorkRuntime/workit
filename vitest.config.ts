@@ -2,6 +2,7 @@
  * Vitest configuration for WorkJS.
  *
  * @author Admilson B. F. Cossa
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Tests exercise the built package in `dist/` so verification proves the
  * compiled artifact, not only TypeScript source.

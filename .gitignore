@@ -1,5 +1,6 @@
 # Git ignore policy for local-only project context and generated artifacts.
 # Author: Admilson B. F. Cossa
+# SPDX-License-Identifier: Apache-2.0
 
 # Local agent instructions and private specification context.
 AGENTS.md
@@ -22,6 +23,7 @@ node_modules/
 
 # Build and distribution output.
 dist/
+dist-cjs/
 build/
 out/
 lib/

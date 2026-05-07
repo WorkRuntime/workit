@@ -1,3 +1,7 @@
+<!--
+Author: Admilson B. F. Cossa
+SPDX-License-Identifier: Apache-2.0
+-->
 # WorkJS
 
 > Structured concurrency runtime for TypeScript.
@@ -9,10 +13,10 @@ work. It keeps tasks inside scopes, propagates cancellation with typed reasons,
 runs cleanup before scopes close, and exposes safe task events without forcing an
 effect system, generator DSL, or provider client into the application.
 
-The package is currently private and pre-release. The implemented runtime is
-verified locally, but the project should not be treated as publicly released
-until the license, provenance, contribution process, and package publishing
-policy are finalized.
+The package is currently private and pre-release. The implemented Node.js
+server runtime is verified locally, but the project should not be treated as
+publicly released until package publishing, public API stability, and release
+operations are finalized.
 
 ## Why It Exists
 
@@ -76,6 +80,7 @@ Subpath exports:
 ```ts
 import { embedAll, transcribeStream, wrapAI } from "workjs/ai";
 import { attachTelemetryExporter } from "workjs/observability";
+import { attachOpenTelemetry } from "workjs/otel";
 ```
 
 ## Core Example
@@ -239,7 +244,7 @@ npm run test:coverage
 ```
 
 Coverage thresholds are set to 100% for statements, branches, functions, and
-lines. The current suite verifies 77 tests across the public runtime, run
+lines. The current suite verifies 133 tests across the public runtime, run
 helpers, work builder, tree rendering, budget contracts, AI helpers,
 observability exporter, and executable scale examples.
 
@@ -254,20 +259,61 @@ Visible sample scripts are available after build:
 ```sh
 npm run sample:1b
 npm run sample:concurrency
+npm run sample:progress
+npm run sample:cancel
+npm run sample:timeout
+npm run sample:no-orphan
+npm run sample:all
+npm run sample:agent
+npm run sample:race
+npm run sample:rag
+npm run sample:batch
+npm run sample:stream
+npm run sample:embed100k
+npm run sample:supervise
+npm run sample:worker
 npm run sample:logging
 ```
 
 `sample:logging` demonstrates adapting WorkJS task log events to OTel-shaped log
-records without importing OpenTelemetry into the core package. A real
-OpenTelemetry companion package is still release work, not part of the current
-core runtime.
+records without importing OpenTelemetry into the core package. `workjs/otel` is
+an opt-in adapter subpath with `@opentelemetry/api` as an optional peer; the root
+runtime remains local-first and dependency-free.
+
+`sample:worker` demonstrates explicit CPU offload through `workjs/worker`.
+WorkJS does not automatically route `kind: "cpu"` tasks to workers; worker
+execution is an explicit opt-in.
 
 ## Runtime Requirements
 
 - Node.js `>=20.11`
 - TypeScript `>=5.5`
 - zero runtime npm dependencies
-- ESM package output
+- ESM and CommonJS package output
+
+## Runtime Support
+
+Supported today:
+
+- Node.js `>=20.11` server runtimes
+- ESM consumers from the installed package
+- CommonJS consumers from the installed package
+- strict TypeScript consumers
+- local Bun and Deno package-import smoke tests
+- AWS Lambda, Azure Functions, Next.js route, Express, and Vercel AI SDK
+  handler-shaped local fixtures
+
+Not supported today:
+
+- browser client execution
+- Cloudflare Worker execution
+- Next.js Edge or Vercel Edge execution
+
+Browser and Cloudflare Worker checks currently prove only the safe
+unsupported-runtime boundary: bundles resolve to an explicit unsupported runtime
+and do not pull in Node-only WorkJS modules. Real browser/edge support requires
+a dedicated edge-safe engine and separate semantic tests before it can be
+claimed.
 
 ## Repository Hygiene
 
@@ -286,14 +332,10 @@ gates are green.
 
 WorkJS is not ready for public release until these decisions are complete:
 
-- open-source license
-- contribution guide
-- security policy
-- provenance and release signing
 - package publishing workflow
 - benchmark methodology publication
 - public API stability policy
 
 ## License
 
-No license has been selected yet.
+Apache-2.0.

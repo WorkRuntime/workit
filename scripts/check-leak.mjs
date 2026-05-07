@@ -2,6 +2,7 @@
  * Runtime leak smoke check for WorkJS scope disposal.
  *
  * @author Admilson B. F. Cossa
+ * SPDX-License-Identifier: Apache-2.0
  *
  * This is a fast CI-oriented guard, not a full memory benchmark. It repeatedly
  * opens and closes real scopes through the compiled package and fails when heap

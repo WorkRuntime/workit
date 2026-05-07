@@ -1,0 +1,74 @@
+<!--
+Author: Admilson B. F. Cossa
+SPDX-License-Identifier: Apache-2.0
+-->
+# Security Policy
+
+## Supported Versions
+
+WorkJS is pre-release software. Security fixes apply to the current `0.x`
+development line until a stable release policy is published.
+
+## Reporting A Vulnerability
+
+Do not open a public issue for suspected vulnerabilities.
+
+Send a private report to the project maintainer with:
+
+- affected version or commit
+- operating system and Node.js version
+- minimal reproduction
+- impact assessment
+- whether secrets, tenant data, billing controls, or cancellation guarantees are affected
+
+The maintainer should acknowledge valid reports within 72 hours and publish a
+fix, mitigation, or status update as soon as practical.
+
+## Security Boundary
+
+WorkJS is a local structured-concurrency runtime. It does not authenticate
+users, authorize actions, encrypt payloads, or provide a durable workflow
+ledger. Applications remain responsible for tenant isolation, provider
+credentials, authorization, persistence, and external network policy.
+
+The core package must keep these guarantees:
+
+- zero runtime dependencies
+- no core networking imports or remote telemetry clients
+- bounded exporter queues for opt-in telemetry bridges
+- no skipped or focused tests in release verification
+- 100% statement, branch, function, and line coverage
+- package dry-run inspection before publication
+
+## Release Provenance
+
+Public releases must be built from a clean worktree and published with npm
+provenance enabled. A release is not approved unless these commands pass:
+
+```sh
+npm run verify
+npm audit --omit=dev
+npm pack --dry-run --json
+npm publish --provenance --access public --dry-run
+```
+
+The package must not publish source maps, local docs, tests, secrets, temporary
+files, debug output, or private agent instructions.
+
+## Responsible Disclosure Scope
+
+Reports are in scope when they affect:
+
+- cancellation integrity
+- no-orphan guarantees
+- budget accounting or cost-cap bypass
+- context isolation across requests
+- telemetry exporter isolation
+- package contents or supply-chain integrity
+- worker-thread offload boundaries
+
+Out of scope:
+
+- vulnerabilities in downstream application code
+- denial-of-service claims that require intentionally unbounded user code inside a task
+- unsupported browser, edge, or Cloudflare Worker execution

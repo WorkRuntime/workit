@@ -4,52 +4,111 @@
   "description": "Structured concurrency runtime for TypeScript.",
   "type": "module",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "author": "Admilson B. F. Cossa",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "node": {
+        "import": "./dist/index.js",
+        "require": "./dist-cjs/index.cjs"
+      },
+      "default": "./dist/runtime/unsupported.js"
     },
     "./ai": {
-      "import": "./dist/ai/index.js",
-      "types": "./dist/ai/index.d.ts"
+      "types": "./dist/ai/index.d.ts",
+      "node": {
+        "import": "./dist/ai/index.js",
+        "require": "./dist-cjs/ai/index.cjs"
+      },
+      "default": "./dist/runtime/unsupported.js"
     },
     "./observability": {
+      "types": "./dist/observability/index.d.ts",
       "import": "./dist/observability/index.js",
-      "types": "./dist/observability/index.d.ts"
+      "require": "./dist-cjs/observability/index.cjs"
+    },
+    "./otel": {
+      "types": "./dist/otel/index.d.ts",
+      "import": "./dist/otel/index.js",
+      "require": "./dist-cjs/otel/index.cjs"
+    },
+    "./worker": {
+      "types": "./dist/worker/index.d.ts",
+      "node": {
+        "import": "./dist/worker/index.js"
+      },
+      "default": "./dist/runtime/unsupported.js"
     }
   },
   "sideEffects": false,
   "files": [
-    "dist"
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "dist",
+    "dist-cjs",
+    "SECURITY.md"
   ],
   "scripts": {
-    "clean": "node -e \"const fs=require('node:fs'); for (const p of ['dist','coverage']) fs.rmSync(p,{recursive:true,force:true});\"",
-    "build": "tsc",
+    "clean": "node -e \"const fs=require('node:fs'); for (const p of ['dist','dist-cjs','coverage']) fs.rmSync(p,{recursive:true,force:true});\"",
+    "build": "npm run clean && tsc && node scripts/build-cjs.mjs",
     "typecheck": "tsc --noEmit",
     "check:no-network": "node scripts/check-no-network.mjs",
+    "check:security": "node scripts/check-security.mjs",
+    "check:tests": "node scripts/check-tests.mjs",
+    "check:api": "npm run build && node scripts/check-api-surface.mjs",
     "check:size": "npm run build && node scripts/check-bundle-size.mjs",
     "check:benchmark": "npm run build && node scripts/check-benchmark.mjs",
+    "check:1b": "npm run build && node scripts/check-1b-benchmark.mjs",
     "check:leak": "npm run build && node --expose-gc scripts/check-leak.mjs",
+    "check:exporter-stress": "npm run build && node --expose-gc scripts/check-exporter-stress.mjs",
+    "check:package-consumer": "npm run build && node scripts/check-package-consumer.mjs",
     "pack:dry": "npm pack --dry-run --json",
     "sample:1b": "npm run build && node samples/1b-stream.sample.js",
     "sample:concurrency": "npm run build && node samples/concurrency-budget.sample.js",
+    "sample:progress": "npm run build && node samples/progress-parallel.sample.js",
+    "sample:cancel": "npm run build && node samples/cancel-reason.sample.js",
+    "sample:timeout": "npm run build && node samples/timeout-stop.sample.js",
+    "sample:no-orphan": "npm run build && node samples/no-orphan.sample.js",
+    "sample:all": "npm run build && node samples/safer-promise-all.sample.js",
+    "sample:agent": "npm run build && node samples/agent-tree-cancel.sample.js",
+    "sample:race": "npm run build && node samples/race-providers.sample.js",
+    "sample:rag": "npm run build && node samples/budget-rag.sample.js",
+    "sample:batch": "npm run build && node samples/batch-upload.sample.js",
+    "sample:stream": "npm run build && node samples/streaming-summarizer.sample.js",
+    "sample:embed100k": "npm run build && node samples/embed-100k.sample.js",
+    "sample:bisection": "npm run build && node samples/embed-bisection.sample.js",
+    "sample:stt-disconnect": "npm run build && node samples/stt-disconnect.sample.js",
+    "sample:supervise": "npm run build && node samples/supervision.sample.js",
+    "sample:worker": "npm run build && node samples/worker-offload.sample.js",
+    "sample:aws": "npm run build && node samples/aws-lambda-handler.sample.js",
+    "sample:azure": "npm run build && node samples/azure-functions-handler.sample.js",
+    "sample:next": "npm run build && node samples/next-server-route.sample.js",
+    "sample:otel": "npm run build && node samples/otel-adapter.sample.js",
     "sample:logging": "npm run build && node samples/logging-otel-bridge.sample.js",
     "test": "npm run build && vitest run",
     "test:coverage": "npm run build && vitest run --coverage",
-    "verify": "npm run typecheck && npm run check:no-network && npm test && npm run check:size && npm run check:benchmark && npm run check:leak && npm run pack:dry"
+    "verify": "npm run typecheck && npm run check:no-network && npm run check:tests && npm test && npm run check:security && npm run check:api && npm run check:size && npm run check:benchmark && npm run check:1b && npm run check:leak && npm run check:exporter-stress && npm run check:package-consumer && npm run pack:dry"
   },
   "engines": {
     "node": ">=20.11"
   },
+  "peerDependencies": {
+    "@opentelemetry/api": "^1.9.1"
+  },
+  "peerDependenciesMeta": {
+    "@opentelemetry/api": {
+      "optional": true
+    }
+  },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "@vitest/coverage-v8": "^4.1.5",
-    "esbuild": "^0.28.0",
-    "typescript": "^5.5.0",
-    "vitest": "^4.1.5"
+    "@opentelemetry/api": "1.9.1",
+    "@types/node": "22.19.17",
+    "@vitest/coverage-v8": "4.1.5",
+    "esbuild": "0.28.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.5"
   }
 }
