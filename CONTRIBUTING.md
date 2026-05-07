@@ -4,7 +4,7 @@ SPDX-License-Identifier: Apache-2.0
 -->
 # Contributing
 
-WorkJS accepts changes only when they preserve the runtime invariants and pass
+WorkIt accepts changes only when they preserve the runtime invariants and pass
 the full verification gate.
 
 ## Development Contract

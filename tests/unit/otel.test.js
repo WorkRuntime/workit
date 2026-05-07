@@ -102,21 +102,21 @@ test("OpenTelemetry adapter creates task spans and bounded task metrics", async 
 
   assert.equal(attachment.activeSpanCount(), 0);
   assert.equal(fake.spans.length, 1);
-  assert.equal(fake.spans[0].name, "workjs.task.embed");
-  assert.equal(fake.spans[0].options.attributes["workjs.task.id"], "task-a");
+  assert.equal(fake.spans[0].name, "workit.task.embed");
+  assert.equal(fake.spans[0].options.attributes["workit.task.id"], "task-a");
   assert.deepEqual(fake.spans[0].events.map((event) => event.name), [
-    "workjs.task.progress",
-    "workjs.task.retrying",
+    "workit.task.progress",
+    "workit.task.retrying",
   ]);
-  assert.equal(fake.spans[0].events[0].attributes["workjs.progress.has_message"], true);
-  assert.equal(fake.spans[0].events[0].attributes["workjs.log.level"], "info");
+  assert.equal(fake.spans[0].events[0].attributes["workit.progress.has_message"], true);
+  assert.equal(fake.spans[0].events[0].attributes["workit.log.level"], "info");
   assert.equal(fake.spans[0].status.code, 1);
   assert.equal(fake.spans[0].ended, true);
-  assert.deepEqual(fake.counters.get("workjs.task.total")[0].attributes, {
-    "workjs.task.kind": "llm",
-    "workjs.task.outcome": "succeeded",
+  assert.deepEqual(fake.counters.get("workit.task.total")[0].attributes, {
+    "workit.task.kind": "llm",
+    "workit.task.outcome": "succeeded",
   });
-  assert.equal(fake.histograms.get("workjs.task.duration")[0].value, 12);
+  assert.equal(fake.histograms.get("workit.task.duration")[0].value, 12);
 });
 
 test("OpenTelemetry adapter records failures cancellations and scope summaries", async () => {
@@ -144,13 +144,13 @@ test("OpenTelemetry adapter records failures cancellations and scope summaries",
   assert.equal(attachment.activeSpanCount(), 0);
   assert.equal(fake.spans[0].exceptions[0].message, "failed");
   assert.equal(fake.spans[0].status.code, 2);
-  assert.equal(fake.spans[0].events[0].name, "workjs.task.cleanup_failed");
-  assert.equal(fake.spans[0].events[1].name, "workjs.task.cleanup_timeout");
-  assert.equal(fake.spans[0].events[1].attributes["workjs.cleanup.timeout_ms"], 30);
-  assert.equal(fake.spans[1].attributes["workjs.cancel.kind"], "manual");
+  assert.equal(fake.spans[0].events[0].name, "workit.task.cleanup_failed");
+  assert.equal(fake.spans[0].events[1].name, "workit.task.cleanup_timeout");
+  assert.equal(fake.spans[0].events[1].attributes["workit.cleanup.timeout_ms"], 30);
+  assert.equal(fake.spans[1].attributes["workit.cancel.kind"], "manual");
   assert.equal(fake.spans[1].status.message, "cancelled:manual");
-  assert.equal(fake.counters.get("workjs.scope.total")[0].attributes["workjs.scope.outcome"], "errored");
-  assert.equal(fake.histograms.get("workjs.scope.duration")[0].value, 9);
+  assert.equal(fake.counters.get("workit.scope.total")[0].attributes["workit.scope.outcome"], "errored");
+  assert.equal(fake.histograms.get("workit.scope.duration")[0].value, 9);
   assert.equal(attachment.exportedCount(), 12);
 });
 
@@ -200,8 +200,8 @@ test("OpenTelemetry adapter sanitizes task events before spans and metrics", () 
   scope.emit({ type: "task:progress", taskId: "task-secret", data: { logLevel: "info", token: "secret" }, at: 2 });
   scope.emit({ type: "task:succeeded", taskId: "task-secret", durationMs: 3, at: 3 });
 
-  assert.equal(fake.spans[0].name, "workjs.task.redacted-task");
-  assert.equal(fake.spans[0].events[0].attributes["workjs.log.level"], "warn");
+  assert.equal(fake.spans[0].name, "workit.task.redacted-task");
+  assert.equal(fake.spans[0].events[0].attributes["workit.log.level"], "warn");
   assert.equal(attachment.droppedCount(), 0);
 });
 
@@ -258,7 +258,7 @@ test("OpenTelemetry adapter covers default API and defensive event branches", as
 
   assert.equal(fake.spans[0].exceptions[0].message, "plain failure");
   assert.equal(fake.spans[0].status.message, "plain failure");
-  assert.equal(fake.spans[0].events[0].attributes["workjs.log.level"], undefined);
+  assert.equal(fake.spans[0].events[0].attributes["workit.log.level"], undefined);
 
   const throwingEnd = createFakeOtel();
   throwingEnd.tracer.startSpan = (name, options) => {

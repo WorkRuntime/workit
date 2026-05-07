@@ -26,7 +26,7 @@ export async function POST(request) {
   });
 }
 
-const response = await POST(new Request("https://workjs.local/search", {
+const response = await POST(new Request("https://workit.local/search", {
   method: "POST",
   body: JSON.stringify({ query: "structured concurrency" }),
 }));

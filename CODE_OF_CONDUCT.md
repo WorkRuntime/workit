@@ -3,11 +3,11 @@ Author: Admilson B. F. Cossa
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# WorkJS Code of Conduct
+# WorkIt Code of Conduct
 
 ## Purpose
 
-WorkJS is built for professional, reliable software work. The project expects
+WorkIt is built for professional, reliable software work. The project expects
 technical disagreement to stay constructive, evidence-based, and respectful.
 
 ## Scope

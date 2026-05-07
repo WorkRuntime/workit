@@ -41,7 +41,7 @@ const REQUIRED_RUNTIMES = [
 
 assert.equal(artifact.author, "Admilson B. F. Cossa");
 assert.equal(artifact.spdxLicense, "Apache-2.0");
-assert.equal(artifact.artifact, "workjs-public-proof");
+assert.equal(artifact.artifact, "workit-public-proof");
 assert.equal(artifact.version, 1);
 
 for (const command of REQUIRED_COMMANDS) {

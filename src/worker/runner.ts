@@ -1,5 +1,5 @@
 /**
- * Worker-thread runner for explicit WorkJS offload tasks.
+ * Worker-thread runner for explicit WorkIt offload tasks.
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0
@@ -15,7 +15,7 @@ interface WorkerRequest {
 }
 
 const port = parentPort;
-if (port === null) throw new Error("WorkJS worker runner requires parentPort");
+if (port === null) throw new Error("WorkIt worker runner requires parentPort");
 
 const request = workerData as WorkerRequest;
 

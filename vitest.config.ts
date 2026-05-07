@@ -1,5 +1,5 @@
 /**
- * Vitest configuration for WorkJS.
+ * Vitest configuration for WorkIt.
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0

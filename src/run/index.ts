@@ -421,7 +421,7 @@ async function scope<R>(body: (scope: Scope) => Promise<R>, opts: ScopeOpts = {}
 /** Spawns background work in the current scope. */
 function background<T>(task: TaskFn<T>): TaskHandle<T> {
   const current = getCurrentScope();
-  if (!current) throw new Error("requires an active WorkJS scope");
+  if (!current) throw new Error("requires an active WorkIt scope");
   return current.spawn(task, { name: "background" }, true);
 }
 

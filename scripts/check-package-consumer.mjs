@@ -33,7 +33,7 @@ if (bunCli === null) throw new Error("Bun compatibility fixture requires a Bun e
 if (denoCli === null) throw new Error("Deno compatibility fixture requires a Deno executable.");
 if (wranglerCli === null) throw new Error("Cloudflare Worker dry-run fixture requires Wrangler.");
 
-const temp = await mkdtemp(join(tmpdir(), "workjs-consumer-"));
+const temp = await mkdtemp(join(tmpdir(), "workit-consumer-"));
 
 try {
   const { stdout } = await runNpm(["pack", "--json", "--pack-destination", temp], {
@@ -59,11 +59,11 @@ try {
   });
 
   await writeFile(join(temp, "smoke.mjs"), `
-    import { run, work, group } from "@workjs/core";
-    import { embedAll, streamWithBackpressure } from "@workjs/core/ai";
-    import { attachTelemetryExporter } from "@workjs/core/observability";
-    import { attachOpenTelemetry } from "@workjs/core/otel";
-    import { offload } from "@workjs/core/worker";
+    import { run, work, group } from "@workit/core";
+    import { embedAll, streamWithBackpressure } from "@workit/core/ai";
+    import { attachTelemetryExporter } from "@workit/core/observability";
+    import { attachOpenTelemetry } from "@workit/core/otel";
+    import { offload } from "@workit/core/worker";
 
     const result = await run.all([async () => "sdk", async () => "ok"]);
     const batch = await work([1, 2]).inParallel(2).do(async (item) => item * 2);
@@ -107,7 +107,7 @@ try {
   });
 
   await writeFile(join(temp, "cjs-smoke.cjs"), `
-    const { run, work } = require("@workjs/core");
+    const { run, work } = require("@workit/core");
 
     (async () => {
       const values = await run.all([async () => "cjs", async () => "ok"]);
@@ -152,8 +152,8 @@ try {
       type ItemError,
       type Settled,
       type TaskContext,
-    } from "@workjs/core";
-    import { embedAll, streamWithBackpressure } from "@workjs/core/ai";
+    } from "@workit/core";
+    import { embedAll, streamWithBackpressure } from "@workit/core/ai";
 
     const RequestKey = createContextKey<{ requestId: string }>("request");
 
@@ -225,7 +225,7 @@ try {
   });
 
   await writeFile(join(temp, "bun-fixture.mjs"), `
-    import { run } from "@workjs/core";
+    import { run } from "@workit/core";
 
     const result = await run.all([async () => "bun", async () => "ok"]);
     if (result.join(":") !== "bun:ok") throw new Error("Bun runtime fixture failed");
@@ -237,7 +237,7 @@ try {
   });
 
   await writeFile(join(temp, "deno-fixture.mjs"), `
-    import { run } from "@workjs/core";
+    import { run } from "@workit/core";
 
     const result = await run.all([async () => "deno", async () => "ok"]);
     if (result.join(":") !== "deno:ok") throw new Error("Deno runtime fixture failed");
@@ -249,7 +249,7 @@ try {
   });
 
   await writeFile(join(temp, "aws-fixture.mjs"), `
-    import { work } from "@workjs/core";
+    import { work } from "@workit/core";
 
     export async function handler(event) {
       const output = await work(event.records).inParallel(2).onError("continue").do(async (record) => ({
@@ -265,7 +265,7 @@ try {
   `, "utf8");
 
   await writeFile(join(temp, "azure-fixture.mjs"), `
-    import { run } from "@workjs/core";
+    import { run } from "@workit/core";
 
     export async function handler(context, request) {
       const names = request.body.names;
@@ -279,22 +279,22 @@ try {
   `, "utf8");
 
   await writeFile(join(temp, "next-fixture.mjs"), `
-    import { run } from "@workjs/core";
+    import { run } from "@workit/core";
 
     export async function POST(request) {
       const payload = await request.json();
       return Response.json({ query: payload.query, winner: await run.race([async () => "next"]) });
     }
 
-    const response = await POST(new Request("https://example.test/api", { method: "POST", body: JSON.stringify({ query: "workjs" }) }));
+    const response = await POST(new Request("https://example.test/api", { method: "POST", body: JSON.stringify({ query: "workit" }) }));
     const json = await response.json();
-    if (json.query !== "workjs" || json.winner !== "next") throw new Error("Next fixture failed");
+    if (json.query !== "workit" || json.winner !== "next") throw new Error("Next fixture failed");
   `, "utf8");
 
   await writeFile(join(temp, "express-fixture.mjs"), `
     import express from "express";
     import { request as httpRequest } from "node:http";
-    import { run } from "@workjs/core";
+    import { run } from "@workit/core";
 
     let disconnectCancelled = false;
     const app = express();
@@ -343,11 +343,11 @@ try {
       const response = await fetch(\`http://127.0.0.1:\${address.port}/items\`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ items: ["express", "workjs"] }),
+        body: JSON.stringify({ items: ["express", "workit"] }),
       });
       const body = await response.json();
       if (response.status !== 200) throw new Error("Express fixture status failed");
-      if (body.output.join(":") !== "EXPRESS:WORKJS") throw new Error("Express fixture body failed");
+      if (body.output.join(":") !== "EXPRESS:WORKIT") throw new Error("Express fixture body failed");
 
       await new Promise((resolve) => {
         const req = httpRequest({
@@ -374,7 +374,7 @@ try {
 
   await writeFile(join(temp, "fastify-fixture.mjs"), `
     import Fastify from "fastify";
-    import { work } from "@workjs/core";
+    import { work } from "@workit/core";
 
     const app = Fastify();
     app.post("/items", async (request) => {
@@ -386,11 +386,11 @@ try {
       const response = await app.inject({
         method: "POST",
         url: "/items",
-        payload: { items: ["fastify", "workjs"] },
+        payload: { items: ["fastify", "workit"] },
       });
       const body = JSON.parse(response.body);
       if (response.statusCode !== 200) throw new Error("Fastify fixture status failed");
-      if (body.output.join(":") !== "FASTIFY:WORKJS") throw new Error("Fastify fixture body failed");
+      if (body.output.join(":") !== "FASTIFY:WORKIT") throw new Error("Fastify fixture body failed");
     } finally {
       await app.close();
     }
@@ -398,27 +398,27 @@ try {
 
   await writeFile(join(temp, "trpc-fixture.mjs"), `
     import { initTRPC } from "@trpc/server";
-    import { run } from "@workjs/core";
+    import { run } from "@workit/core";
 
     const t = initTRPC.create();
     const router = t.router({
       values: t.procedure.query(async () => {
         return await run.all([
           async () => "trpc",
-          async () => "workjs",
+          async () => "workit",
         ]);
       }),
     });
 
     const caller = router.createCaller({});
     const values = await caller.values();
-    if (values.join(":") !== "trpc:workjs") throw new Error("tRPC fixture failed");
+    if (values.join(":") !== "trpc:workit") throw new Error("tRPC fixture failed");
   `, "utf8");
 
   await writeFile(join(temp, "vercel-ai-fixture.mjs"), `
     import { streamText } from "ai";
     import { MockLanguageModelV3, simulateReadableStream } from "ai/test";
-    import { run } from "@workjs/core";
+    import { run } from "@workit/core";
 
     let modelSawAbort = false;
     const model = new MockLanguageModelV3({
@@ -431,7 +431,7 @@ try {
             chunks: [
               { type: "text-start", id: "0" },
               { type: "text-delta", id: "0", delta: "hello" },
-              { type: "text-delta", id: "0", delta: " workjs" },
+              { type: "text-delta", id: "0", delta: " workit" },
               { type: "text-end", id: "0" },
               { type: "finish", finishReason: "stop", usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 } },
             ],
@@ -456,12 +456,12 @@ try {
         try {
           await iterator.next();
         } catch {
-          // The important contract is that WorkJS aborts the signal supplied to streamText.
+          // The important contract is that WorkIt aborts the signal supplied to streamText.
         }
       }, { name: "vercel-ai.stream" });
     });
 
-    if (!modelSawAbort) throw new Error("Vercel AI SDK fixture did not receive WorkJS cancellation");
+    if (!modelSawAbort) throw new Error("Vercel AI SDK fixture did not receive WorkIt cancellation");
   `, "utf8");
 
   for (const fixture of [
@@ -480,9 +480,9 @@ try {
   }
 
   await writeFile(join(temp, "browser-entry.mjs"), `
-    import { group } from "@workjs/core";
-    import { offload } from "@workjs/core/worker";
-    globalThis.__workjsBrowserSmoke = [typeof group, typeof offload];
+    import { group } from "@workit/core";
+    import { offload } from "@workit/core/worker";
+    globalThis.__workitBrowserSmoke = [typeof group, typeof offload];
   `, "utf8");
 
   const browserBundle = await build({
@@ -495,14 +495,14 @@ try {
   });
   const browserText = browserBundle.outputFiles[0].text;
   if (browserText.includes("node:async_hooks") || browserText.includes("node:worker_threads")) {
-    throw new Error("Browser bundle pulled in Node-only WorkJS modules");
+    throw new Error("Browser bundle pulled in Node-only WorkIt modules");
   }
   if (!browserText.includes("UnsupportedRuntimeError")) {
     throw new Error("Browser bundle did not resolve to the explicit unsupported runtime split");
   }
 
   await writeFile(join(temp, "cloudflare-worker.mjs"), `
-    import { group } from "@workjs/core";
+    import { group } from "@workit/core";
 
     export default {
       async fetch() {
@@ -520,7 +520,7 @@ try {
     "deploy",
     "cloudflare-worker.mjs",
     "--name",
-    "workjs-compat-smoke",
+    "workit-compat-smoke",
     "--dry-run",
     "--outdir",
     "wrangler-out",
@@ -533,7 +533,7 @@ try {
 
   const workerBundle = await readFile(join(temp, "wrangler-out", "cloudflare-worker.js"), "utf8");
   if (workerBundle.includes("node:async_hooks") || workerBundle.includes("node:worker_threads")) {
-    throw new Error("Cloudflare Worker dry-run pulled in Node-only WorkJS modules");
+    throw new Error("Cloudflare Worker dry-run pulled in Node-only WorkIt modules");
   }
   if (!workerBundle.includes("UnsupportedRuntimeError")) {
     throw new Error("Cloudflare Worker dry-run did not resolve to the unsupported runtime split");

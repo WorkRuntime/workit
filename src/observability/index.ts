@@ -1,10 +1,10 @@
 /**
- * Opt-in observability export helpers for WorkJS.
+ * Opt-in observability export helpers for WorkIt.
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0
  *
- * Core WorkJS never imports remote telemetry clients. This module accepts a
+ * Core WorkIt never imports remote telemetry clients. This module accepts a
  * caller-provided exporter and adds sampling plus a circuit breaker so telemetry
  * volume and exporter failures cannot take down application work.
  */

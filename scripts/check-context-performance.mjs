@@ -14,9 +14,9 @@
 import { performance } from "node:perf_hooks";
 import { ContextBagImpl, createContextKey } from "../dist/index.js";
 
-const BASE_KEYS = Number.parseInt(process.env.WORKJS_CONTEXT_BASE_KEYS ?? "5000", 10);
-const SHADOW_WRITES = Number.parseInt(process.env.WORKJS_CONTEXT_SHADOW_WRITES ?? "500", 10);
-const MAX_SHADOW_MS = Number.parseInt(process.env.WORKJS_CONTEXT_MAX_SHADOW_MS ?? "75", 10);
+const BASE_KEYS = Number.parseInt(process.env.WORKIT_CONTEXT_BASE_KEYS ?? "5000", 10);
+const SHADOW_WRITES = Number.parseInt(process.env.WORKIT_CONTEXT_SHADOW_WRITES ?? "500", 10);
+const MAX_SHADOW_MS = Number.parseInt(process.env.WORKIT_CONTEXT_MAX_SHADOW_MS ?? "75", 10);
 
 let context = new ContextBagImpl();
 for (let i = 0; i < BASE_KEYS; i++) {

@@ -4,7 +4,7 @@
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0
  *
- * WorkJS core must remain local-first. This script fails verification if source
+ * WorkIt core must remain local-first. This script fails verification if source
  * code imports Node networking modules or calls global fetch from the core
  * package. Remote exporters belong in opt-in companion packages.
  */

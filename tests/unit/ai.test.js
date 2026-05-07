@@ -504,7 +504,7 @@ test("runAgent records replayable tool events and consumes AI budgets", async ()
     .with(AgentToolCalls, { spent: 0, limit: 2, unit: "tool_calls" });
 
   const agentRun = await group(async () => runAgent(async (agent) => {
-    const value = await agent.tool("search", { q: "workjs" }, async (input, ctx) => {
+    const value = await agent.tool("search", { q: "workit" }, async (input, ctx) => {
       assert.equal(ctx.kind, "tool");
       return `found:${input.q}`;
     }, {
@@ -514,7 +514,7 @@ test("runAgent records replayable tool events and consumes AI budgets", async ()
     return value;
   }), { context });
 
-  assert.equal(agentRun.result, "found:workjs");
+  assert.equal(agentRun.result, "found:workit");
   assert.deepEqual(agentRun.events.map((event) => event.type), [
     "agent:started",
     "agent:tool_started",
@@ -584,7 +584,7 @@ test("runAgent surfaces body failures", async () => {
   );
 });
 
-test("streamLLM streams provider chunks inside a WorkJS task", async () => {
+test("streamLLM streams provider chunks inside a WorkIt task", async () => {
   const chunks = [];
   const iterator = streamLLM("hello", {
     async *stream(input, ctx) {

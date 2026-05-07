@@ -1,5 +1,5 @@
 /**
- * Bundle size quality gate for WorkJS.
+ * Bundle size quality gate for WorkIt.
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0

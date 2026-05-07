@@ -1,5 +1,5 @@
 /**
- * Bundle contribution report for WorkJS package entrypoints.
+ * Bundle contribution report for WorkIt package entrypoints.
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0
@@ -11,7 +11,7 @@
 import { gzipSync } from "node:zlib";
 import { build } from "esbuild";
 
-const TOP_INPUTS = Number.parseInt(process.env.WORKJS_BUNDLE_TOP ?? "8", 10);
+const TOP_INPUTS = Number.parseInt(process.env.WORKIT_BUNDLE_TOP ?? "8", 10);
 
 const ENTRIES = [
   {

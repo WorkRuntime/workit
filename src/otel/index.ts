@@ -1,11 +1,11 @@
 /**
- * OpenTelemetry adapter for WorkJS.
+ * OpenTelemetry adapter for WorkIt.
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0
  *
  * This subpath is intentionally opt-in. The core package never imports
- * OpenTelemetry; applications that want OTel import `@workjs/core/otel` and provide
+ * OpenTelemetry; applications that want OTel import `@workit/core/otel` and provide
  * or configure the OpenTelemetry API in their runtime.
  */
 
@@ -27,7 +27,7 @@ import {
   type TaskEventSanitizer,
 } from "../observability/index.js";
 
-/** Options used to attach WorkJS events to OpenTelemetry. */
+/** Options used to attach WorkIt events to OpenTelemetry. */
 export interface OpenTelemetryOptions {
   tracer?: Tracer;
   meter?: Meter;
@@ -51,19 +51,19 @@ interface TaskSpanState {
   kind: TaskKind;
 }
 
-/** Attaches OTel spans and bounded metrics to a WorkJS scope event stream. */
+/** Attaches OTel spans and bounded metrics to a WorkIt scope event stream. */
 export function attachOpenTelemetry(
   scope: Pick<Scope, "onEvent">,
   opts: OpenTelemetryOptions = {}
 ): OpenTelemetryAttachment {
-  const instrumentationName = opts.instrumentationName ?? "workjs";
+  const instrumentationName = opts.instrumentationName ?? "workit";
   const instrumentationVersion = opts.instrumentationVersion ?? "0.1.0";
   const tracer = opts.tracer ?? trace.getTracer(instrumentationName, instrumentationVersion);
   const meter = opts.meter ?? metrics.getMeter(instrumentationName, instrumentationVersion);
-  const taskCounter = meter.createCounter("workjs.task.total", { unit: "1" });
-  const taskDuration = meter.createHistogram("workjs.task.duration", { unit: "ms" });
-  const scopeCounter = meter.createCounter("workjs.scope.total", { unit: "1" });
-  const scopeDuration = meter.createHistogram("workjs.scope.duration", { unit: "ms" });
+  const taskCounter = meter.createCounter("workit.task.total", { unit: "1" });
+  const taskDuration = meter.createHistogram("workit.task.duration", { unit: "ms" });
+  const scopeCounter = meter.createCounter("workit.scope.total", { unit: "1" });
+  const scopeDuration = meter.createHistogram("workit.scope.duration", { unit: "ms" });
   const spans = new Map<TaskId, TaskSpanState>();
   let exported = 0;
   let dropped = 0;
@@ -137,9 +137,9 @@ function handleTaskEvent(
       startTaskSpan(event, spans, tracer, includeIds);
       break;
     case "task:retrying":
-      spans.get(event.taskId)?.span.addEvent("workjs.task.retrying", {
-        "workjs.retry.attempt": event.attempt,
-        "workjs.retry.next_delay_ms": event.nextDelayMs,
+      spans.get(event.taskId)?.span.addEvent("workit.task.retrying", {
+        "workit.retry.attempt": event.attempt,
+        "workit.retry.next_delay_ms": event.nextDelayMs,
       });
       break;
     case "task:progress":
@@ -176,15 +176,15 @@ function startTaskSpan(
   includeIds: boolean
 ): void {
   const attributes: Attributes = {
-    "workjs.task.name": event.name,
-    "workjs.task.kind": event.kind,
+    "workit.task.name": event.name,
+    "workit.task.kind": event.kind,
   };
   if (includeIds) {
-    attributes["workjs.task.id"] = event.taskId;
-    attributes["workjs.scope.id"] = event.scopeId;
+    attributes["workit.task.id"] = event.taskId;
+    attributes["workit.scope.id"] = event.scopeId;
   }
 
-  const span = tracer.startSpan(`workjs.task.${event.name}`, {
+  const span = tracer.startSpan(`workit.task.${event.name}`, {
     kind: SpanKind.INTERNAL,
     attributes,
   });
@@ -194,24 +194,24 @@ function startTaskSpan(
 function recordProgress(span: Span | undefined, event: Extract<TaskEvent, { type: "task:progress" }>): void {
   if (span === undefined) return;
   const attributes: Attributes = {};
-  if (event.pct !== undefined) attributes["workjs.progress.pct"] = event.pct;
-  if (event.message !== undefined) attributes["workjs.progress.has_message"] = true;
+  if (event.pct !== undefined) attributes["workit.progress.pct"] = event.pct;
+  if (event.message !== undefined) attributes["workit.progress.has_message"] = true;
   const logLevel = extractLogLevel(event.data);
-  if (logLevel !== undefined) attributes["workjs.log.level"] = logLevel;
-  span.addEvent("workjs.task.progress", attributes);
+  if (logLevel !== undefined) attributes["workit.log.level"] = logLevel;
+  span.addEvent("workit.task.progress", attributes);
 }
 
 function recordTaskCleanupFailure(span: Span | undefined, event: Extract<TaskEvent, { type: "task:cleanup_failed" }>): void {
   if (span === undefined) return;
-  span.addEvent("workjs.task.cleanup_failed", {
-    "workjs.error.message": errorMessage(event.error),
+  span.addEvent("workit.task.cleanup_failed", {
+    "workit.error.message": errorMessage(event.error),
   });
 }
 
 function recordTaskCleanupTimeout(span: Span | undefined, event: Extract<TaskEvent, { type: "task:cleanup_timeout" }>): void {
   if (span === undefined) return;
-  span.addEvent("workjs.task.cleanup_timeout", {
-    "workjs.cleanup.timeout_ms": event.timeoutMs,
+  span.addEvent("workit.task.cleanup_timeout", {
+    "workit.cleanup.timeout_ms": event.timeoutMs,
   });
 }
 
@@ -259,7 +259,7 @@ function cancelTask(
   const state = spans.get(taskId);
   if (state === undefined) return;
   spans.delete(taskId);
-  state.span.setAttribute("workjs.cancel.kind", reason.kind);
+  state.span.setAttribute("workit.cancel.kind", reason.kind);
   state.span.setStatus({ code: SpanStatusCode.ERROR, message: `cancelled:${reason.kind}` });
   recordTaskMetrics("cancelled", durationMs, state.kind, taskCounter, taskDuration);
   safeEnd(state.span);
@@ -273,8 +273,8 @@ function recordTaskMetrics(
   histogram: HistogramLike
 ): void {
   const labels = {
-    "workjs.task.kind": kind,
-    "workjs.task.outcome": outcome,
+    "workit.task.kind": kind,
+    "workit.task.outcome": outcome,
   };
   counter.add(1, labels);
   histogram.record(durationMs, labels);
@@ -285,7 +285,7 @@ function recordScopeSummary(
   counter: CounterLike,
   histogram: HistogramLike
 ): void {
-  const labels = { "workjs.scope.outcome": summary.outcome };
+  const labels = { "workit.scope.outcome": summary.outcome };
   counter.add(1, labels);
   histogram.record(summary.durationMs, labels);
 }

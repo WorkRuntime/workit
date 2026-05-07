@@ -1,11 +1,11 @@
 /**
- * Executable adoption examples for WorkJS.
+ * Executable adoption examples for WorkIt.
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0
  *
  * These tests keep public examples honest by running them against the compiled
- * package. Provider calls are explicit fakes at the boundary; WorkJS still uses
+ * package. Provider calls are explicit fakes at the boundary; WorkIt still uses
  * the real scope, cancellation, budget, run, work, and observability paths.
  */
 

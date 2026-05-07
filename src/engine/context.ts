@@ -23,7 +23,7 @@ interface BudgetCell {
 }
 
 /**
- * Immutable implementation of the WorkJS context bag.
+ * Immutable implementation of the WorkIt context bag.
  *
  * Values are stored as immutable overlays so a child scope can shadow a parent
  * value without mutating the parent context or cloning every visible key. This

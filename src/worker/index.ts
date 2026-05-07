@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * CPU-heavy work is never routed to workers automatically. Callers opt in by
- * pointing WorkJS at a local, application-controlled module export that can run
+ * pointing WorkIt at a local, application-controlled module export that can run
  * in a Node worker thread.
  */
 
@@ -32,7 +32,7 @@ interface OffloadOpts {
  * Creates a task function that executes a local module export in a worker thread.
  *
  * `moduleURL` must be a file URL or path controlled by the application at build
- * time. WorkJS rejects inline and remote URL schemes because worker offload is
+ * time. WorkIt rejects inline and remote URL schemes because worker offload is
  * an execution boundary, not a user-input module loader.
  */
 export function offload<I, R>(

@@ -1,5 +1,5 @@
 /**
- * Runtime leak smoke check for WorkJS scope disposal.
+ * Runtime leak smoke check for WorkIt scope disposal.
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0

@@ -4,20 +4,20 @@
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0
  *
- * WorkJS currently requires Node.js async context support for its structured
+ * WorkIt currently requires Node.js async context support for its structured
  * concurrency guarantees. Browser and edge runtimes must use a future dedicated
  * runtime instead of silently receiving weaker semantics.
  */
 
 const MESSAGE =
-  "WorkJS core runtime currently requires Node.js. Browser and edge support must use a dedicated WorkJS runtime split.";
+  "WorkIt requires Node.js async context. Browser and edge need a dedicated runtime split.";
 
 type UnsupportedFunction = (..._args: readonly unknown[]) => never;
 
-/** Error thrown when a browser or edge bundle calls a Node-only WorkJS API. */
+/** Error thrown when a browser or edge bundle calls a Node-only WorkIt API. */
 export class UnsupportedRuntimeError extends Error {
   constructor(apiName: string) {
-    super(`${apiName} is unavailable in this WorkJS runtime. ${MESSAGE}`);
+    super(`${apiName} is unavailable in this WorkIt runtime. ${MESSAGE}`);
     this.name = "UnsupportedRuntimeError";
   }
 }
@@ -27,7 +27,7 @@ export class CancellationError extends Error {
   readonly reason: unknown;
 
   constructor(reason: unknown = { kind: "manual", tag: "unsupported-runtime" }) {
-    super("WorkJS operation cancelled");
+    super("WorkIt operation cancelled");
     this.name = "CancellationError";
     this.reason = reason;
   }
@@ -38,7 +38,7 @@ export class TimeoutError extends Error {
   readonly timeoutMs: number;
 
   constructor(timeoutMs: number) {
-    super(`WorkJS operation timed out after ${timeoutMs}ms`);
+    super(`WorkIt operation timed out after ${timeoutMs}ms`);
     this.name = "TimeoutError";
     this.timeoutMs = timeoutMs;
   }
@@ -49,7 +49,7 @@ export class BudgetExceededError extends Error {
   readonly reason: unknown;
 
   constructor(reason: unknown) {
-    super("WorkJS budget exceeded");
+    super("WorkIt budget exceeded");
     this.name = "BudgetExceededError";
     this.reason = reason;
   }
@@ -57,7 +57,7 @@ export class BudgetExceededError extends Error {
 
 /** Aggregate error shape preserved for defensive browser bundles. */
 export class WorkAggregateError extends AggregateError {
-  constructor(errors: Iterable<unknown>, message = "WorkJS aggregate error") {
+  constructor(errors: Iterable<unknown>, message = "WorkIt aggregate error") {
     super(errors, message);
     this.name = "WorkAggregateError";
   }

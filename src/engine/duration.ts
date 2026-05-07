@@ -30,7 +30,7 @@ const MULTIPLIERS = {
 const MAX_TIMEOUT_MS = 2_147_483_647;
 
 /**
- * Converts a WorkJS duration into milliseconds.
+ * Converts a WorkIt duration into milliseconds.
  *
  * @throws RangeError when the value is not a finite non-negative duration.
  */

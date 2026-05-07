@@ -522,16 +522,16 @@ test("cardinality-safe metric exporter rejects unbounded labels", async () => {
     { allowedLabels: ["outcome", "taskKind"] }
   );
 
-  await exporter({ name: "workjs_task_total", value: 1, labels: { outcome: "ok", taskKind: "io" } });
-  await createCardinalitySafeMetricExporter((metric) => metrics.push(metric))({ name: "workjs_without_labels", value: 1 });
+  await exporter({ name: "workit_task_total", value: 1, labels: { outcome: "ok", taskKind: "io" } });
+  await createCardinalitySafeMetricExporter((metric) => metrics.push(metric))({ name: "workit_without_labels", value: 1 });
   assert.equal(metrics.length, 2);
 
   await assert.rejects(exporter({ name: "bad metric", value: 1 }), /Invalid metric name/);
-  await assert.rejects(exporter({ name: "workjs_bad", value: Number.NaN }), /finite/);
-  await assert.rejects(exporter({ name: "workjs_bad", value: 1, labels: { taskId: "task-1" } }), /cardinality-safe/);
-  await assert.rejects(exporter({ name: "workjs_bad", value: 1, labels: { region: "us" } }), /allowed label/);
+  await assert.rejects(exporter({ name: "workit_bad", value: Number.NaN }), /finite/);
+  await assert.rejects(exporter({ name: "workit_bad", value: 1, labels: { taskId: "task-1" } }), /cardinality-safe/);
+  await assert.rejects(exporter({ name: "workit_bad", value: 1, labels: { region: "us" } }), /allowed label/);
   await assert.rejects(exporter({
-    name: "workjs_bad",
+    name: "workit_bad",
     value: 1,
     labels: { outcome: "x".repeat(65) },
   }), /too long/);

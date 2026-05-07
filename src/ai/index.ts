@@ -1,10 +1,10 @@
 /**
- * AI adapter utilities for WorkJS.
+ * AI adapter utilities for WorkIt.
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0
  *
- * This module is provider-neutral: callers bring provider functions, and WorkJS
+ * This module is provider-neutral: callers bring provider functions, and WorkIt
  * supplies structured ownership, cancellation, token budgeting, and batch
  * failure policy. No network client is imported or initialized here.
  */
@@ -22,7 +22,7 @@ export const OpenAITokens = createBudget("OpenAITokens", { unit: "tokens" });
 /** Built-in tool-call budget key for agent tool execution. */
 export const AgentToolCalls = createBudget("AgentToolCalls", { unit: "tool_calls" });
 
-/** Provider contract for embedding one input inside a WorkJS task context. */
+/** Provider contract for embedding one input inside a WorkIt task context. */
 export interface EmbeddingProvider<I> {
   embed(input: I, ctx: TaskContext): Promise<readonly number[]>;
   countTokens?: (input: I) => number;
@@ -34,7 +34,7 @@ export interface BatchEmbeddingProvider<I> {
   countTokens?: (input: I) => number;
 }
 
-/** Provider contract for transcribing one chunk inside a WorkJS task context. */
+/** Provider contract for transcribing one chunk inside a WorkIt task context. */
 export interface TranscriptionProvider<I> {
   transcribe(input: I, ctx: TaskContext): Promise<string>;
 }
@@ -129,7 +129,7 @@ export interface StreamLLMOptions {
   buffer?: number;
 }
 
-const BAD_BATCH_ERROR_BRAND = Symbol.for("workjs.ai.BadBatchError");
+const BAD_BATCH_ERROR_BRAND = Symbol.for("wi.ai.BadBatchError");
 let nextAgentId = 0;
 
 /** Error type applications can throw when a provider rejects a mixed-quality batch. */
@@ -331,7 +331,7 @@ export function streamWithBackpressure<I, O>(
     .stream();
 }
 
-/** Streams one LLM provider response while keeping provider work inside WorkJS ownership. */
+/** Streams one LLM provider response while keeping provider work inside WorkIt ownership. */
 export function streamLLM<I, O>(
   input: I,
   provider: LLMStreamProvider<I, O>,

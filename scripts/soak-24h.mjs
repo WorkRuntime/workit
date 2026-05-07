@@ -12,10 +12,10 @@
 import { runRuntimeSoak } from "./soak-runtime.mjs";
 
 const result = await runRuntimeSoak({
-  taskCount: Number.parseInt(process.env.WORKJS_SOAK_TASKS ?? "100000", 10),
-  concurrency: Number.parseInt(process.env.WORKJS_SOAK_CONCURRENCY ?? "128", 10),
-  durationMs: Number.parseInt(process.env.WORKJS_SOAK_DURATION_MS ?? "86400000", 10),
-  maxBatchDurationMs: Number.parseInt(process.env.WORKJS_SOAK_MAX_BATCH_MS ?? "120000", 10),
+  taskCount: Number.parseInt(process.env.WORKIT_SOAK_TASKS ?? "100000", 10),
+  concurrency: Number.parseInt(process.env.WORKIT_SOAK_CONCURRENCY ?? "128", 10),
+  durationMs: Number.parseInt(process.env.WORKIT_SOAK_DURATION_MS ?? "86400000", 10),
+  maxBatchDurationMs: Number.parseInt(process.env.WORKIT_SOAK_MAX_BATCH_MS ?? "120000", 10),
 });
 
 console.log(JSON.stringify({ runtimeSoak24h: "ok", ...result }));

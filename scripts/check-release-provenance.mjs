@@ -26,7 +26,7 @@ const scorecard = await readRequiredFile(".github/workflows/scorecard.yml");
 const requireRegistryDryRun = process.argv.includes("--registry-dry-run");
 const execFileAsync = promisify(execFile);
 
-assert.equal(packageJson.name, "@workjs/core", "release package identity must remain @workjs/core");
+assert.equal(packageJson.name, "@workit/core", "release package identity must remain @workit/core");
 assert.equal(packageJson.private, false, "package.json must be publishable after final release approval");
 assert.equal(packageJson.publishConfig?.access, "public", "publishConfig.access must be public");
 assert.equal(packageJson.license, "Apache-2.0", "release license must remain Apache-2.0");

@@ -1,5 +1,5 @@
 /**
- * Public API surface lock for the compiled WorkJS package.
+ * Public API surface lock for the compiled WorkIt package.
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0

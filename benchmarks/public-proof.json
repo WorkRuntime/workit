@@ -1,7 +1,7 @@
 {
   "author": "Admilson B. F. Cossa",
   "spdxLicense": "Apache-2.0",
-  "artifact": "workjs-public-proof",
+  "artifact": "workit-public-proof",
   "version": 1,
   "evidenceCommands": [
     "npm run check:benchmark",

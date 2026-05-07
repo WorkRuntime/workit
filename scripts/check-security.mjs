@@ -1,5 +1,5 @@
 /**
- * Release security policy gate for WorkJS.
+ * Release security policy gate for WorkIt.
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0

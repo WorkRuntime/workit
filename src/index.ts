@@ -1,5 +1,5 @@
 /**
- * WorkJS - current public engine surface.
+ * WorkIt - current public engine surface.
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0

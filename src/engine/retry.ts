@@ -1,5 +1,5 @@
 /**
- * Shared retry policy helpers for WorkJS runtime wrappers.
+ * Shared retry policy helpers for WorkIt runtime wrappers.
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0

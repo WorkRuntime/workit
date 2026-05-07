@@ -132,7 +132,7 @@ export const claimFixtures = [
   {
     id: "aws-handler-import",
     sample: "samples/aws-lambda-handler.sample.js",
-    proves: "AWS Lambda-shaped handlers can import WorkJS as an SDK.",
+    proves: "AWS Lambda-shaped handlers can import WorkIt as an SDK.",
     verify(result) {
       assertEqual(result.response.statusCode, 200, "AWS handler status");
       assertEqual(JSON.parse(result.response.body).processed, 2, "AWS processed count");
@@ -141,7 +141,7 @@ export const claimFixtures = [
   {
     id: "azure-handler-import",
     sample: "samples/azure-functions-handler.sample.js",
-    proves: "Azure Functions-shaped handlers can import WorkJS as an SDK.",
+    proves: "Azure Functions-shaped handlers can import WorkIt as an SDK.",
     verify(result) {
       assertEqual(result.response.status, 200, "Azure handler status");
       assertArrayEqual(result.response.jsonBody.greetings, ["hello aws", "hello azure", "hello next"], "Azure handler greetings");
@@ -150,7 +150,7 @@ export const claimFixtures = [
   {
     id: "next-route-import",
     sample: "samples/next-server-route.sample.js",
-    proves: "Next.js server route-shaped handlers can import WorkJS as an SDK.",
+    proves: "Next.js server route-shaped handlers can import WorkIt as an SDK.",
     verify(result) {
       assertEqual(result.response.provider, "fast-provider", "Next route provider");
       assertEqual(result.response.query, "structured concurrency", "Next route query");
@@ -162,7 +162,7 @@ export const claimFixtures = [
     proves: "The optional OTel adapter emits spans and bounded metrics.",
     verify(result) {
       assertEqual(result.spans[0]?.ended, true, "span ended");
-      assert(result.metricNames.includes("workjs.task.total"), "task total metric");
+      assert(result.metricNames.includes("workit.task.total"), "task total metric");
     },
   },
 ];

@@ -4,7 +4,7 @@
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0
  *
- * Runs against the compiled package. WorkJS core does not import OpenTelemetry;
+ * Runs against the compiled package. WorkIt core does not import OpenTelemetry;
  * applications can adapt task log events to an OTel log exporter at the edge.
  */
 
@@ -39,7 +39,7 @@ const records = await run.scope(async (scope) => {
 
 assert.ok(records.some((record) => record.body === "sample.import.started"));
 assert.ok(records.some((record) => record.body === "sample.import.skipped"));
-assert.ok(records.every((record) => record.instrumentationScope.name === "workjs"));
+assert.ok(records.every((record) => record.instrumentationScope.name === "workit"));
 
 process.stdout.write(`${JSON.stringify({
   sample: "logging-otel-bridge",
@@ -63,13 +63,13 @@ function toOtelLogRecord(event) {
     severityText: String(data.logLevel).toUpperCase(),
     body: event.message,
     attributes: {
-      "workjs.task.id": event.taskId,
+      "workit.task.id": event.taskId,
       ...("fields" in data && typeof data.fields === "object" && data.fields !== null
         ? data.fields
         : {}),
     },
     instrumentationScope: {
-      name: "workjs",
+      name: "workit",
     },
   };
 }
