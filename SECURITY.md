@@ -13,6 +13,12 @@ development line until a stable support policy is published.
 
 Do not open a public issue for suspected vulnerabilities.
 
+Security contact: admilsoncossa@gmail.com
+
+PGP encryption: request the maintainer's current public key through the security
+contact before sending secrets, exploit details that include credentials, or
+tenant-sensitive material. Do not attach secrets to an unencrypted first report.
+
 Send a private report to the project maintainer with:
 
 - affected version or commit

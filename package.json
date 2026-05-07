@@ -59,6 +59,7 @@
     "build": "npm run clean && tsc && node scripts/build-cjs.mjs && node scripts/generate-sbom.mjs",
     "typecheck": "tsc --noEmit",
     "check:no-network": "node scripts/check-no-network.mjs",
+    "check:headers": "node scripts/check-file-headers.mjs",
     "check:security": "node scripts/check-security.mjs",
     "check:vulnerabilities": "node scripts/check-vulnerabilities.mjs",
     "check:sbom": "npm run build && node scripts/check-sbom.mjs",
@@ -98,7 +99,7 @@
     "sample:logging": "npm run build && node samples/logging-otel-bridge.sample.js",
     "test": "npm run build && vitest run",
     "test:coverage": "npm run build && vitest run --coverage",
-    "verify": "npm run typecheck && npm run check:no-network && npm run check:tests && npm test && npm run check:security && npm run check:vulnerabilities && npm run check:sbom && npm run check:api && npm run check:size && npm run check:benchmark && npm run check:1b && npm run check:leak && npm run check:exporter-stress && npm run check:package-consumer && npm run check:claims && npm run check:release-policy && npm run pack:dry"
+    "verify": "npm run typecheck && npm run check:no-network && npm run check:headers && npm run check:tests && npm test && npm run check:security && npm run check:vulnerabilities && npm run check:sbom && npm run check:api && npm run check:size && npm run check:benchmark && npm run check:1b && npm run check:leak && npm run check:exporter-stress && npm run check:package-consumer && npm run check:claims && npm run check:release-policy && npm run pack:dry"
   },
   "engines": {
     "node": ">=20.11"

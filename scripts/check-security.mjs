@@ -16,6 +16,7 @@ const failures = [];
 const packageJson = JSON.parse(await readFile("package.json", "utf8"));
 const packageLock = JSON.parse(await readFile("package-lock.json", "utf8"));
 const tsconfig = JSON.parse(stripJsonComments(await readFile("tsconfig.json", "utf8")));
+const securityPolicy = await readFile("SECURITY.md", "utf8");
 const rootLock = packageLock.packages?.[""] ?? {};
 
 const runtimeDependencies = Object.keys(packageJson.dependencies ?? {});
@@ -55,6 +56,14 @@ for (const requiredFile of ["CODE_OF_CONDUCT.md", "CONTRIBUTING.md", "dist", "di
 
 if (tsconfig.compilerOptions?.sourceMap !== false || tsconfig.compilerOptions?.declarationMap !== false) {
   failures.push("Release builds must disable sourceMap and declarationMap");
+}
+
+if (!/Security contact:\s*admilsoncossa@gmail\.com/u.test(securityPolicy)) {
+  failures.push("SECURITY.md must name the explicit security contact address");
+}
+
+if (!/PGP encryption:/u.test(securityPolicy)) {
+  failures.push("SECURITY.md must document the PGP encryption reporting path");
 }
 
 await assertNoFiles(["dist", "dist-cjs"], /\.map$/u, "Published artifacts must not include source maps");
