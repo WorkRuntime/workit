@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 
 ## Supported Versions
 
-WorkJS is pre-release software. Security fixes apply to the current `0.x`
+WorkIt is pre-release software. Security fixes apply to the current `0.x`
 development line until a stable support policy is published.
 
 ## Reporting A Vulnerability
@@ -32,7 +32,7 @@ fix, mitigation, or status update as soon as practical.
 
 ## Security Boundary
 
-WorkJS is a local structured-concurrency runtime. It does not authenticate
+WorkIt is a local structured-concurrency runtime. It does not authenticate
 users, authorize actions, encrypt payloads, or provide a durable workflow
 ledger. Applications remain responsible for tenant isolation, provider
 credentials, authorization, persistence, and external network policy.
@@ -65,7 +65,7 @@ npm pack --dry-run --json
 The provenance workflow is defined in `.github/workflows/release-provenance.yml`.
 Registry dry-runs and real publication are intentionally blocked while
 `package.json` has `private: true`. Final release requires a separate scoped
-commit that proves `@workjs` npm scope ownership, flips `private` to `false`,
+commit that proves `@workit` npm scope ownership, flips `private` to `false`,
 and runs:
 
 ```sh
@@ -104,7 +104,7 @@ rejected before the worker starts. Worker input must be plain structured-clone d
 Primitives, arrays, plain objects, `Map`, `Set`, dates, regexps, buffers,
 and typed arrays are accepted. Functions, symbols, class instances, and objects
 with custom prototypes are rejected before worker startup. When `offload()` is
-given a timeout, WorkJS terminates the worker thread on timeout so
+given a timeout, WorkIt terminates the worker thread on timeout so
 non-cooperative worker code cannot keep running in-process. In-process helpers
 such as `run.uncancellable()` remain cooperative shields; JavaScript code that
 ignores abort signals cannot be forcibly stopped without a worker/process

@@ -1,11 +1,11 @@
 /**
- * One-billion logical item benchmark for WorkJS.
+ * One-billion logical item benchmark for WorkIt.
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0
  *
  * This benchmark intentionally models a production-scale workload as bounded
- * range partitions. It does not create one billion promises. Each WorkJS task
+ * range partitions. It does not create one billion promises. Each WorkIt task
  * owns one chunk and returns an exact count plus checksum for its logical item
  * range, proving full coverage, bounded concurrency, and deterministic
  * aggregation over one billion logical items.

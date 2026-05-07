@@ -25,7 +25,7 @@ type MutableBudgetState<T extends BudgetState = BudgetState> = {
  *
  * `EventBus` is intentionally not an exporter. It is the in-process event spine
  * used by scopes and tests. Remote telemetry belongs in a separate opt-in layer
- * so WorkJS keeps zero network behavior and zero telemetry bill by default.
+ * so WorkIt keeps zero network behavior and zero telemetry bill by default.
  */
 export class EventBus {
   private handlers: Set<(e: TaskEvent) => void> = new Set();

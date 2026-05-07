@@ -69,9 +69,9 @@ test("task kind labels stay cardinality bounded at runtime", async () => {
     (metric) => metrics.push(metric),
     { allowedLabels: ["taskKind"] }
   );
-  await exporter({ name: "workjs_task_total", value: 1, labels: { taskKind: "custom" } });
+  await exporter({ name: "workit_task_total", value: 1, labels: { taskKind: "custom" } });
   await assert.rejects(
-    exporter({ name: "workjs_task_total", value: 1, labels: { taskKind: "tenant-123" } }),
+    exporter({ name: "workit_task_total", value: 1, labels: { taskKind: "tenant-123" } }),
     /Metric label "taskKind" value/
   );
 });
@@ -313,7 +313,7 @@ async function flushExporter() {
 }
 
 async function withTempWorkerModule(source, body) {
-  const dir = await mkdtemp(join(tmpdir(), "workjs-claim-worker-"));
+  const dir = await mkdtemp(join(tmpdir(), "workit-claim-worker-"));
   const file = join(dir, "worker.mjs");
   await writeFile(file, source, "utf8");
   try {

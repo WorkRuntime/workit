@@ -3,11 +3,11 @@ Author: Admilson B. F. Cossa
 SPDX-License-Identifier: Apache-2.0
 -->
 
-# WorkJS
+# WorkIt
 
 Structured concurrency for TypeScript systems that need owned async work, cancellation, cleanup, limits, and observability.
 
-Native `Promise` remains appropriate for one-off async values. WorkJS is intended for async work that needs ownership.
+Native `Promise` remains appropriate for one-off async values. WorkIt is intended for async work that needs ownership.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20.11-brightgreen)](package.json)
@@ -17,15 +17,15 @@ Native `Promise` remains appropriate for one-off async values. WorkJS is intende
 ## Install
 
 ```sh
-npm install @workjs/core
+npm install @workit/core
 ```
 
-WorkJS currently targets Node.js server runtimes. Browser and edge runtimes resolve to an explicit unsupported-runtime boundary.
+WorkIt currently targets Node.js server runtimes. Browser and edge runtimes resolve to an explicit unsupported-runtime boundary.
 
 ## Example
 
 ```ts
-import { group } from "@workjs/core";
+import { group } from "@workit/core";
 
 const result = await group(async (task) => {
   const profile = task(async (ctx) => {
@@ -48,15 +48,15 @@ const result = await group(async (task) => {
 });
 ```
 
-If an owned foreground task fails, WorkJS cancels sibling work, preserves the cancellation reason, and runs registered cleanup before the scope closes.
+If an owned foreground task fails, WorkIt cancels sibling work, preserves the cancellation reason, and runs registered cleanup before the scope closes.
 
-## Why WorkJS Exists
+## Why WorkIt Exists
 
 JavaScript promises model async values. They do not model ownership.
 
 In production systems, async work often needs more than `Promise.all()`:
 
-| Requirement | Raw Promise | WorkJS |
+| Requirement | Raw Promise | WorkIt |
 | --- | --- | --- |
 | Owned task tree | Manual implementation | Provided by scope model |
 | Cancel siblings on failure | Manual implementation | Scope cancellation |
@@ -72,7 +72,7 @@ Typical use cases include backend orchestration, agent task trees, RAG ingestion
 
 ## Use Cases And Non-Goals
 
-Use WorkJS when:
+Use WorkIt when:
 
 - multiple async tasks belong to one operation
 - child failures should cancel sibling work
@@ -82,7 +82,7 @@ Use WorkJS when:
 - tool execution needs token, cost, or call budgets
 - task events must be observable without leaking provider internals
 
-Do not use WorkJS when:
+Do not use WorkIt when:
 
 - a single `await fetch()` is enough
 - you only need a tiny local semaphore
@@ -160,7 +160,7 @@ import {
   CostBudget,
   TokenBudget,
   TelemetryBudget,
-} from "@workjs/core";
+} from "@workit/core";
 ```
 
 | Export | Purpose |
@@ -175,7 +175,7 @@ import {
 ## Run Helpers
 
 ```ts
-import { run } from "@workjs/core";
+import { run } from "@workit/core";
 
 const fastest = await run.race([
   run.timeout(callPrimary, "800ms"),
@@ -197,7 +197,7 @@ const batch = await run.pool(8, inputs.map((input) => async (ctx) => {
 ## Resource Safety
 
 ```ts
-import { run } from "@workjs/core";
+import { run } from "@workit/core";
 
 await run.bracket(
   async () => await openConnection(),
@@ -215,21 +215,21 @@ await run.bracket(
 ## Bounded Uncancellable Sections
 
 ```ts
-import { run } from "@workjs/core";
+import { run } from "@workit/core";
 
 const commit = run.uncancellable(async (ctx) => {
   await writeFinalReceipt({ signal: ctx.signal });
 }, { timeout: "2s" });
 ```
 
-`run.uncancellable()` delays parent cancellation while the protected body runs, but it does not hide cancellation. If the parent was cancelled during the shielded section, WorkJS rethrows the original cancellation after the section completes.
+`run.uncancellable()` delays parent cancellation while the protected body runs, but it does not hide cancellation. If the parent was cancelled during the shielded section, WorkIt rethrows the original cancellation after the section completes.
 
 JavaScript cannot forcibly stop non-cooperative in-process work. For hard CPU boundaries, use worker offload with a timeout.
 
 ## Work Builder
 
 ```ts
-import { work } from "@workjs/core";
+import { work } from "@workit/core";
 
 const output = await work(documents)
   .inParallel(8)
@@ -247,7 +247,7 @@ The builder defaults to sequential, fail-fast execution. Concurrency and partial
 ## Budgets And Context
 
 ```ts
-import { CostBudget, TokenBudget, group, run } from "@workjs/core";
+import { CostBudget, TokenBudget, group, run } from "@workit/core";
 
 await run.context.with(CostBudget, { spent: 0, limit: 100, unit: "USD" }, async () =>
   run.context.with(TokenBudget, { spent: 0, limit: 10_000, unit: "tokens" }, async () =>
@@ -267,7 +267,7 @@ Budget snapshots exposed to consumers are readonly. Mutation happens through `ct
 ## Diagnostics
 
 ```ts
-import { diagnoseSnapshot } from "@workjs/core/diagnostics";
+import { diagnoseSnapshot } from "@workit/core/diagnostics";
 
 const report = diagnoseSnapshot(scope.status(), {
   staleTaskMs: 30_000,
@@ -280,7 +280,7 @@ Diagnostics are subpath-only to keep the root runtime small. Reports identify ol
 ## Channels
 
 ```ts
-import { createChannel } from "@workjs/core/channel";
+import { createChannel } from "@workit/core/channel";
 
 const channel = createChannel<string>({ capacity: 16 });
 
@@ -293,7 +293,7 @@ Channels provide bounded in-process backpressure with close and cancellation sem
 ## AI Helpers
 
 ```ts
-import { runAgent, streamLLM } from "@workjs/core/ai";
+import { runAgent, streamLLM } from "@workit/core/ai";
 
 const result = await runAgent(async (agent) => {
   return await agent.tool("search", { q: "structured concurrency" }, async (input, ctx) => {
@@ -311,7 +311,7 @@ The AI subpath supplies contracts and structured execution helpers only. It does
 ## Observability
 
 ```ts
-import { attachTelemetryExporter } from "@workjs/core/observability";
+import { attachTelemetryExporter } from "@workit/core/observability";
 
 const attachment = attachTelemetryExporter(scope, async (event) => {
   await telemetry.write(event);
@@ -329,7 +329,7 @@ The root event bus is local and dependency-free. Exporting events is explicit, s
 OpenTelemetry integration is opt-in:
 
 ```ts
-import { attachOpenTelemetry } from "@workjs/core/otel";
+import { attachOpenTelemetry } from "@workit/core/otel";
 ```
 
 `@opentelemetry/api` is an optional peer dependency.
@@ -337,7 +337,7 @@ import { attachOpenTelemetry } from "@workjs/core/otel";
 ## Worker Offload Boundary
 
 ```ts
-import { offload } from "@workjs/core/worker";
+import { offload } from "@workit/core/worker";
 
 const result = await offload(
   new URL("./cpu-worker.js", import.meta.url),
@@ -347,7 +347,7 @@ const result = await offload(
 );
 ```
 
-Worker modules must be local application-controlled files. WorkJS rejects remote URLs, inline URLs, empty module references, and parent directory segments before the worker imports anything.
+Worker modules must be local application-controlled files. WorkIt rejects remote URLs, inline URLs, empty module references, and parent directory segments before the worker imports anything.
 
 Accepted worker inputs include primitives, arrays, plain objects, `Map`, `Set`, `Date`, `RegExp`, `ArrayBuffer`, `SharedArrayBuffer`, and typed array views.
 
@@ -386,7 +386,7 @@ These samples run against the compiled package.
 
 ### From native Promise
 
-Keep native promises for simple async values. Use WorkJS when the work needs ownership, cancellation, cleanup, bounded concurrency, budgets, diagnostics, or observability.
+Keep native promises for simple async values. Use WorkIt when the work needs ownership, cancellation, cleanup, bounded concurrency, budgets, diagnostics, or observability.
 
 ### From p-limit
 
@@ -398,11 +398,11 @@ Use `work(items).inParallel(n).do(fn)` when mapping needs retry, timeout, item-l
 
 ### From RxJS
 
-Keep RxJS for rich observable transformation graphs. Use WorkJS for owned async work and task lifecycle control.
+Keep RxJS for rich observable transformation graphs. Use WorkIt for owned async work and task lifecycle control.
 
 ### From Bottleneck
 
-Keep Bottleneck for distributed rate limits and reservoirs. Use WorkJS for local structured concurrency.
+Keep Bottleneck for distributed rate limits and reservoirs. Use WorkIt for local structured concurrency.
 
 ## Runtime Support
 
@@ -458,7 +458,7 @@ npm run verify
 npm run test:coverage
 ```
 
-Bug reports should include the WorkJS version, Node.js version, reproduction code, and whether the failure occurs from source or the installed package.
+Bug reports should include the WorkIt version, Node.js version, reproduction code, and whether the failure occurs from source or the installed package.
 
 Security reports should follow `SECURITY.md`.
 

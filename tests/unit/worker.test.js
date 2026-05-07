@@ -159,7 +159,7 @@ function createTaskContext(signal) {
 }
 
 async function withTempWorkerModule(source, body) {
-  const dir = await mkdtemp(join(tmpdir(), "workjs-worker-"));
+  const dir = await mkdtemp(join(tmpdir(), "workit-worker-"));
   const file = join(dir, "worker.mjs");
   await writeFile(file, source, "utf8");
   try {

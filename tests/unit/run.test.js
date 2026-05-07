@@ -533,7 +533,7 @@ test("run.circuitBreaker ignores stale half-open failure after a newer recovery 
 test("run.background requires a scope and keeps work owned by that scope", async () => {
   await assert.rejects(
     async () => run.background(async () => "outside"),
-    /requires an active WorkJS scope/
+    /requires an active WorkIt scope/
   );
 
   let completed = false;

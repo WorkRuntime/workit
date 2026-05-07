@@ -1,5 +1,5 @@
 /**
- * Shared runtime soak runner for WorkJS.
+ * Shared runtime soak runner for WorkIt.
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0

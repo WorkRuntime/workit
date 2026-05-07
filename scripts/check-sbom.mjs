@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const packageJson = JSON.parse(await readFile("package.json", "utf8"));
-const sbom = JSON.parse(await readFile("dist/workjs-core.sbom.cdx.json", "utf8"));
+const sbom = JSON.parse(await readFile("dist/workit-core.sbom.cdx.json", "utf8"));
 const rootRef = packagePurl(packageJson.name, packageJson.version);
 
 assert.equal(sbom.bomFormat, "CycloneDX", "SBOM must use CycloneDX");
@@ -23,11 +23,11 @@ assert.equal(sbom.metadata?.component?.name, packageJson.name, "SBOM root compon
 assert.equal(sbom.metadata?.component?.version, packageJson.version, "SBOM root component version changed");
 assert.equal(sbom.metadata?.component?.["bom-ref"], rootRef, "SBOM root bom-ref changed");
 assert.equal(sbom.metadata?.component?.licenses?.[0]?.license?.id, "Apache-2.0", "SBOM license must be Apache-2.0");
-assert.deepEqual(sbom.components, [], "Published WorkJS runtime SBOM must not list runtime dependencies");
-assert.deepEqual(sbom.dependencies, [{ ref: rootRef, dependsOn: [] }], "Published WorkJS runtime dependency graph must be empty");
+assert.deepEqual(sbom.components, [], "Published WorkIt runtime SBOM must not list runtime dependencies");
+assert.deepEqual(sbom.dependencies, [{ ref: rootRef, dependsOn: [] }], "Published WorkIt runtime dependency graph must be empty");
 
 const runtimeDependencyCount = sbom.metadata.component.properties
-  .find((property) => property.name === "workjs.runtimeDependencies")?.value;
+  .find((property) => property.name === "workit.runtimeDependencies")?.value;
 assert.equal(runtimeDependencyCount, "0", "SBOM runtime dependency property must be zero");
 
 console.log("sbom-gate: CycloneDX release SBOM validated");

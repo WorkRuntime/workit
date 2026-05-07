@@ -1,5 +1,5 @@
 /**
- * Slow-consumer stream memory gate for WorkJS.
+ * Slow-consumer stream memory gate for WorkIt.
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0
@@ -14,17 +14,17 @@ import { performance } from "node:perf_hooks";
 import { setTimeout as delay } from "node:timers/promises";
 import { work } from "../dist/index.js";
 
-const TOTAL_ITEMS = Number.parseInt(process.env.WORKJS_STREAM_ITEMS ?? "1000000", 10);
-const CONCURRENCY = Number.parseInt(process.env.WORKJS_STREAM_CONCURRENCY ?? "32", 10);
-const CONSUME_ITEMS = Number.parseInt(process.env.WORKJS_STREAM_CONSUME ?? "500", 10);
+const TOTAL_ITEMS = Number.parseInt(process.env.WORKIT_STREAM_ITEMS ?? "1000000", 10);
+const CONCURRENCY = Number.parseInt(process.env.WORKIT_STREAM_CONCURRENCY ?? "32", 10);
+const CONSUME_ITEMS = Number.parseInt(process.env.WORKIT_STREAM_CONSUME ?? "500", 10);
 const MAX_HEAP_GROWTH_BYTES =
-  Number.parseInt(process.env.WORKJS_STREAM_MAX_HEAP_MB ?? "48", 10) * 1024 * 1024;
+  Number.parseInt(process.env.WORKIT_STREAM_MAX_HEAP_MB ?? "48", 10) * 1024 * 1024;
 
 if (typeof globalThis.gc !== "function") {
   throw new Error("Stream memory gate requires Node to run with --expose-gc.");
 }
 if (CONSUME_ITEMS >= TOTAL_ITEMS) {
-  throw new Error("WORKJS_STREAM_CONSUME must be smaller than WORKJS_STREAM_ITEMS.");
+  throw new Error("WORKIT_STREAM_CONSUME must be smaller than WORKIT_STREAM_ITEMS.");
 }
 
 let produced = 0;

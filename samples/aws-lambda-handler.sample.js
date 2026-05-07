@@ -30,7 +30,7 @@ export async function handler(event) {
 const response = await handler({
   records: [
     { id: "a", body: "hello" },
-    { id: "b", body: "workjs" },
+    { id: "b", body: "workit" },
   ],
 });
 

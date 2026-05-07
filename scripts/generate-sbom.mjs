@@ -1,5 +1,5 @@
 /**
- * Generates a release SBOM for the published WorkJS artifact.
+ * Generates a release SBOM for the published WorkIt artifact.
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0
@@ -42,7 +42,7 @@ const sbom = {
     tools: {
       components: [{
         type: "application",
-        name: "workjs-sbom-generator",
+        name: "workit-sbom-generator",
         version: packageJson.version,
       }],
     },
@@ -55,8 +55,8 @@ const sbom = {
       licenses: [{ license: { id: packageJson.license } }],
       purl: bomRef,
       properties: [
-        { name: "workjs.runtimeDependencies", value: "0" },
-        { name: "workjs.packageLockRootDigest", value: lockDigest },
+        { name: "workit.runtimeDependencies", value: "0" },
+        { name: "workit.packageLockRootDigest", value: lockDigest },
       ],
     },
   },
@@ -68,7 +68,7 @@ const sbom = {
 };
 
 await mkdir("dist", { recursive: true });
-await writeFile(join("dist", "workjs-core.sbom.cdx.json"), `${JSON.stringify(sbom, null, 2)}\n`, "utf8");
+await writeFile(join("dist", "workit-core.sbom.cdx.json"), `${JSON.stringify(sbom, null, 2)}\n`, "utf8");
 
 function packagePurl(name, version) {
   if (!name.startsWith("@")) return `pkg:npm/${name}@${version}`;

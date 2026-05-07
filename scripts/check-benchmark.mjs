@@ -1,5 +1,5 @@
 /**
- * Runtime benchmark smoke check for WorkJS.
+ * Runtime benchmark smoke check for WorkIt.
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0

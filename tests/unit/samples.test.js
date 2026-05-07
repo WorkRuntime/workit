@@ -193,7 +193,7 @@ test("sample: live STT disconnect cancels provider and closes audio source", asy
   assert.equal(result.reasonKind, "manual");
 });
 
-test("sample: AWS Lambda-style handler imports WorkJS as an SDK", async () => {
+test("sample: AWS Lambda-style handler imports WorkIt as an SDK", async () => {
   const result = await runSample("samples/aws-lambda-handler.sample.js");
 
   assert.equal(result.sample, "aws-lambda-handler");
@@ -201,7 +201,7 @@ test("sample: AWS Lambda-style handler imports WorkJS as an SDK", async () => {
   assert.deepEqual(JSON.parse(result.response.body), { processed: 2, failed: 0, bytes: 11 });
 });
 
-test("sample: Azure Functions-style handler imports WorkJS as an SDK", async () => {
+test("sample: Azure Functions-style handler imports WorkIt as an SDK", async () => {
   const result = await runSample("samples/azure-functions-handler.sample.js");
 
   assert.equal(result.sample, "azure-functions-handler");
@@ -209,7 +209,7 @@ test("sample: Azure Functions-style handler imports WorkJS as an SDK", async () 
   assert.deepEqual(result.response.jsonBody.greetings, ["hello aws", "hello azure", "hello next"]);
 });
 
-test("sample: Next.js server route-style handler imports WorkJS as an SDK", async () => {
+test("sample: Next.js server route-style handler imports WorkIt as an SDK", async () => {
   const result = await runSample("samples/next-server-route.sample.js");
 
   assert.equal(result.sample, "next-server-route");
@@ -224,10 +224,10 @@ test("sample: OpenTelemetry adapter creates spans and metrics", async () => {
 
   assert.equal(result.sample, "otel-adapter");
   assert.deepEqual(result.spans, [{
-    name: "workjs.task.sample.otel",
+    name: "workit.task.sample.otel",
     ended: true,
-    events: ["workjs.task.progress"],
+    events: ["workit.task.progress"],
   }]);
-  assert.ok(result.metricNames.includes("workjs.task.total"));
-  assert.ok(result.metricNames.includes("workjs.task.duration"));
+  assert.ok(result.metricNames.includes("workit.task.total"));
+  assert.ok(result.metricNames.includes("workit.task.duration"));
 });

@@ -1,5 +1,5 @@
 /**
- * Snapshot diagnostics for WorkJS scopes.
+ * Snapshot diagnostics for WorkIt scopes.
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0
@@ -72,7 +72,7 @@ export interface DiagnosticsReport {
   truncated: boolean;
 }
 
-/** Diagnoses a WorkJS scope snapshot plus an optional typed event window. */
+/** Diagnoses a WorkIt scope snapshot plus an optional typed event window. */
 export function diagnoseSnapshot(
   snapshot: ScopeSnapshot,
   opts: DiagnosticsOptions = {}

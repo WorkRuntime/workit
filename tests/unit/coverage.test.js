@@ -733,7 +733,7 @@ test("error constructors expose optional metadata branches", () => {
   assert.equal(withoutUnit.unit, undefined);
   assert.equal(withoutUnit.name, "BudgetExceededError");
 
-  const cancelRealmLike = { [Symbol.for("workjs.error.CancellationError")]: true };
+  const cancelRealmLike = { [Symbol.for("wi.error.CancellationError")]: true };
   const timeout = new TimeoutError(10);
   const aggregate = new WorkAggregateError([new Error("x")]);
 

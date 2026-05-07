@@ -1,5 +1,5 @@
 /**
- * WorkJS - Public Types
+ * WorkIt - Public Types
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0
@@ -44,13 +44,13 @@ export type CancelReason =
 
 // --- Errors ---------------------------------------------------------------
 
-const WORKJS_ERROR_BRAND = Symbol.for("workjs.error");
-const CANCELLATION_ERROR_BRAND = Symbol.for("workjs.error.CancellationError");
-const TIMEOUT_ERROR_BRAND = Symbol.for("workjs.error.TimeoutError");
-const BUDGET_ERROR_BRAND = Symbol.for("workjs.error.BudgetExceededError");
-const AGGREGATE_ERROR_BRAND = Symbol.for("workjs.error.WorkAggregateError");
+const WORKIT_ERROR_BRAND = Symbol.for("wi.error");
+const CANCELLATION_ERROR_BRAND = Symbol.for("wi.error.CancellationError");
+const TIMEOUT_ERROR_BRAND = Symbol.for("wi.error.TimeoutError");
+const BUDGET_ERROR_BRAND = Symbol.for("wi.error.BudgetExceededError");
+const AGGREGATE_ERROR_BRAND = Symbol.for("wi.error.WorkAggregateError");
 
-/** Maximum configured retry attempts accepted by WorkJS retry policies. */
+/** Maximum configured retry attempts accepted by WorkIt retry policies. */
 export const MAX_RETRY_ATTEMPTS = 1_000;
 
 function hasErrorBrand(value: unknown, brand: symbol): boolean {
@@ -59,7 +59,7 @@ function hasErrorBrand(value: unknown, brand: symbol): boolean {
 
 /** Error thrown when work observes a structured cancellation reason. */
 export class CancellationError extends Error {
-  readonly [WORKJS_ERROR_BRAND] = true;
+  readonly [WORKIT_ERROR_BRAND] = true;
   readonly [CANCELLATION_ERROR_BRAND] = true;
   readonly reason: CancelReason;
 
@@ -129,7 +129,7 @@ export class BudgetExceededError extends CancellationError {
 
 /** Aggregate failure used by APIs that need to preserve all failed attempts. */
 export class WorkAggregateError extends Error {
-  readonly [WORKJS_ERROR_BRAND] = true;
+  readonly [WORKIT_ERROR_BRAND] = true;
   readonly [AGGREGATE_ERROR_BRAND] = true;
   readonly errors: readonly unknown[];
 
@@ -137,7 +137,7 @@ export class WorkAggregateError extends Error {
     return hasErrorBrand(value, AGGREGATE_ERROR_BRAND);
   }
 
-  constructor(errors: readonly unknown[], message = "All WorkJS tasks failed") {
+  constructor(errors: readonly unknown[], message = "All WorkIt tasks failed") {
     super(message);
     this.name = "WorkAggregateError";
     this.errors = errors;
@@ -220,7 +220,7 @@ export type WorkItemDoneEvent<I, R> =
   | { index: number; item: I; status: "rejected"; error: unknown }
   | { index: number; item: I; status: "cancelled"; reason: CancelReason };
 
-/** Cardinality-safe task logger that emits through WorkJS events, never console. */
+/** Cardinality-safe task logger that emits through WorkIt events, never console. */
 export interface TaskLogger {
   /** Emits low-priority diagnostic detail for subscribed observers. */
   debug(message: string, fields?: Record<string, unknown>): void;
@@ -294,12 +294,12 @@ export interface BudgetState {
 
 // --- Task function and context --------------------------------------------
 
-/** Function executed inside exactly one WorkJS task context. */
+/** Function executed inside exactly one WorkIt task context. */
 export type TaskFn<T> = (ctx: TaskContext) => Promise<T>;
 
 /** Retry policy for cancel-aware task wrappers. */
 export interface RetryOpts {
-  /** Maximum attempts including the first try. WorkJS rejects values above its safety cap. */
+  /** Maximum attempts including the first try. WorkIt rejects values above its safety cap. */
   times: number;
   backoff?: "fixed" | "linear" | "exponential" | ((attempt: number) => Duration);
   initialDelay?: Duration;

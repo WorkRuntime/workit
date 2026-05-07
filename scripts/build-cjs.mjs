@@ -6,7 +6,7 @@
  *
  * The source of truth remains the ESM TypeScript build in `dist/`. This script
  * creates explicit CommonJS entry bundles for consumers that still use
- * `require("@workjs/core")`.
+ * `require("@workit/core")`.
  */
 
 import { rm } from "node:fs/promises";

@@ -71,7 +71,7 @@ const currentScope = new AsyncLocalStorage<ScopeImpl>();
 /**
  * Returns the scope bound to the current async call chain.
  *
- * A `null` result means execution is outside a WorkJS scope boundary.
+ * A `null` result means execution is outside a WorkIt scope boundary.
  */
 export function getCurrentScope(): ScopeImpl | null {
   return currentScope.getStore() ?? null;
