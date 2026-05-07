@@ -40,6 +40,7 @@ export interface ScopeSummary {
     failed: number;
     cancelled: number;
     retried: number;
+    cleanupFailed: number;
   };
   droppedTelemetryEvents: number;
 }
@@ -158,6 +159,8 @@ function shouldExport(event: TaskEvent, sampling: SamplingPolicy, headAccepted: 
       return headAccepted;
     case "errors_and_slow":
       return event.type === "task:failed"
+        || event.type === "task:cleanup_failed"
+        || event.type === "scope:cleanup_failed"
         || event.type === "task:cancelled"
         || (event.type === "task:succeeded" && event.durationMs >= sampling.slowThresholdMs);
     /* v8 ignore next -- off mode returns before subscribing to scope events. */
@@ -286,6 +289,7 @@ interface MutableScopeSummary {
   failed: number;
   cancelled: number;
   retried: number;
+  cleanupFailed: number;
   droppedTelemetryEvents: number;
 }
 
@@ -305,6 +309,7 @@ function ingestSummaryEvent(
       failed: 0,
       cancelled: 0,
       retried: 0,
+      cleanupFailed: 0,
       droppedTelemetryEvents,
     });
     return;
@@ -327,6 +332,11 @@ function ingestSummaryEvent(
       summary.failed++;
       summary.outcome = "errored";
       break;
+    case "task:cleanup_failed":
+    case "scope:cleanup_failed":
+      summary.cleanupFailed++;
+      summary.outcome = "errored";
+      break;
     case "task:cancelled":
       summary.cancelled++;
       if (summary.outcome !== "errored") summary.outcome = "cancelled";
@@ -335,7 +345,9 @@ function ingestSummaryEvent(
       summary.retried++;
       break;
     case "scope:closing":
-      summary.outcome = event.reason === "errored" ? "errored" : event.reason;
+      if (summary.outcome !== "errored") {
+        summary.outcome = event.reason === "errored" ? "errored" : event.reason;
+      }
       break;
     case "scope:closed":
       summary.droppedTelemetryEvents = Math.max(
@@ -379,6 +391,7 @@ function toScopeSummary(
       failed: summary.failed,
       cancelled: summary.cancelled,
       retried: summary.retried,
+      cleanupFailed: summary.cleanupFailed,
     },
     droppedTelemetryEvents: totalDroppedTelemetryEvents,
   };

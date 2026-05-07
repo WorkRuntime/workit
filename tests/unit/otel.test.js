@@ -130,9 +130,11 @@ test("OpenTelemetry adapter records failures cancellations and scope summaries",
 
   scope.emit({ type: "scope:opened", scopeId: "scope-a", parentId: null, at: 1 });
   scope.emit({ type: "task:started", taskId: "task-fail", scopeId: "scope-a", name: "fail", kind: "io", at: 2 });
+  scope.emit({ type: "task:cleanup_failed", taskId: "task-fail", error: new Error("cleanup failed"), at: 3 });
   scope.emit({ type: "task:failed", taskId: "task-fail", error: new Error("failed"), durationMs: 4, at: 3 });
   scope.emit({ type: "task:started", taskId: "task-cancel", scopeId: "scope-a", name: "cancel", kind: "tool", at: 4 });
   scope.emit({ type: "task:cancelled", taskId: "task-cancel", reason: { kind: "manual", tag: "stop" }, durationMs: 5, at: 5 });
+  scope.emit({ type: "scope:cleanup_failed", scopeId: "scope-a", error: new Error("scope cleanup failed"), at: 6 });
   scope.emit({ type: "scope:closing", scopeId: "scope-a", reason: "cancelled", at: 6 });
   scope.emit({ type: "scope:closed", scopeId: "scope-a", durationMs: 9, at: 7 });
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -140,11 +142,12 @@ test("OpenTelemetry adapter records failures cancellations and scope summaries",
   assert.equal(attachment.activeSpanCount(), 0);
   assert.equal(fake.spans[0].exceptions[0].message, "failed");
   assert.equal(fake.spans[0].status.code, 2);
+  assert.equal(fake.spans[0].events[0].name, "workjs.task.cleanup_failed");
   assert.equal(fake.spans[1].attributes["workjs.cancel.kind"], "manual");
   assert.equal(fake.spans[1].status.message, "cancelled:manual");
-  assert.equal(fake.counters.get("workjs.scope.total")[0].attributes["workjs.scope.outcome"], "cancelled");
+  assert.equal(fake.counters.get("workjs.scope.total")[0].attributes["workjs.scope.outcome"], "errored");
   assert.equal(fake.histograms.get("workjs.scope.duration")[0].value, 9);
-  assert.equal(attachment.exportedCount(), 8);
+  assert.equal(attachment.exportedCount(), 10);
 });
 
 test("OpenTelemetry adapter isolates telemetry failures and closes active spans on unsubscribe", () => {
@@ -183,7 +186,9 @@ test("OpenTelemetry adapter covers default API and defensive event branches", as
   scope.emit({ type: "task:retrying", taskId: "missing-retry", attempt: 2, error: "retry", nextDelayMs: 1, at: 3 });
   scope.emit({ type: "task:succeeded", taskId: "missing-success", durationMs: 1, at: 4 });
   scope.emit({ type: "task:failed", taskId: "missing-fail", error: "failed", durationMs: 1, at: 5 });
+  scope.emit({ type: "task:cleanup_failed", taskId: "missing-cleanup", error: "cleanup", at: 5 });
   scope.emit({ type: "task:cancelled", taskId: "missing-cancel", reason: { kind: "manual", tag: "x" }, durationMs: 1, at: 6 });
+  scope.emit({ type: "scope:cleanup_failed", scopeId: "scope-default", error: "cleanup", at: 6 });
   scope.emit({ type: "scope:closing", scopeId: "scope-default", reason: "completed", at: 7 });
   scope.emit({ type: "scope:closed", scopeId: "scope-default", durationMs: 8, at: 8 });
   await new Promise((resolve) => setTimeout(resolve, 0));

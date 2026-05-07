@@ -193,47 +193,63 @@ export class ScopeImpl implements Scope {
 
     const promise = (async () => {
       record.status = "running";
+      let outcome: { ok: true; value: T } | { ok: false; error: unknown } | undefined;
+      let terminalEvent: TaskEvent | undefined;
       try {
         const value = await currentScope.run(this, () => executable(ctx));
         record.status = "succeeded";
         record.endedAt = Date.now();
-        this.bus.emit(
-          { type: "task:succeeded", taskId: id, durationMs: record.endedAt - startedAt, at: record.endedAt },
-          this.context
-        );
-        return value;
+        terminalEvent = { type: "task:succeeded", taskId: id, durationMs: record.endedAt - startedAt, at: record.endedAt };
+        outcome = { ok: true, value };
       } catch (err) {
         record.endedAt = Date.now();
         if (err instanceof CancellationError) {
           record.status = "cancelled";
-          this.bus.emit(
-            { type: "task:cancelled", taskId: id, reason: err.reason, durationMs: record.endedAt - startedAt, at: record.endedAt },
-            this.context
-          );
+          terminalEvent = {
+            type: "task:cancelled",
+            taskId: id,
+            reason: err.reason,
+            durationMs: record.endedAt - startedAt,
+            at: record.endedAt,
+          };
         } else {
           record.status = "failed";
           if (!record.background && this.firstChildFailure === undefined) {
             this.firstChildFailure = err;
             this.cancel({ kind: "sibling_failed", siblingId: id, error: err });
           }
-          this.bus.emit(
-            { type: "task:failed", taskId: id, error: err, durationMs: record.endedAt - startedAt, at: record.endedAt },
-            this.context
-          );
+          terminalEvent = {
+            type: "task:failed",
+            taskId: id,
+            error: err,
+            durationMs: record.endedAt - startedAt,
+            at: record.endedAt,
+          };
         }
-        throw err;
-      } finally {
+        outcome = { ok: false, error: err };
+      }
+
+      try {
         // Run defers LIFO; errors logged, never thrown (I5)
         while (defers.length > 0) {
           const fn = defers.pop()!;
           try { await fn(); } catch (cleanupErr) {
             this.bus.emit(
-              { type: "task:failed", taskId: id, error: cleanupErr, durationMs: 0, at: Date.now() },
+              { type: "task:cleanup_failed", taskId: id, error: cleanupErr, at: Date.now() },
               this.context
             );
           }
         }
+      } finally {
+        if (opts.idempotencyKey !== undefined) this.idempotencyHandles.delete(opts.idempotencyKey);
       }
+
+      /* v8 ignore next -- each task execution path assigns a terminal event. */
+      if (terminalEvent !== undefined) this.bus.emit(terminalEvent, this.context);
+      /* v8 ignore next -- each task execution path assigns an outcome. */
+      if (outcome === undefined) throw new Error("Task finished without an outcome");
+      if (outcome.ok) return outcome.value;
+      throw outcome.error;
     })();
 
     record.promise = promise;
@@ -339,7 +355,7 @@ export class ScopeImpl implements Scope {
       const fn = this.defers.pop()!;
       try { await fn(); } catch (err) {
         this.bus.emit(
-          { type: "task:failed", taskId: makeTaskId(), error: err, durationMs: 0, at: Date.now() },
+          { type: "scope:cleanup_failed", scopeId: this.id, error: err, at: Date.now() },
           this.context
         );
       }
@@ -748,11 +764,16 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
       reject(signal.reason);
       return;
     }
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener("abort", () => {
+    const onAbort = () => {
       clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
       reject(signal.reason);
-    }, { once: true });
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
   });
 }
 

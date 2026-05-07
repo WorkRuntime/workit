@@ -394,10 +394,15 @@ function sleepUntil(at: number, signal: AbortSignal): Promise<void> {
       reject(signal.reason);
       return;
     }
-    const timer = setTimeout(resolve, delayMs);
-    signal.addEventListener("abort", () => {
+    const onAbort = () => {
       clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
       reject(signal.reason);
-    }, { once: true });
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    signal.addEventListener("abort", onAbort, { once: true });
   });
 }

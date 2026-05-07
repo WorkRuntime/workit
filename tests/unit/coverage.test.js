@@ -257,7 +257,8 @@ test("scope exposes closed spawn guard cancellation cleanup and status branches"
   });
 
   assert.deepEqual(reasons, ["manual"]);
-  assert.ok(events.some((item) => item.type === "task:failed"));
+  assert.ok(events.some((item) => item.type === "task:cleanup_failed"));
+  assert.ok(events.some((item) => item.type === "scope:cleanup_failed"));
   assert.throws(() => capturedScope.spawn(async () => "late"), /closed scope/);
 });
 

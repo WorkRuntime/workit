@@ -19,14 +19,14 @@ const BUDGETS = [
   {
     name: "public-api",
     source: `export * from "${DIST_ENTRY}";`,
-    maxMinifiedBytes: 27_650,
-    maxGzipBytes: 8_950,
+    maxMinifiedBytes: 28_050,
+    maxGzipBytes: 9_075,
   },
   {
     name: "core-group-import",
     source: `export { group } from "${DIST_ENTRY}";`,
-    maxMinifiedBytes: 15_950,
-    maxGzipBytes: 5_720,
+    maxMinifiedBytes: 16_150,
+    maxGzipBytes: 5_800,
   },
 ];
 

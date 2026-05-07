@@ -214,10 +214,12 @@ export type TaskEvent =
   | { type: "task:started"; taskId: TaskId; scopeId: ScopeId; name: string; kind: TaskKind; at: number }
   | { type: "task:retrying"; taskId: TaskId; attempt: number; error: unknown; nextDelayMs: number; at: number }
   | { type: "task:progress"; taskId: TaskId; pct?: number; message?: string; data?: unknown; at: number }
+  | { type: "task:cleanup_failed"; taskId: TaskId; error: unknown; at: number }
   | { type: "task:succeeded"; taskId: TaskId; durationMs: number; at: number }
   | { type: "task:failed"; taskId: TaskId; error: unknown; durationMs: number; at: number }
   | { type: "task:cancelled"; taskId: TaskId; reason: CancelReason; durationMs: number; at: number }
   | { type: "scope:opened"; scopeId: ScopeId; parentId: ScopeId | null; at: number }
+  | { type: "scope:cleanup_failed"; scopeId: ScopeId; error: unknown; at: number }
   | { type: "scope:closing"; scopeId: ScopeId; reason: "completed" | "errored" | "cancelled"; at: number }
   | { type: "scope:closed"; scopeId: ScopeId; durationMs: number; droppedTelemetryEvents?: number; at: number };
 

@@ -7,6 +7,7 @@
 
 import { test } from "vitest";
 import assert from "node:assert/strict";
+import { getEventListeners } from "node:events";
 import { CancellationError, work } from "../../dist/index.js";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -181,6 +182,22 @@ test("work().withRateLimit spaces item starts while preserving bounded concurren
   assert.ok(starts[1] - starts[0] >= 25);
   assert.ok(starts[2] - starts[1] >= 25);
   assert.throws(() => work([1]).withRateLimit(0), /positive finite/);
+});
+
+test("work().withRateLimit removes abort listeners after completed waits", async () => {
+  const signals = [];
+
+  const output = await work([1, 2])
+    .inParallel(2)
+    .withRateLimit(20)
+    .do(async (item, ctx) => {
+      signals.push(ctx.signal);
+      return item;
+    });
+
+  assert.deepEqual(output.results, [1, 2]);
+  assert.equal(signals.length, 2);
+  assert.equal(getEventListeners(signals[1], "abort").length, 0);
 });
 
 test("work fluent progress and completion hooks observe item-level outcomes", async () => {

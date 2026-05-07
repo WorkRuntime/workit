@@ -89,6 +89,7 @@ async function any<T>(tasks: TaskFn<T>[]): Promise<T> {
   if (tasks.length === 0) throw new WorkAggregateError([], "run.any requires at least one task");
 
   return await group(async (task) => {
+    const scope = getCurrentScope();
     const errors: unknown[] = [];
     const handles = tasks.map((fn) => task(async (ctx) => {
       try {
@@ -112,7 +113,7 @@ async function any<T>(tasks: TaskFn<T>[]): Promise<T> {
           if (settlement.status !== "fulfilled") {
             if (pending === 0) {
               settled = true;
-              reject(new WorkAggregateError(errors));
+              reject(scope?.signal.aborted === true ? scope.signal.reason : new WorkAggregateError(errors));
             }
             return;
           }
@@ -485,11 +486,16 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
       reject(signal.reason);
       return;
     }
-    const timer = setTimeout(resolve, ms);
-    signal.addEventListener("abort", () => {
+    const onAbort = () => {
       clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
       reject(signal.reason);
-    }, { once: true });
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
   });
 }
 

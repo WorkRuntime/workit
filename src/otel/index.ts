@@ -124,6 +124,9 @@ function handleTaskEvent(
     case "task:progress":
       recordProgress(spans.get(event.taskId)?.span, event);
       break;
+    case "task:cleanup_failed":
+      recordTaskCleanupFailure(spans.get(event.taskId)?.span, event);
+      break;
     case "task:succeeded":
       finishTask(event.taskId, "succeeded", event.durationMs, spans, taskCounter, taskDuration);
       break;
@@ -134,6 +137,7 @@ function handleTaskEvent(
       cancelTask(event.taskId, event.reason, event.durationMs, spans, taskCounter, taskDuration);
       break;
     case "scope:opened":
+    case "scope:cleanup_failed":
     case "scope:closing":
     case "scope:closed":
       break;
@@ -170,6 +174,13 @@ function recordProgress(span: Span | undefined, event: Extract<TaskEvent, { type
   const logLevel = extractLogLevel(event.data);
   if (logLevel !== undefined) attributes["workjs.log.level"] = logLevel;
   span.addEvent("workjs.task.progress", attributes);
+}
+
+function recordTaskCleanupFailure(span: Span | undefined, event: Extract<TaskEvent, { type: "task:cleanup_failed" }>): void {
+  if (span === undefined) return;
+  span.addEvent("workjs.task.cleanup_failed", {
+    "workjs.error.message": errorMessage(event.error),
+  });
 }
 
 function finishTask(

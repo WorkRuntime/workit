@@ -7,9 +7,11 @@
 
 import { test } from "vitest";
 import assert from "node:assert/strict";
+import { getEventListeners } from "node:events";
 import {
   run,
   createContextKey,
+  group,
   CancellationError,
   TimeoutError,
   WorkAggregateError,
@@ -85,6 +87,35 @@ test("run.any returns first success and rejects with aggregate when all fail", a
   await assert.rejects(
     run.any([async () => { throw new Error("a"); }]),
     WorkAggregateError
+  );
+});
+
+test("run.any preserves the parent scope cancellation reason", async () => {
+  await assert.rejects(
+    group(async (task) => {
+      let scope;
+      await task(async (ctx) => {
+        scope = ctx.scope;
+      });
+
+      const handle = task(async () => run.any([
+        async (ctx) => {
+          await sleep(1_000, ctx.signal);
+          return "late-a";
+        },
+        async (ctx) => {
+          await sleep(1_000, ctx.signal);
+          return "late-b";
+        },
+      ]));
+
+      await sleep(5);
+      scope.cancel("any-parent-cancel");
+      await handle;
+    }),
+    (err) => err instanceof CancellationError
+      && err.reason.kind === "manual"
+      && err.reason.tag === "any-parent-cancel"
   );
 });
 
@@ -265,6 +296,9 @@ test("task options support idempotency retry timeout deadline and retry events",
   assert.equal(executions, 2);
   assert.ok(events.some((event) => event.type === "task:retrying" && event.attempt === 2));
 
+  const afterSettlement = await taskAfterIdempotencySettlement();
+  assert.deepEqual(afterSettlement, ["after-first", "after-second"]);
+
   await assert.rejects(
     run.group(async (task) => task(async (ctx) => {
       await sleep(50, ctx.signal);
@@ -286,6 +320,24 @@ test("task options support idempotency retry timeout deadline and retry events",
     TimeoutError
   );
 });
+
+async function taskAfterIdempotencySettlement() {
+  const executions = [];
+  return await run.group(async (task) => {
+    const first = await task(async () => {
+      executions.push("after-first");
+      return "first";
+    }, { idempotencyKey: "upload:after-settlement" });
+
+    const second = await task(async () => {
+      executions.push("after-second");
+      return "second";
+    }, { idempotencyKey: "upload:after-settlement" });
+
+    assert.deepEqual([first, second], ["first", "second"]);
+    return executions;
+  });
+}
 
 test("task option retry policies cover cancel-aware delay and backoff branches", async () => {
   let fixedAttempts = 0;
@@ -375,4 +427,73 @@ test("task option retry policies cover cancel-aware delay and backoff branches",
     }),
     CancellationError
   );
+});
+
+test("retry delay listeners are removed after completed sleeps", async () => {
+  const controller = new AbortController();
+  let attempts = 0;
+  const retrying = run.retry(async () => {
+    attempts++;
+    if (attempts === 1) throw new Error("retry with delay");
+    return "ok";
+  }, { times: 2, initialDelay: 1, maxDelay: 1, jitter: false });
+
+  assert.equal(await retrying({
+    signal: controller.signal,
+    id: "task-listener-check",
+    name: "listener-check",
+    kind: "io",
+    attempt: 1,
+    scope: {},
+    context: {},
+    report() {},
+    log: { info() {}, warn() {}, error() {} },
+    defer() {},
+    consume() {},
+  }), "ok");
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+
+  let taskSignal;
+  let taskAttempts = 0;
+  await run.group(async (task) => {
+    await task(async (ctx) => {
+      taskAttempts++;
+      taskSignal = ctx.signal;
+      if (taskAttempts === 1) throw new Error("task option retry");
+      return "task-ok";
+    }, { retry: { times: 2, initialDelay: 1, maxDelay: 1, jitter: false } }).catch(() => undefined);
+  });
+  assert.equal(getEventListeners(taskSignal, "abort").length, 0);
+});
+
+test("run.retry removes abort listeners when delay sleep is cancelled", async () => {
+  const controller = new AbortController();
+  let attempts = 0;
+  const retrying = run.retry(async () => {
+    attempts++;
+    throw new Error("wait for cancellation");
+  }, { times: 2, initialDelay: 50, maxDelay: 50, jitter: false });
+
+  setTimeout(() => controller.abort(new CancellationError({ kind: "manual", tag: "direct-retry-abort" })), 5);
+
+  await assert.rejects(
+    retrying({
+      signal: controller.signal,
+      id: "task-direct-retry-abort",
+      name: "direct-retry-abort",
+      kind: "io",
+      attempt: 1,
+      scope: {},
+      context: {},
+      report() {},
+      log: { info() {}, warn() {}, error() {} },
+      defer() {},
+      consume() {},
+    }),
+    (err) => err instanceof CancellationError
+      && err.reason.kind === "manual"
+      && err.reason.tag === "direct-retry-abort"
+  );
+  assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+  assert.equal(attempts, 1);
 });
