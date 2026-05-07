@@ -396,13 +396,13 @@ function toAsyncIterator<I>(source: Iterable<I> | AsyncIterable<I>): AsyncIterat
 
 function assertConcurrency(n: number): void {
   if (!Number.isInteger(n) || n < 1) {
-    throw new RangeError("work().inParallel(n) requires a positive integer");
+    throw new RangeError("positive integer");
   }
 }
 
 function assertRateLimit(perSecond: number): void {
   if (!Number.isFinite(perSecond) || perSecond <= 0) {
-    throw new RangeError("work().withRateLimit(perSecond) requires a positive finite number");
+    throw new RangeError("positive finite");
   }
 }
 

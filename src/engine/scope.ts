@@ -286,7 +286,7 @@ export class ScopeImpl implements Scope {
       /* v8 ignore next -- each task execution path assigns a terminal event. */
       if (terminalEvent !== undefined) this.bus.emit(terminalEvent, this.context);
       /* v8 ignore next -- each task execution path assigns an outcome. */
-      if (outcome === undefined) throw new Error("Task finished without an outcome");
+      if (outcome === undefined) throw new Error("Task outcome missing");
       if (outcome.ok) return outcome.value;
       throw outcome.error;
     })();
@@ -684,7 +684,7 @@ function getBudgetIdentity<T extends BudgetState>(
 
 function assertBudgetCharge(amount: number): void {
   if (!Number.isFinite(amount) || amount < 0) {
-    throw new RangeError("Budget charge amount must be a finite non-negative number");
+    throw new RangeError("finite non-negative");
   }
 }
 
@@ -725,7 +725,7 @@ function assertBoundedString(label: string, value: string, maxLength: number): v
 function assertNoTaskPolicyShortcuts(opts: TaskOpts): void {
   const raw = opts as Record<string, unknown>;
   if ("retry" in raw || "timeout" in raw || "deadline" in raw) {
-    throw new Error("must use run.retry/run.timeout/run.deadline");
+    throw new Error("must use run.retry");
   }
 }
 

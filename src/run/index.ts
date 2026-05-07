@@ -64,7 +64,7 @@ async function allSettled<T>(tasks: TaskFn<T>[]): Promise<Settled<T>[]> {
 
 /** Returns the first task settlement and cancels the remaining tasks. */
 async function race<T>(tasks: TaskFn<T>[]): Promise<T> {
-  if (tasks.length === 0) throw new WorkAggregateError([], "run.race requires at least one task");
+  if (tasks.length === 0) throw new WorkAggregateError([], "run.race requires tasks");
 
   return group(async (task) => {
     const handles = tasks.map((fn) => task(fn));
@@ -92,7 +92,7 @@ async function race<T>(tasks: TaskFn<T>[]): Promise<T> {
 
 /** Returns the first successful task, rejecting only after every task fails. */
 async function any<T>(tasks: TaskFn<T>[]): Promise<T> {
-  if (tasks.length === 0) throw new WorkAggregateError([], "run.any requires at least one task");
+  if (tasks.length === 0) throw new WorkAggregateError([], "run.any requires tasks");
 
   return group(async (task) => {
     const scope = getCurrentScope();
@@ -146,7 +146,7 @@ async function series<T>(tasks: TaskFn<T>[]): Promise<T[]> {
 /** Runs tasks with bounded concurrency and preserves input-order results. */
 async function pool<T>(concurrency: number, tasks: TaskFn<T>[]): Promise<T[]> {
   if (!Number.isInteger(concurrency) || concurrency < 1) {
-    throw new RangeError("run.pool concurrency must be a positive integer");
+    throw new RangeError("run.pool positive integer");
   }
 
   return group(async (task) => {
@@ -421,7 +421,7 @@ async function scope<R>(body: (scope: Scope) => Promise<R>, opts: ScopeOpts = {}
 /** Spawns background work in the current scope. */
 function background<T>(task: TaskFn<T>): TaskHandle<T> {
   const current = getCurrentScope();
-  if (!current) throw new Error("run.background requires an active WorkJS scope");
+  if (!current) throw new Error("requires an active WorkJS scope");
   return current.spawn(task, { name: "background" }, true);
 }
 

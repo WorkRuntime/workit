@@ -68,6 +68,7 @@
     "check:size": "npm run build && node scripts/check-bundle-size.mjs",
     "report:size": "npm run build && node scripts/report-bundle-size.mjs",
     "check:benchmark": "npm run build && node scripts/check-benchmark.mjs",
+    "check:context-performance": "npm run build && node scripts/check-context-performance.mjs",
     "check:1b": "npm run build && node scripts/check-1b-benchmark.mjs",
     "check:leak": "npm run build && node --expose-gc scripts/check-leak.mjs",
     "check:stream-memory": "npm run build && node --expose-gc scripts/check-stream-memory.mjs",
@@ -103,7 +104,7 @@
     "soak:24h": "npm run build && node --expose-gc scripts/soak-24h.mjs",
     "test": "npm run build && vitest run",
     "test:coverage": "npm run build && vitest run --coverage",
-    "verify": "npm run typecheck && npm run check:no-network && npm run check:headers && npm run check:tests && npm test && npm run check:security && npm run check:vulnerabilities && npm run check:sbom && npm run check:api && npm run check:size && npm run check:benchmark && npm run check:1b && npm run check:leak && npm run check:stream-memory && npm run check:soak && npm run check:exporter-stress && npm run check:package-consumer && npm run check:claims && npm run check:release-policy && npm run pack:dry"
+    "verify": "npm run typecheck && npm run check:no-network && npm run check:headers && npm run check:tests && npm test && npm run check:security && npm run check:vulnerabilities && npm run check:sbom && npm run check:api && npm run check:size && npm run check:benchmark && npm run check:context-performance && npm run check:1b && npm run check:leak && npm run check:stream-memory && npm run check:soak && npm run check:exporter-stress && npm run check:package-consumer && npm run check:claims && npm run check:release-policy && npm run pack:dry"
   },
   "engines": {
     "node": ">=20.11"
