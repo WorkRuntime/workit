@@ -36,6 +36,10 @@ assert.match(workflow, /attestations:\s*write/u, "release workflow must allow Gi
 assert.match(workflow, /npm publish --provenance --access public/u, "release workflow must publish with npm provenance");
 assert.match(workflow, /npm run verify/u, "release workflow must run full verification before publish");
 assert.match(workflow, /npm run test:coverage/u, "release workflow must run coverage before publish");
+assert.match(workflow, /oven-sh\/setup-bun@[a-f0-9]{40}/u, "release workflow must provision Bun for package-consumer verification");
+assert.match(workflow, /denoland\/setup-deno@[a-f0-9]{40}/u, "release workflow must provision Deno for package-consumer verification");
+assert.match(workflow, /bun-version:\s*"1\.3\.13"/u, "release workflow must pin the Bun fixture version");
+assert.match(workflow, /deno-version:\s*"2\.2\.7"/u, "release workflow must pin the Deno fixture version");
 assert.match(security, /git tag -s/u, "SECURITY.md must require signed release tags");
 assert.match(security, /git tag -v/u, "SECURITY.md must document signed tag verification");
 assertShaPinnedActions(".github/workflows/release-provenance.yml", workflow);
