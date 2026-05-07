@@ -172,7 +172,7 @@ function timeout<T>(task: TaskFn<T>, duration: Duration): TaskFn<T> {
   const timeoutMs = parseDuration(duration);
   return async (ctx) => {
     const ctrl = new AbortController();
-    const signal = linkSignals([ctx.signal, ctrl.signal]);
+    const signal = AbortSignal.any([ctx.signal, ctrl.signal]);
 
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_resolve, reject) => {
@@ -275,7 +275,7 @@ function hedge<T>(task: TaskFn<T>, opts: HedgeOpts): TaskFn<T> {
         if (settled) return;
         const ctrl = new AbortController();
         controllers.push(ctrl);
-        const signal = linkSignals([ctx.signal, ctrl.signal]);
+        const signal = AbortSignal.any([ctx.signal, ctrl.signal]);
         task({ ...ctx, signal, attempt }).then(
           (value) => {
             settle(() => {
@@ -507,9 +507,4 @@ function cancelLosers<T>(handles: TaskHandle<T>[], winner: TaskHandle<T>): void 
   for (const handle of handles) {
     if (handle !== winner) handle.cancel({ kind: "race_lost", winnerId: winner.id });
   }
-}
-
-
-function linkSignals(signals: AbortSignal[]): AbortSignal {
-  return AbortSignal.any(signals);
 }

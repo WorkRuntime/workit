@@ -73,11 +73,6 @@ export function getCurrentScope(): ScopeImpl | null {
   return currentScope.getStore() ?? null;
 }
 
-/** Links multiple abort signals into one signal without changing their owners. */
-function anySignal(signals: AbortSignal[]): AbortSignal {
-  return AbortSignal.any(signals);
-}
-
 // --- Internal task record (engine-side mirror of TaskHandle) -----------
 interface TaskRecord<T = unknown> {
   id: TaskId;
@@ -137,7 +132,7 @@ export class ScopeImpl implements Scope {
       ? parseDuration(opts.cleanupTimeout)
       : parent?.cleanupTimeoutMs ?? DEFAULT_CLEANUP_TIMEOUT_MS;
     this.signal = parent
-      ? anySignal([parent.signal, this.ownAbort.signal])
+      ? AbortSignal.any([parent.signal, this.ownAbort.signal])
       : this.ownAbort.signal;
     this.bus = new EventBus(parent?.bus ?? null);
 
@@ -183,11 +178,13 @@ export class ScopeImpl implements Scope {
       ? parseDuration(opts.cleanupTimeout)
       : this.cleanupTimeoutMs;
 
-    const taskAbort = new AbortController();
-    const taskSignal = anySignal([this.signal, taskAbort.signal]);
     const defers: CleanupRecord[] = [];
+    let taskAbort: AbortController | undefined;
+    let taskSignal: AbortSignal | undefined;
 
-    const ctx = this.makeTaskContext(id, name, kind, taskSignal, defers, cleanupTimeoutMs);
+    const getTaskSignal = () => taskSignal ||= AbortSignal.any([this.signal, (taskAbort ||= new AbortController()).signal]);
+
+    const ctx = this.makeTaskContext(id, name, kind, getTaskSignal, defers, cleanupTimeoutMs);
 
     const record: TaskRecord<T> = {
       id, name, kind,
@@ -195,7 +192,10 @@ export class ScopeImpl implements Scope {
       attempt: 1,
       startedAt,
       promise: undefined as unknown as Promise<T>,
-      cancel: (reason) => taskAbort.abort(new CancellationError(reason)),
+      cancel: (reason) => {
+        getTaskSignal();
+        taskAbort!.abort(new CancellationError(reason));
+      },
       background,
       ...(opts.meta !== undefined ? { meta: opts.meta } : {}),
     };
@@ -293,7 +293,7 @@ export class ScopeImpl implements Scope {
     const handle = promise as TaskHandle<T>;
     Object.defineProperty(handle, "id", { value: id });
     Object.defineProperty(handle, "name", { value: name });
-    Object.defineProperty(handle, "signal", { value: taskSignal });
+    Object.defineProperty(handle, "signal", { get: getTaskSignal });
     Object.defineProperty(handle, "status", { get: () => record.status });
     Object.defineProperty(handle, "cancel", {
       value: (reason: CancelReason | string = "manual") => {
@@ -479,14 +479,14 @@ export class ScopeImpl implements Scope {
     id: TaskId,
     name: string,
     kind: TaskKind,
-    signal: AbortSignal,
+    getSignal: () => AbortSignal,
     defers: CleanupRecord[],
     cleanupTimeoutMs: number
   ): import("../types/index.js").TaskContext {
     const scope = this;
     const log = makeTaskLogger(scope, id);
     return {
-      signal,
+      get signal() { return getSignal(); },
       scope,
       attempt: 1,
       id, name, kind,
