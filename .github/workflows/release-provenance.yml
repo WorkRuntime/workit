@@ -49,6 +49,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Configure signed tag verification
+        run: git config --global gpg.ssh.allowedSignersFile "$GITHUB_WORKSPACE/.github/allowed_signers"
+
       - name: Verify package
         run: npm run verify
 
