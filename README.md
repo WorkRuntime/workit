@@ -13,10 +13,10 @@ work. It keeps tasks inside scopes, propagates cancellation with typed reasons,
 runs cleanup before scopes close, and exposes safe task events without forcing an
 effect system, generator DSL, or provider client into the application.
 
-The package is currently private and pre-release. The implemented Node.js
-server runtime is verified locally, but the project should not be treated as
-publicly released until package publishing, public API stability, and release
-operations are finalized.
+The package is private and pre-release. The implemented Node.js server runtime
+is verified locally, but the project should not be treated as publicly released
+until the package identity, public API stability policy, and release operations
+are finalized.
 
 ## Why It Exists
 
@@ -231,10 +231,19 @@ npm run verify
 
 - TypeScript typecheck
 - no-network import guard
+- static security scan
+- production vulnerability audit
+- SBOM validation
 - build plus unit tests
+- API surface lock
 - bundle size limits
 - runtime benchmark smoke
+- one-billion logical item benchmark
 - scope leak smoke
+- exporter-down stress test
+- installed-package compatibility fixtures
+- executable claim fixtures
+- release provenance workflow policy check
 - package dry run
 
 Run coverage separately when changing behavior:
@@ -244,7 +253,7 @@ npm run test:coverage
 ```
 
 Coverage thresholds are set to 100% for statements, branches, functions, and
-lines. The current suite verifies 133 tests across the public runtime, run
+lines. The current suite verifies 137 tests across the public runtime, run
 helpers, work builder, tree rendering, budget contracts, AI helpers,
 observability exporter, and executable scale examples.
 
@@ -270,8 +279,14 @@ npm run sample:rag
 npm run sample:batch
 npm run sample:stream
 npm run sample:embed100k
+npm run sample:bisection
+npm run sample:stt-disconnect
 npm run sample:supervise
 npm run sample:worker
+npm run sample:aws
+npm run sample:azure
+npm run sample:next
+npm run sample:otel
 npm run sample:logging
 ```
 
@@ -300,8 +315,8 @@ Supported today:
 - CommonJS consumers from the installed package
 - strict TypeScript consumers
 - local Bun and Deno package-import smoke tests
-- AWS Lambda, Azure Functions, Next.js route, Express, and Vercel AI SDK
-  handler-shaped local fixtures
+- AWS Lambda, Azure Functions, Next.js route, Express, Fastify, tRPC, and
+  Vercel AI SDK handler-shaped local fixtures
 
 Not supported today:
 
@@ -332,9 +347,14 @@ gates are green.
 
 WorkJS is not ready for public release until these decisions are complete:
 
-- package publishing workflow
+- npm package identity; the unscoped `workjs` name already exists on npm
 - benchmark methodology publication
 - public API stability policy
+
+The repository contains a provenance-enabled release workflow and a local
+release-policy gate. `npm run check:release` intentionally fails while
+`package.json` remains private. Final publication requires a separate scoped
+release commit after the remaining evaluations are complete.
 
 ## License
 

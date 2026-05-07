@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 ## Supported Versions
 
 WorkJS is pre-release software. Security fixes apply to the current `0.x`
-development line until a stable release policy is published.
+development line until a stable support policy is published.
 
 ## Reporting A Vulnerability
 
@@ -38,6 +38,8 @@ The core package must keep these guarantees:
 - bounded exporter queues for opt-in telemetry bridges
 - no skipped or focused tests in release verification
 - 100% statement, branch, function, and line coverage
+- CycloneDX SBOM generation and validation
+- production dependency vulnerability audit
 - package dry-run inspection before publication
 
 ## Release Provenance
@@ -47,8 +49,19 @@ provenance enabled. A release is not approved unless these commands pass:
 
 ```sh
 npm run verify
-npm audit --omit=dev
+npm run test:coverage
+npm run check:vulnerabilities
+npm run check:sbom
 npm pack --dry-run --json
+```
+
+The provenance workflow is defined in `.github/workflows/release-provenance.yml`.
+Registry dry-runs and real publication are intentionally blocked while
+`package.json` has `private: true`. Final release requires a separate scoped
+commit that chooses an owned package identity, flips `private` to `false`, and
+runs:
+
+```sh
 npm publish --provenance --access public --dry-run
 ```
 

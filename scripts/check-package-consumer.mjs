@@ -51,7 +51,9 @@ try {
     "--ignore-scripts",
     tarball,
     "@opentelemetry/api@^1.9.1",
+    "@trpc/server@11.17.0",
     "express@5.2.1",
+    "fastify@5.8.5",
     "ai@6.0.175",
   ], {
     cwd: temp,
@@ -333,6 +335,49 @@ try {
     }
   `, "utf8");
 
+  await writeFile(join(temp, "fastify-fixture.mjs"), `
+    import Fastify from "fastify";
+    import { work } from "workjs";
+
+    const app = Fastify();
+    app.post("/items", async (request) => {
+      const output = await work(request.body.items).inParallel(2).do(async (item) => item.toUpperCase());
+      return { output: output.results };
+    });
+
+    try {
+      const response = await app.inject({
+        method: "POST",
+        url: "/items",
+        payload: { items: ["fastify", "workjs"] },
+      });
+      const body = JSON.parse(response.body);
+      if (response.statusCode !== 200) throw new Error("Fastify fixture status failed");
+      if (body.output.join(":") !== "FASTIFY:WORKJS") throw new Error("Fastify fixture body failed");
+    } finally {
+      await app.close();
+    }
+  `, "utf8");
+
+  await writeFile(join(temp, "trpc-fixture.mjs"), `
+    import { initTRPC } from "@trpc/server";
+    import { run } from "workjs";
+
+    const t = initTRPC.create();
+    const router = t.router({
+      values: t.procedure.query(async () => {
+        return await run.all([
+          async () => "trpc",
+          async () => "workjs",
+        ]);
+      }),
+    });
+
+    const caller = router.createCaller({});
+    const values = await caller.values();
+    if (values.join(":") !== "trpc:workjs") throw new Error("tRPC fixture failed");
+  `, "utf8");
+
   await writeFile(join(temp, "vercel-ai-fixture.mjs"), `
     import { streamText } from "ai";
     import { MockLanguageModelV3, simulateReadableStream } from "ai/test";
@@ -387,6 +432,8 @@ try {
     "azure-fixture.mjs",
     "next-fixture.mjs",
     "express-fixture.mjs",
+    "fastify-fixture.mjs",
+    "trpc-fixture.mjs",
     "vercel-ai-fixture.mjs",
   ]) {
     await execFileAsync(process.execPath, [fixture], {
@@ -459,6 +506,7 @@ try {
     packageConsumer: "ok",
     runtimeFixtures: "ok",
     frameworkFixtures: "ok",
+    frameworks: ["express", "fastify", "trpc", "next", "vercel-ai"],
     tarball: pack.filename,
   }));
 } finally {

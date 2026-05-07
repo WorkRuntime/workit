@@ -1,0 +1,57 @@
+# Release workflow with npm provenance.
+# Author: Admilson B. F. Cossa
+# SPDX-License-Identifier: Apache-2.0
+
+name: Release Provenance
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Run npm publish as a dry run.
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Verify and publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22.x"
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify package
+        run: npm run verify
+
+      - name: Verify coverage
+        run: npm run test:coverage
+
+      - name: Publish dry run
+        if: inputs.dry_run == 'true'
+        run: npm publish --provenance --access public --dry-run
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish
+        if: inputs.dry_run == 'false'
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -44,6 +44,9 @@
     }
   },
   "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "CODE_OF_CONDUCT.md",
     "CONTRIBUTING.md",
@@ -53,10 +56,12 @@
   ],
   "scripts": {
     "clean": "node -e \"const fs=require('node:fs'); for (const p of ['dist','dist-cjs','coverage']) fs.rmSync(p,{recursive:true,force:true});\"",
-    "build": "npm run clean && tsc && node scripts/build-cjs.mjs",
+    "build": "npm run clean && tsc && node scripts/build-cjs.mjs && node scripts/generate-sbom.mjs",
     "typecheck": "tsc --noEmit",
     "check:no-network": "node scripts/check-no-network.mjs",
     "check:security": "node scripts/check-security.mjs",
+    "check:vulnerabilities": "node scripts/check-vulnerabilities.mjs",
+    "check:sbom": "npm run build && node scripts/check-sbom.mjs",
     "check:tests": "node scripts/check-tests.mjs",
     "check:api": "npm run build && node scripts/check-api-surface.mjs",
     "check:size": "npm run build && node scripts/check-bundle-size.mjs",
@@ -65,6 +70,9 @@
     "check:leak": "npm run build && node --expose-gc scripts/check-leak.mjs",
     "check:exporter-stress": "npm run build && node --expose-gc scripts/check-exporter-stress.mjs",
     "check:package-consumer": "npm run build && node scripts/check-package-consumer.mjs",
+    "check:claims": "npm run build && node scripts/check-claim-fixtures.mjs",
+    "check:release-policy": "npm run build && node scripts/check-release-provenance.mjs",
+    "check:release": "npm run build && node scripts/check-release-provenance.mjs --registry-dry-run",
     "pack:dry": "npm pack --dry-run --json",
     "sample:1b": "npm run build && node samples/1b-stream.sample.js",
     "sample:concurrency": "npm run build && node samples/concurrency-budget.sample.js",
@@ -90,7 +98,7 @@
     "sample:logging": "npm run build && node samples/logging-otel-bridge.sample.js",
     "test": "npm run build && vitest run",
     "test:coverage": "npm run build && vitest run --coverage",
-    "verify": "npm run typecheck && npm run check:no-network && npm run check:tests && npm test && npm run check:security && npm run check:api && npm run check:size && npm run check:benchmark && npm run check:1b && npm run check:leak && npm run check:exporter-stress && npm run check:package-consumer && npm run pack:dry"
+    "verify": "npm run typecheck && npm run check:no-network && npm run check:tests && npm test && npm run check:security && npm run check:vulnerabilities && npm run check:sbom && npm run check:api && npm run check:size && npm run check:benchmark && npm run check:1b && npm run check:leak && npm run check:exporter-stress && npm run check:package-consumer && npm run check:claims && npm run check:release-policy && npm run pack:dry"
   },
   "engines": {
     "node": ">=20.11"

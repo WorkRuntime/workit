@@ -14,7 +14,9 @@ import { join } from "node:path";
 
 const failures = [];
 const packageJson = JSON.parse(await readFile("package.json", "utf8"));
+const packageLock = JSON.parse(await readFile("package-lock.json", "utf8"));
 const tsconfig = JSON.parse(stripJsonComments(await readFile("tsconfig.json", "utf8")));
+const rootLock = packageLock.packages?.[""] ?? {};
 
 const runtimeDependencies = Object.keys(packageJson.dependencies ?? {});
 if (runtimeDependencies.length > 0) {
@@ -25,6 +27,14 @@ for (const [name, version] of Object.entries(packageJson.devDependencies ?? {}))
   if (/^[~^*]/.test(version) || version.includes(" - ") || version === "latest") {
     failures.push(`Development dependency "${name}" must be pinned, found "${version}"`);
   }
+}
+
+if (JSON.stringify(rootLock.devDependencies ?? {}) !== JSON.stringify(packageJson.devDependencies ?? {})) {
+  failures.push("package-lock root devDependencies must match package.json exactly");
+}
+
+if (JSON.stringify(rootLock.peerDependencies ?? {}) !== JSON.stringify(packageJson.peerDependencies ?? {})) {
+  failures.push("package-lock root peerDependencies must match package.json exactly");
 }
 
 for (const lifecycle of ["preinstall", "install", "postinstall"]) {
@@ -45,7 +55,7 @@ if (tsconfig.compilerOptions?.sourceMap !== false || tsconfig.compilerOptions?.d
 
 await assertNoFiles(["dist", "dist-cjs"], /\.map$/u, "Published artifacts must not include source maps");
 await assertNoTextMatches(
-  ["src", "scripts", "samples", "tests", "README.md", "SECURITY.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md"],
+  [".github", "src", "scripts", "samples", "tests", "README.md", "SECURITY.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md"],
   [
     /AKIA[0-9A-Z]{16}/u,
     /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/u,
