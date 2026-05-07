@@ -7,6 +7,7 @@
 
 import { test } from "vitest";
 import assert from "node:assert/strict";
+import moduleBuiltin from "node:module";
 import { attachOpenTelemetry } from "../../dist/otel/index.js";
 
 function createScopeHarness() {
@@ -222,6 +223,91 @@ test("OpenTelemetry adapter drops sanitizer-rejected task events", () => {
 
   assert.equal(fake.spans.length, 0);
   assert.equal(attachment.droppedCount(), 1);
+});
+
+test("OpenTelemetry adapter explains the missing optional peer dependency", () => {
+  const scope = createScopeHarness();
+  const originalLoad = moduleBuiltin._load;
+  const missingPeer = new Error("Cannot find module '@opentelemetry/api'");
+  missingPeer.code = "MODULE_NOT_FOUND";
+
+  moduleBuiltin._load = function load(request, parent, isMain) {
+    if (request === "@opentelemetry/api") throw missingPeer;
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  try {
+    assert.throws(
+      () => attachOpenTelemetry(scope),
+      (err) => {
+        assert.ok(err instanceof Error);
+        assert.match(err.message, /To use @workit\/core\/otel, install:/);
+        assert.match(err.message, /npm install @opentelemetry\/api/);
+        assert.equal(err.cause, missingPeer);
+        return true;
+      }
+    );
+  } finally {
+    moduleBuiltin._load = originalLoad;
+  }
+});
+
+test("OpenTelemetry adapter preserves non-peer loader errors", () => {
+  const scope = createScopeHarness();
+  const originalLoad = moduleBuiltin._load;
+  const loaderError = new Error("loader integrity failure");
+  loaderError.code = "ERR_INVALID_PACKAGE_CONFIG";
+
+  moduleBuiltin._load = function load(request, parent, isMain) {
+    if (request === "@opentelemetry/api") throw loaderError;
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  try {
+    assert.throws(() => attachOpenTelemetry(scope), /loader integrity failure/);
+  } finally {
+    moduleBuiltin._load = originalLoad;
+  }
+});
+
+test("OpenTelemetry adapter preserves unrelated module-not-found errors", () => {
+  const scope = createScopeHarness();
+  const originalLoad = moduleBuiltin._load;
+  const loaderError = new Error("Cannot find module 'other-package'");
+  loaderError.code = "MODULE_NOT_FOUND";
+
+  moduleBuiltin._load = function load(request, parent, isMain) {
+    if (request === "@opentelemetry/api") throw loaderError;
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  try {
+    assert.throws(() => attachOpenTelemetry(scope), /other-package/);
+  } finally {
+    moduleBuiltin._load = originalLoad;
+  }
+});
+
+test("OpenTelemetry adapter preserves non-Error loader failures", () => {
+  const scope = createScopeHarness();
+  const originalLoad = moduleBuiltin._load;
+
+  moduleBuiltin._load = function load(request, parent, isMain) {
+    if (request === "@opentelemetry/api") throw "loader string failure";
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  try {
+    assert.throws(
+      () => attachOpenTelemetry(scope),
+      (err) => {
+        assert.equal(err, "loader string failure");
+        return true;
+      }
+    );
+  } finally {
+    moduleBuiltin._load = originalLoad;
+  }
 });
 
 test("OpenTelemetry adapter covers default API and defensive event branches", async () => {

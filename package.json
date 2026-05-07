@@ -1,6 +1,6 @@
 {
   "name": "@workit/core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Structured concurrency runtime for TypeScript.",
   "type": "module",
   "private": false,
