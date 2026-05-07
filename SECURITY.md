@@ -75,6 +75,16 @@ npm publish --provenance --access public --dry-run
 The package must not publish source maps, local docs, tests, secrets, temporary
 files, debug output, or private agent instructions.
 
+Release tags must be signed. The release operator must create the version tag
+only after the scoped release commit is clean and verified:
+
+```sh
+git tag -s vX.Y.Z -m "Release vX.Y.Z"
+git tag -v vX.Y.Z
+```
+
+Unsigned release tags are not valid release evidence.
+
 ## Responsible Disclosure Scope
 
 Reports are in scope when they affect:

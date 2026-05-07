@@ -10,14 +10,18 @@
  */
 
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { promisify } from "node:util";
 
 const packageJson = JSON.parse(await readFile("package.json", "utf8"));
 const workflow = await readFile(".github/workflows/release-provenance.yml", "utf8");
+const security = await readFile("SECURITY.md", "utf8");
 const codeowners = await readRequiredFile(".github/CODEOWNERS");
 const dependabot = await readRequiredFile(".github/dependabot.yml");
 const scorecard = await readRequiredFile(".github/workflows/scorecard.yml");
 const requireRegistryDryRun = process.argv.includes("--registry-dry-run");
+const execFileAsync = promisify(execFile);
 
 assert.equal(packageJson.name, "@workjs/core", "release package identity must remain @workjs/core");
 assert.equal(packageJson.private, true, "package.json must remain private until final release approval");
@@ -30,6 +34,8 @@ assert.match(workflow, /attestations:\s*write/u, "release workflow must allow Gi
 assert.match(workflow, /npm publish --provenance --access public/u, "release workflow must publish with npm provenance");
 assert.match(workflow, /npm run verify/u, "release workflow must run full verification before publish");
 assert.match(workflow, /npm run test:coverage/u, "release workflow must run coverage before publish");
+assert.match(security, /git tag -s/u, "SECURITY.md must require signed release tags");
+assert.match(security, /git tag -v/u, "SECURITY.md must document signed tag verification");
 assertShaPinnedActions(".github/workflows/release-provenance.yml", workflow);
 assertShaPinnedActions(".github/workflows/scorecard.yml", scorecard);
 assert.match(codeowners, /^\*\s+\S+/mu, "CODEOWNERS must assign a default owner for every path");
@@ -37,6 +43,7 @@ assert.match(dependabot, /package-ecosystem:\s*"npm"/u, "dependabot must monitor
 assert.match(dependabot, /package-ecosystem:\s*"github-actions"/u, "dependabot must monitor GitHub Actions");
 assert.match(scorecard, /ossf\/scorecard-action@[a-f0-9]{40}/u, "Scorecard workflow must use a SHA-pinned action");
 assert.match(scorecard, /security-events:\s*write/u, "Scorecard workflow must be able to upload SARIF");
+await assertExistingTagsAreSigned();
 
 if (!requireRegistryDryRun) {
   console.log("release-policy-gate: provenance workflow validated and package remains private");
@@ -63,5 +70,12 @@ function assertShaPinnedActions(path, text) {
       /^[a-f0-9]{40}$/u,
       `${path} must pin ${match[1]} to a full commit SHA, found ${match[2]}`
     );
+  }
+}
+
+async function assertExistingTagsAreSigned() {
+  const { stdout } = await execFileAsync("git", ["tag", "--list"]);
+  for (const tag of stdout.split(/\r?\n/u).filter(Boolean)) {
+    await execFileAsync("git", ["tag", "-v", tag]);
   }
 }
