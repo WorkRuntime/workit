@@ -11,14 +11,13 @@
 import { execFile } from "node:child_process";
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { delimiter, dirname, join, resolve } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { build } from "esbuild";
 
 const execFileAsync = promisify(execFile);
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const npmCli = join(dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
 const tscCli = join(ROOT, "node_modules", "typescript", "bin", "tsc");
 const bunCli = await findExecutable(["bun.exe", "bun"], [join(homedir(), ".bun", "bin", "bun.exe")]);
 const denoCli = await findExecutable(["deno.exe", "deno"], [join(homedir(), ".deno", "bin", "deno.exe")]);
@@ -37,7 +36,7 @@ if (wranglerCli === null) throw new Error("Cloudflare Worker dry-run fixture req
 const temp = await mkdtemp(join(tmpdir(), "workjs-consumer-"));
 
 try {
-  const { stdout } = await execFileAsync(process.execPath, [npmCli, "pack", "--json", "--pack-destination", temp], {
+  const { stdout } = await runNpm(["pack", "--json", "--pack-destination", temp], {
     cwd: ROOT,
     timeout: 120_000,
   });
@@ -45,8 +44,7 @@ try {
   const tarball = join(temp, pack.filename);
 
   await writeFile(join(temp, "package.json"), JSON.stringify({ type: "module" }), "utf8");
-  await execFileAsync(process.execPath, [
-    npmCli,
+  await runNpm([
     "install",
     "--ignore-scripts",
     tarball,
@@ -573,6 +571,16 @@ async function execCli(executable, args, opts) {
     return await execFileAsync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", executable, ...args], opts);
   }
   return await execFileAsync(executable, args, opts);
+}
+
+async function runNpm(args, opts) {
+  if (process.env.npm_execpath !== undefined) {
+    return await execFileAsync(process.execPath, [process.env.npm_execpath, ...args], opts);
+  }
+
+  const npmCli = await findExecutable(["npm.cmd", "npm"], []);
+  if (npmCli === null) throw new Error("npm executable not found on PATH.");
+  return await execCli(npmCli, args, opts);
 }
 
 async function exists(path) {
