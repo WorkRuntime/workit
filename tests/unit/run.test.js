@@ -212,6 +212,20 @@ test("run.circuitBreaker opens after repeated failures and recovers after reset"
   assert.equal(await run.group(async (task) => task(wrapped)), "ok");
 });
 
+test("run.circuitBreaker resets closed-state failures after success", async () => {
+  let calls = 0;
+  const wrapped = run.circuitBreaker(async () => {
+    calls++;
+    if (calls === 1 || calls === 3) throw new Error(`transient ${calls}`);
+    return `ok-${calls}`;
+  }, { failureThreshold: 2, resetAfter: 20 });
+
+  await assert.rejects(run.group(async (task) => task(wrapped)), /transient 1/);
+  assert.equal(await run.group(async (task) => task(wrapped)), "ok-2");
+  await assert.rejects(run.group(async (task) => task(wrapped)), /transient 3/);
+  assert.equal(await run.group(async (task) => task(wrapped)), "ok-4");
+});
+
 test("run.circuitBreaker admits one half-open probe under concurrent pressure", async () => {
   let probes = 0;
   const wrapped = run.circuitBreaker(async (ctx) => {
@@ -280,6 +294,61 @@ test("run.circuitBreaker ignores stale half-open success after a probe failure",
   const probes = await run.allSettled([wrapped, wrapped]);
   assert.deepEqual(probes.map((item) => item.status), ["rejected", "fulfilled"]);
   await assert.rejects(run.group(async (task) => task(wrapped)), /Circuit breaker is open/);
+});
+
+test("run.circuitBreaker ignores stale closed-call success after another call opens it", async () => {
+  let calls = 0;
+  const wrapped = run.circuitBreaker(async (ctx) => {
+    calls++;
+    if (calls === 1) {
+      await sleep(30, ctx.signal);
+      return "late-success";
+    }
+    throw new Error("fast-failure");
+  }, { failureThreshold: 1, resetAfter: 50 });
+
+  const settled = await run.allSettled([wrapped, wrapped]);
+  assert.deepEqual(settled.map((item) => item.status), ["fulfilled", "rejected"]);
+  await assert.rejects(run.group(async (task) => task(wrapped)), /Circuit breaker is open/);
+});
+
+test("run.circuitBreaker ignores stale closed-call failure after another call opens it", async () => {
+  let calls = 0;
+  const wrapped = run.circuitBreaker(async (ctx) => {
+    calls++;
+    if (calls === 1) await sleep(30, ctx.signal);
+    throw new Error(`failure-${calls}`);
+  }, { failureThreshold: 1, resetAfter: 50 });
+
+  const settled = await run.allSettled([wrapped, wrapped]);
+  assert.deepEqual(settled.map((item) => item.status), ["rejected", "rejected"]);
+  await assert.rejects(run.group(async (task) => task(wrapped)), /Circuit breaker is open/);
+});
+
+test("run.circuitBreaker ignores stale half-open failure after a newer recovery epoch", async () => {
+  let calls = 0;
+  const wrapped = run.circuitBreaker(async (ctx) => {
+    calls++;
+    if (calls === 1) throw new Error("opening failure");
+    if (calls === 2) throw new Error("fast half-open failure");
+    if (calls === 3) {
+      await sleep(40, ctx.signal);
+      throw new Error("stale half-open failure");
+    }
+    return `fresh-success-${calls}`;
+  }, { failureThreshold: 1, resetAfter: 5, halfOpenMaxCalls: 2 });
+
+  await assert.rejects(run.group(async (task) => task(wrapped)), /opening failure/);
+  await sleep(10);
+
+  const fastFailure = run.group(async (task) => task(wrapped));
+  const staleFailure = run.group(async (task) => task(wrapped));
+  await assert.rejects(fastFailure, /fast half-open failure/);
+
+  await sleep(10);
+  assert.equal(await run.group(async (task) => task(wrapped)), "fresh-success-4");
+  await assert.rejects(staleFailure, /stale half-open failure/);
+  assert.equal(await run.group(async (task) => task(wrapped)), "fresh-success-5");
 });
 
 test("run.background requires a scope and keeps work owned by that scope", async () => {

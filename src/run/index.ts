@@ -311,52 +311,59 @@ function fallback<T>(primary: TaskFn<T>, secondary: TaskFn<T>): TaskFn<T> {
 
 /** Wraps a task with a small in-process circuit breaker. */
 function circuitBreaker<T>(task: TaskFn<T>, opts: BreakerOpts): TaskFn<T> {
-  let failures = 0;
-  let state: "closed" | "open" | "half_open" = "closed";
-  let openedUntil = 0;
-  let halfOpenCalls = 0;
-  let halfOpenEpoch = 0;
+  type BreakerState =
+    | { kind: "closed"; failures: number }
+    | { kind: "open"; openedUntil: number }
+    | { kind: "half_open"; epoch: number; admitted: number };
+
+  let state: BreakerState = { kind: "closed", failures: 0 };
+  let nextHalfOpenEpoch = 0;
+  const maxHalfOpenCalls = opts.halfOpenMaxCalls ?? 1;
+  const resetAfterMs = parseDuration(opts.resetAfter);
+
+  const open = () => {
+    state = { kind: "open", openedUntil: Date.now() + resetAfterMs };
+  };
+  const close = () => {
+    state = { kind: "closed", failures: 0 };
+  };
+  const halfOpen = () => {
+    state = { kind: "half_open", epoch: ++nextHalfOpenEpoch, admitted: 0 };
+  };
 
   return async (ctx) => {
-    if (state === "open") {
-      if (Date.now() < openedUntil) throw new Error("Circuit breaker is open");
-      state = "half_open";
-      halfOpenCalls = 0;
-      failures = 0;
-      halfOpenEpoch++;
+    if (state.kind === "open") {
+      if (Date.now() < state.openedUntil) throw new Error("Circuit breaker is open");
+      halfOpen();
     }
 
-    if (state === "half_open" && halfOpenCalls >= (opts.halfOpenMaxCalls ?? 1)) {
+    if (state.kind === "half_open" && state.admitted >= maxHalfOpenCalls) {
       throw new Error("Circuit breaker is half-open");
     }
 
-    const enteredHalfOpen = state === "half_open";
-    const enteredHalfOpenEpoch = halfOpenEpoch;
-    if (enteredHalfOpen) halfOpenCalls++;
+    const admission = state.kind === "half_open"
+      ? { kind: "half_open" as const, epoch: state.epoch }
+      : { kind: "closed" as const };
+    if (state.kind === "half_open") state.admitted++;
 
     try {
       const value = await task(ctx);
-      if (!enteredHalfOpen || (state === "half_open" && enteredHalfOpenEpoch === halfOpenEpoch)) {
-        failures = 0;
-        state = "closed";
-        halfOpenCalls = 0;
+      if (admission.kind === "half_open") {
+        if (state.kind === "half_open" && state.epoch === admission.epoch) close();
+      } else if (state.kind === "closed") {
+        close();
       }
       return value;
     } catch (err) {
       if (err instanceof CancellationError) throw err;
-      if (enteredHalfOpen) {
-        state = "open";
-        openedUntil = Date.now() + parseDuration(opts.resetAfter);
-        failures = 0;
-        halfOpenCalls = 0;
-        halfOpenEpoch++;
+      if (admission.kind === "half_open") {
+        if (admission.epoch === nextHalfOpenEpoch) open();
         throw err;
       }
-      failures++;
-      if (failures >= opts.failureThreshold) {
-        state = "open";
-        openedUntil = Date.now() + parseDuration(opts.resetAfter);
-        halfOpenCalls = 0;
+      if (state.kind === "closed") {
+        const failures = state.failures + 1;
+        state = { kind: "closed", failures };
+        if (failures >= opts.failureThreshold) open();
       }
       throw err;
     }
