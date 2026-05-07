@@ -19,6 +19,7 @@ const workflow = await readFile(".github/workflows/release-provenance.yml", "utf
 const security = await readFile("SECURITY.md", "utf8");
 const codeowners = await readRequiredFile(".github/CODEOWNERS");
 const dependabot = await readRequiredFile(".github/dependabot.yml");
+const ci = await readRequiredFile(".github/workflows/ci.yml");
 const scorecard = await readRequiredFile(".github/workflows/scorecard.yml");
 const requireRegistryDryRun = process.argv.includes("--registry-dry-run");
 const execFileAsync = promisify(execFile);
@@ -37,6 +38,7 @@ assert.match(workflow, /npm run test:coverage/u, "release workflow must run cove
 assert.match(security, /git tag -s/u, "SECURITY.md must require signed release tags");
 assert.match(security, /git tag -v/u, "SECURITY.md must document signed tag verification");
 assertShaPinnedActions(".github/workflows/release-provenance.yml", workflow);
+assertShaPinnedActions(".github/workflows/ci.yml", ci);
 assertShaPinnedActions(".github/workflows/scorecard.yml", scorecard);
 assert.match(codeowners, /^\*\s+\S+/mu, "CODEOWNERS must assign a default owner for every path");
 assert.match(dependabot, /package-ecosystem:\s*"npm"/u, "dependabot must monitor npm dependencies");
