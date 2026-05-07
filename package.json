@@ -30,6 +30,11 @@
       "import": "./dist/observability/index.js",
       "require": "./dist-cjs/observability/index.cjs"
     },
+    "./diagnostics": {
+      "types": "./dist/diagnostics/index.d.ts",
+      "import": "./dist/diagnostics/index.js",
+      "require": "./dist-cjs/diagnostics/index.cjs"
+    },
     "./otel": {
       "types": "./dist/otel/index.d.ts",
       "import": "./dist/otel/index.js",

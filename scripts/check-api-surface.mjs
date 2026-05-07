@@ -17,6 +17,7 @@ const require = createRequire(import.meta.url);
 const EXPECTED_EXPORT_MAP = [
   ".",
   "./ai",
+  "./diagnostics",
   "./observability",
   "./otel",
   "./worker",
@@ -50,6 +51,9 @@ const EXPECTED_RUNTIME_EXPORTS = {
     "transcribeStream",
     "wrapAI",
   ],
+  "./diagnostics": [
+    "diagnoseSnapshot",
+  ],
   "./observability": [
     "attachScopeSummaryExporter",
     "attachTelemetryExporter",
@@ -66,6 +70,7 @@ const EXPECTED_RUNTIME_EXPORTS = {
 const EXPECTED_EXPORT_CONDITIONS = {
   ".": ["default", "node", "types"],
   "./ai": ["default", "node", "types"],
+  "./diagnostics": ["import", "require", "types"],
   "./observability": ["import", "require", "types"],
   "./otel": ["import", "require", "types"],
   "./worker": ["default", "node", "types"],
@@ -74,6 +79,7 @@ const EXPECTED_EXPORT_CONDITIONS = {
 const MODULE_PATHS = {
   ".": "../dist/index.js",
   "./ai": "../dist/ai/index.js",
+  "./diagnostics": "../dist/diagnostics/index.js",
   "./observability": "../dist/observability/index.js",
   "./otel": "../dist/otel/index.js",
   "./worker": "../dist/worker/index.js",
@@ -82,6 +88,7 @@ const MODULE_PATHS = {
 const CJS_MODULE_PATHS = {
   ".": "../dist-cjs/index.cjs",
   "./ai": "../dist-cjs/ai/index.cjs",
+  "./diagnostics": "../dist-cjs/diagnostics/index.cjs",
   "./observability": "../dist-cjs/observability/index.cjs",
 };
 
