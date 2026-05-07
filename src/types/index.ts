@@ -447,6 +447,12 @@ export interface RunNamespace {
   retry<T>(task: TaskFn<T>, opts: number | RetryOpts): TaskFn<T>;
   hedge<T>(task: TaskFn<T>, opts: HedgeOpts): TaskFn<T>;
   fallback<T>(primary: TaskFn<T>, secondary: TaskFn<T>): TaskFn<T>;
+  bracket<R, T>(
+    acquire: (ctx: TaskContext) => R | Promise<R>,
+    use: (resource: R, ctx: TaskContext) => T | Promise<T>,
+    release: (resource: R, ctx: CleanupContext) => void | Promise<void>,
+    opts?: CleanupOpts
+  ): TaskFn<T>;
   circuitBreaker<T>(task: TaskFn<T>, opts: BreakerOpts): TaskFn<T>;
   group<R>(body: (task: {
     <T>(fn: TaskFn<T>, opts?: TaskOpts): TaskHandle<T>;

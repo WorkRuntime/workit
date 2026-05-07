@@ -22,12 +22,15 @@ import {
   Settled,
   TaskFn,
   TaskHandle,
+  TaskContext,
   TaskResults,
   TimeoutError,
   WorkAggregateError,
   BreakerOpts,
   DetachedOpts,
   BudgetState,
+  CleanupOpts,
+  CleanupContext,
 } from "../types/index.js";
 import { ContextBagImpl } from "../engine/context.js";
 import { ScopeImpl, getCurrentScope, group } from "../engine/scope.js";
@@ -312,6 +315,20 @@ function fallback<T>(primary: TaskFn<T>, secondary: TaskFn<T>): TaskFn<T> {
   };
 }
 
+/** Acquires a resource, uses it, and releases it through bounded task cleanup. */
+function bracket<R, T>(
+  acquire: (ctx: TaskContext) => R | Promise<R>,
+  use: (resource: R, ctx: TaskContext) => T | Promise<T>,
+  release: (resource: R, ctx: CleanupContext) => void | Promise<void>,
+  opts?: CleanupOpts
+): TaskFn<T> {
+  return async (ctx) => {
+    const resource = await acquire(ctx);
+    ctx.defer((cleanupCtx) => release(resource, cleanupCtx), opts);
+    return use(resource, ctx);
+  };
+}
+
 /** Wraps a task with a small in-process circuit breaker. */
 function circuitBreaker<T>(task: TaskFn<T>, opts: BreakerOpts): TaskFn<T> {
   type BreakerState =
@@ -476,6 +493,7 @@ export const run: RunNamespace = {
   retry,
   hedge,
   fallback,
+  bracket,
   circuitBreaker,
   group,
   scope,

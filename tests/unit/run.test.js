@@ -198,6 +198,94 @@ test("run.fallback uses secondary task after primary failure", async () => {
   assert.equal(await run.group(async (task) => task(wrapped)), "secondary");
 });
 
+test("run.bracket releases acquired resources exactly once on success and failure", async () => {
+  const released = [];
+
+  const successful = run.bracket(
+    async () => "success-resource",
+    async (resource) => `used:${resource}`,
+    async (resource) => {
+      released.push(resource);
+    }
+  );
+
+  assert.equal(await run.group(async (task) => task(successful)), "used:success-resource");
+  assert.deepEqual(released, ["success-resource"]);
+
+  const failing = run.bracket(
+    async () => "failing-resource",
+    async () => {
+      throw new Error("use failed");
+    },
+    async (resource) => {
+      released.push(resource);
+    }
+  );
+
+  await assert.rejects(run.group(async (task) => task(failing)), /use failed/);
+  assert.deepEqual(released, ["success-resource", "failing-resource"]);
+
+  const acquireFailed = run.bracket(
+    async () => {
+      throw new Error("acquire failed");
+    },
+    async () => "never",
+    async () => {
+      released.push("must-not-release");
+    }
+  );
+
+  await assert.rejects(run.group(async (task) => task(acquireFailed)), /acquire failed/);
+  assert.deepEqual(released, ["success-resource", "failing-resource"]);
+});
+
+test("run.bracket releases on cancellation using bounded cleanup semantics", async () => {
+  const events = [];
+  const released = [];
+
+  await assert.rejects(
+    run.group(async (task) => {
+      await task(async (ctx) => {
+        ctx.scope.onEvent((event) => events.push(event));
+      });
+      await task(run.timeout(run.bracket(
+        async () => "cancelled-resource",
+        async (_resource, ctx) => {
+          await sleep(1_000, ctx.signal);
+          return "late";
+        },
+        async (resource) => {
+          released.push(resource);
+        }
+      ), 5));
+    }),
+    TimeoutError
+  );
+
+  assert.deepEqual(released, ["cancelled-resource"]);
+  assert.ok(!events.some((event) => event.type === "task:cleanup_failed"));
+});
+
+test("run.bracket emits cleanup timeout when release does not settle", async () => {
+  const events = [];
+
+  await run.group(async (task) => {
+    await task(async (ctx) => {
+      ctx.scope.onEvent((event) => events.push(event));
+    });
+    assert.equal(await task(run.bracket(
+      async () => "resource",
+      async () => "value",
+      async () => {
+        await new Promise(() => {});
+      },
+      { timeout: 5 }
+    )), "value");
+  });
+
+  assert.ok(events.some((event) => event.type === "task:cleanup_timeout" && event.timeoutMs === 5));
+});
+
 test("run.hedge starts delayed attempts only while unsettled", async () => {
   let attempts = 0;
 

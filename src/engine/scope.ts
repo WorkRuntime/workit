@@ -176,7 +176,7 @@ export class ScopeImpl implements Scope {
     const name = opts.name ?? "anonymous";
     const kind = opts.kind ?? "io";
     if (kind !== "io" && kind !== "llm" && kind !== "tool" && kind !== "cpu" && kind !== "custom") {
-      throw new RangeError("invalid task kind");
+      throw new RangeError("task kind");
     }
     const startedAt = Date.now();
     const cleanupTimeoutMs = opts.cleanupTimeout !== undefined
