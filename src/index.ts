@@ -2,6 +2,7 @@
  * WorkJS - current public engine surface.
  *
  * @author Admilson B. F. Cossa
+ * SPDX-License-Identifier: Apache-2.0
  *
  * This module exports only runtime surfaces that exist in source, tests, and
  * build output.
@@ -29,7 +30,8 @@ export type {
   Scope, ScopeOpts, ScopeId, ScopeSnapshot, TaskSnapshot,
   ContextKey, ContextBag, BudgetState,
   CancelReason, TaskEvent, Unsubscribe, ProgressReport, TaskLogger,
-  Settled, Duration, TaskResults, WorkOutput, ItemError,
+  Settled, Duration, TaskResults, WorkOutput, ItemError, CancelledItem,
+  WorkProgressEvent, WorkItemDoneEvent,
   RetryOpts, HedgeOpts, BreakerOpts, RunNamespace, WorkFactory, WorkBuilder, TreeOpts,
 } from "./types/index.js";
 

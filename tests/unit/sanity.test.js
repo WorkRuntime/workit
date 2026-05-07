@@ -2,6 +2,7 @@
  * Sanity test - exercises the core structured concurrency behavior.
  *
  * @author Admilson B. F. Cossa
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Uses Vitest against the built package so verification proves the published
  * artifact shape instead of a source-only path.
@@ -120,6 +121,7 @@ test("unawaited child failure cancels siblings and rejects group", async () => {
 // --- Budget system -------------------------------------------------------------
 test("single budget overrun cancels scope with BudgetExceededError", async () => {
   let inner = 0;
+  let overrun;
 
   await assert.rejects(
     group(
@@ -136,10 +138,16 @@ test("single budget overrun cancels scope with BudgetExceededError", async () =>
       },
       { context: new (await import("../../dist/index.js")).ContextBagImpl().with(CostBudget, { spent: 0, limit: 1.0, unit: "USD" }) }
     ),
-    BudgetExceededError
+    (err) => {
+      overrun = err;
+      return err instanceof BudgetExceededError;
+    }
   );
 
   assert.equal(inner, 3, "execution must stop at the failing consume");
+  assert.equal(overrun.spent, 1.2);
+  assert.equal(overrun.attempted, 0.4);
+  assert.equal(overrun.reason.spent, 1.2);
 });
 
 test("consuming an unset budget throws synchronously", async () => {
@@ -150,6 +158,75 @@ test("consuming an unset budget throws synchronously", async () => {
       });
     }),
     /Budget "CostBudget" not set in scope/
+  );
+});
+
+test("budget charges reject negative and non-finite amounts", async () => {
+  await assert.rejects(
+    group(
+      async (task) => {
+        await task(async (ctx) => ctx.consumeCost(-1));
+      },
+      { context: new ContextBagImpl().with(CostBudget, { spent: 0, limit: 1, unit: "USD" }) }
+    ),
+    /finite non-negative/
+  );
+
+  await assert.rejects(
+    group(
+      async (task) => {
+        await task(async (ctx) => ctx.consumeCost(Number.POSITIVE_INFINITY));
+      },
+      { context: new ContextBagImpl().with(CostBudget, { spent: 0, limit: 1, unit: "USD" }) }
+    ),
+    /finite non-negative/
+  );
+});
+
+test("budget state returned from context is a snapshot", async () => {
+  const context = new ContextBagImpl().with(CostBudget, { spent: 0, limit: 1, unit: "USD" });
+  const snapshot = context.get(CostBudget);
+  snapshot.limit = Number.POSITIVE_INFINITY;
+  snapshot.spent = -100;
+
+  await group(async (task) => {
+    await task(async (ctx) => {
+      ctx.consumeCost(1);
+    });
+  }, { context });
+
+  assert.deepEqual(context.get(CostBudget), { spent: 1, limit: 1, unit: "USD" });
+});
+
+test("custom context budget ownership still cancels the visible owner", async () => {
+  const state = { spent: 0, limit: 1, unit: "USD" };
+  const fakeContext = {
+    get(key) {
+      return key === CostBudget ? state : undefined;
+    },
+    getOrThrow(key) {
+      const value = this.get(key);
+      if (value === undefined) throw new Error("missing");
+      return value;
+    },
+    with() {
+      return this;
+    },
+    has(key) {
+      return key === CostBudget;
+    },
+  };
+
+  await assert.rejects(
+    group(async () => {
+      await run.scope(async (scope) => {
+        const handle = scope.spawn(async (ctx) => {
+          ctx.consumeCost(2);
+        });
+        await handle;
+      }, { context: fakeContext });
+    }, { context: fakeContext }),
+    (err) => err instanceof BudgetExceededError && err.reason.kind === "budget"
   );
 });
 
@@ -173,30 +250,36 @@ test("TaskContext.budgets lists visible budget states", async () => {
 test("child scope budget shadows parent budget", async () => {
   const parentBudget = { spent: 0, limit: 10, unit: "USD" };
   const childBudget = { spent: 0, limit: 1, unit: "USD" };
+  let parentContext;
+  let childContext;
 
   await run.context.with(CostBudget, parentBudget, async () => {
+    parentContext = run.context.current();
+    childContext = run.context.current().with(CostBudget, childBudget);
     await run.scope(async (scope) => {
       const handle = scope.spawn(async (ctx) => {
         ctx.consumeCost(0.5);
       });
       await handle;
-    }, { context: run.context.current().with(CostBudget, childBudget) });
+    }, { context: childContext });
   });
 
-  assert.equal(parentBudget.spent, 0);
-  assert.equal(childBudget.spent, 0.5);
+  assert.equal(parentContext.get(CostBudget).spent, 0);
+  assert.equal(childContext.get(CostBudget).spent, 0.5);
 });
 
 test("concurrent budget charges land at exact total", async () => {
   const budget = { spent: 0, limit: 1, unit: "USD" };
+  let context;
 
   await run.context.with(CostBudget, budget, async () => {
+    context = run.context.current();
     await run.all(Array.from({ length: 100 }, () => async (ctx) => {
       ctx.consumeCost(0.01);
     }));
   });
 
-  assert.equal(Math.round(budget.spent * 100), 100);
+  assert.equal(Math.round(context.get(CostBudget).spent * 100), 100);
 });
 
 // --- Telemetry budget ----------------------------------------------------------

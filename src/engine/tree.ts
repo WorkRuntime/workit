@@ -2,6 +2,7 @@
  * Scope tree renderer.
  *
  * @author Admilson B. F. Cossa
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Pure rendering over `ScopeSnapshot`; no task state is read here. This keeps
  * `scope.tree()` testable and lets future exporters reuse the same snapshot

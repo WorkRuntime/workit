@@ -2,6 +2,7 @@
  * Run namespace tests - verifies composition helpers against the scope engine.
  *
  * @author Admilson B. F. Cossa
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import { test } from "vitest";
@@ -225,4 +226,153 @@ test("run.supervise restarts failures within the restart window", async () => {
 
   assert.equal(await handle, "stable");
   assert.equal(attempts, 3);
+});
+
+test("task options support idempotency retry timeout deadline and retry events", async () => {
+  let executions = 0;
+  let idempotentExecutions = 0;
+  const events = [];
+
+  const result = await run.group(async (task) => {
+    await task(async (ctx) => {
+      ctx.scope.onEvent((event) => events.push(event));
+    }, { name: "observer" });
+
+    const first = task(async () => {
+      idempotentExecutions++;
+      return "same-result";
+    }, { name: "same-a", idempotencyKey: "upload:1" });
+
+    const second = task(async () => {
+      idempotentExecutions++;
+      return "wrong-result";
+    }, { name: "same-b", idempotencyKey: "upload:1" });
+
+    const retried = task(async () => {
+      executions++;
+      if (executions < 2) throw new Error("retry task option");
+      return "retried";
+    }, {
+      name: "retried",
+      retry: { times: 2, initialDelay: 1, maxDelay: 1, jitter: false },
+    });
+
+    return [await first, await second, await retried];
+  });
+
+  assert.deepEqual(result, ["same-result", "same-result", "retried"]);
+  assert.equal(idempotentExecutions, 1);
+  assert.equal(executions, 2);
+  assert.ok(events.some((event) => event.type === "task:retrying" && event.attempt === 2));
+
+  await assert.rejects(
+    run.group(async (task) => task(async (ctx) => {
+      await sleep(50, ctx.signal);
+    }, { timeout: 1 })),
+    TimeoutError
+  );
+
+  await assert.rejects(
+    run.group(async (task) => task(async (ctx) => {
+      await sleep(50, ctx.signal);
+    }, { deadline: Date.now() + 1 })),
+    TimeoutError
+  );
+
+  await assert.rejects(
+    run.group(async (task) => task(async (ctx) => {
+      await sleep(50, ctx.signal);
+    }, { deadline: new Date(Date.now() + 1) })),
+    TimeoutError
+  );
+});
+
+test("task option retry policies cover cancel-aware delay and backoff branches", async () => {
+  let fixedAttempts = 0;
+  assert.equal(await run.group(async (task) => task(async () => {
+    fixedAttempts++;
+    if (fixedAttempts < 2) throw new Error("fixed retry");
+    return "fixed";
+  }, {
+    retry: { times: 2, backoff: "fixed", initialDelay: 1, maxDelay: 1, jitter: false },
+  })), "fixed");
+
+  let numericAttempts = 0;
+  assert.equal(await run.group(async (task) => task(async () => {
+    numericAttempts++;
+    if (numericAttempts < 2) throw new Error("numeric retry");
+    return "numeric";
+  }, { retry: 2 })), "numeric");
+
+  let linearAttempts = 0;
+  assert.equal(await run.group(async (task) => task(async () => {
+    linearAttempts++;
+    if (linearAttempts < 2) throw new Error("linear retry");
+    return "linear";
+  }, {
+    retry: { times: 2, backoff: "linear", initialDelay: 1, maxDelay: 1, jitter: false },
+  })), "linear");
+
+  let functionAttempts = 0;
+  const originalRandom = Math.random;
+  Math.random = () => 0;
+  try {
+    assert.equal(await run.group(async (task) => task(async () => {
+      functionAttempts++;
+      if (functionAttempts < 2) throw new Error("function retry");
+      return "function";
+    }, {
+      retry: { times: 2, backoff: () => 1, initialDelay: 1, maxDelay: 1, jitter: true },
+    })), "function");
+  } finally {
+    Math.random = originalRandom;
+  }
+
+  await assert.rejects(
+    run.group(async (task) => {
+      await task(async (ctx) => {
+        ctx.scope.cancel("already-aborted-retry-delay");
+        throw new Error("delay sees aborted signal");
+      }, {
+        retry: { times: 2, initialDelay: 1, maxDelay: 1, jitter: false },
+      });
+    }),
+    CancellationError
+  );
+
+  let noRetryAttempts = 0;
+  await assert.rejects(
+    run.group(async (task) => task(async () => {
+      noRetryAttempts++;
+      throw new Error("task option retryIf false");
+    }, {
+      retry: { times: 2, retryIf: () => false },
+    })),
+    /task option retryIf false/
+  );
+  assert.equal(noRetryAttempts, 1);
+
+  let cancellationAttempts = 0;
+  await assert.rejects(
+    run.group(async (task) => task(async () => {
+      cancellationAttempts++;
+      throw new CancellationError({ kind: "manual", tag: "task-option-cancel" });
+    }, { retry: 2 })),
+    CancellationError
+  );
+  assert.equal(cancellationAttempts, 1);
+
+  await assert.rejects(
+    run.group(async (task) => {
+      const handle = task(async () => {
+        throw new Error("delay is cancelled while sleeping");
+      }, {
+        retry: { times: 2, initialDelay: 50, maxDelay: 50, jitter: false },
+      });
+      await sleep(5);
+      handle.cancel("cancel-retry-delay");
+      await handle;
+    }),
+    CancellationError
+  );
 });

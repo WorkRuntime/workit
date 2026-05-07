@@ -2,6 +2,7 @@
  * Run namespace - task composition and resilience helpers.
  *
  * @author Admilson B. F. Cossa
+ * SPDX-License-Identifier: Apache-2.0
  *
  * The functions in this module are thin policy layers over the scope engine.
  * They must spawn work through `group()`/`ScopeImpl` so cancellation, cleanup,
@@ -199,6 +200,7 @@ function retry<T>(task: TaskFn<T>, opts: number | RetryOpts): TaskFn<T> {
   return async (ctx) => {
     let lastErr: unknown;
     for (let attempt = 1; attempt <= policy.times; attempt++) {
+      if (ctx.scope instanceof ScopeImpl) ctx.scope.updateTaskAttempt(ctx.id, attempt);
       try {
         return await task({ ...ctx, attempt });
       } catch (err) {
@@ -207,7 +209,8 @@ function retry<T>(task: TaskFn<T>, opts: number | RetryOpts): TaskFn<T> {
         if (attempt >= policy.times || !policy.retryIf(err, attempt)) throw err;
 
         const delayMs = computeDelay(attempt, policy);
-        ctx.report({ data: { retrying: true, attempt: attempt + 1, delayMs } });
+        if (ctx.scope instanceof ScopeImpl) ctx.scope.emitTaskRetry(ctx.id, attempt + 1, err, delayMs);
+        else ctx.report({ data: { retrying: true, attempt: attempt + 1, delayMs } });
         await sleep(delayMs, ctx.signal);
       }
     }
@@ -404,7 +407,7 @@ const context = {
     return getCurrentScope()?.context ?? new ContextBagImpl();
   },
 
-  async with<T>(key: ContextKey<T>, value: T, body: () => Promise<unknown>): Promise<unknown> {
+  async with<T, R>(key: ContextKey<T>, value: T, body: () => Promise<R>): Promise<R> {
     const next = context.current().with(key, value);
     return await group(async () => body(), { context: next });
   },

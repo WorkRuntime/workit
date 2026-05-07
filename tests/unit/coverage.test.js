@@ -2,6 +2,7 @@
  * High-coverage behavioral tests for engine internals exposed by the build.
  *
  * @author Admilson B. F. Cossa
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import { test } from "vitest";
@@ -18,6 +19,8 @@ import {
   renderTree,
   run,
   work,
+  TimeoutError,
+  WorkAggregateError,
 } from "../../dist/index.js";
 import { EventBus } from "../../dist/engine/event-bus.js";
 import { parseDuration } from "../../dist/engine/duration.js";
@@ -49,6 +52,8 @@ test("duration parser accepts every supported unit and rejects invalid numbers",
   assert.equal(parseDuration("3m"), 180_000);
   assert.equal(parseDuration("1h"), 3_600_000);
   assert.throws(() => parseDuration(Number.NaN), /Invalid duration/);
+  assert.throws(() => parseDuration(2_147_483_648), /Invalid duration/);
+  assert.throws(() => parseDuration("9999999999999999h"), /exceeds maximum timeout/);
 });
 
 test("context keys and budget keys cover optional metadata branches", () => {
@@ -60,6 +65,19 @@ test("context keys and budget keys cover optional metadata branches", () => {
 
   assert.equal(context.getOrThrow(Region), "local");
   assert.equal(CustomBudget.unit, undefined);
+  assert.throws(() => createContextKey(""), /Context key name/);
+  assert.throws(() => createContextKey("__proto__"), /reserved/);
+  assert.throws(() => createBudget("BadBudget", { unit: "" }), /Budget unit/);
+  assert.throws(
+    () => new ContextBagImpl().with(CustomBudget, { spent: -1, limit: 1 }),
+    /budget.spent/
+  );
+  assert.throws(
+    () => new ContextBagImpl().with(CustomBudget, { spent: 2, limit: 1 }),
+    /spent cannot exceed/
+  );
+  assert.equal(context.budgetIdentity(CustomBudget) !== undefined, true);
+  assert.equal(context.budgetIdentity(Region), undefined);
 });
 
 test("event bus supports unsubscribe bubbling observer isolation and telemetry drops", () => {
@@ -89,12 +107,35 @@ test("event bus supports unsubscribe bubbling observer isolation and telemetry d
   child.emit(event, context);
   child.emit(event, context);
   child.emit(event, context);
+  child.emit({ type: "scope:closed", scopeId: "scope-over-budget", durationMs: 1, at: Date.now() }, context);
 
   assert.equal(context.get(TelemetryBudget).spent, 1);
   assert.equal(child.droppedEventCount(), 2);
-  assert.equal(childEvents.length, 3);
-  assert.equal(parentEvents.length, 3);
+  assert.equal(childEvents.length, 4);
+  assert.equal(parentEvents.length, 4);
   assert.equal(childEvents[2].data.telemetry_budget_exceeded, true);
+  assert.equal(childEvents.filter((item) => item.data?.telemetry_budget_exceeded === true).length, 1);
+  assert.equal(childEvents[3].type, "scope:closed");
+  assert.equal(childEvents[3].droppedTelemetryEvents, 2);
+
+  const fallbackContext = {
+    get(key) {
+      return key === TelemetryBudget ? { spent: 0, limit: 1, unit: "events" } : undefined;
+    },
+  };
+  child.emit(event, fallbackContext);
+
+  child.droppedCount = Number.MAX_SAFE_INTEGER;
+  child.emit(event, context);
+  assert.equal(child.droppedEventCount(), Number.MAX_SAFE_INTEGER);
+
+  const capped = new EventBus();
+  const unsubs = [];
+  for (let index = 0; index < 10_000; index++) {
+    unsubs.push(capped.on(() => {}));
+  }
+  assert.throws(() => capped.on(() => {}), /more than 10000 handlers/);
+  for (const unsub of unsubs) unsub();
 });
 
 test("tree renderer covers status icons nesting depth unicode and aggregate counts", () => {
@@ -220,10 +261,103 @@ test("scope exposes closed spawn guard cancellation cleanup and status branches"
   assert.throws(() => capturedScope.spawn(async () => "late"), /closed scope/);
 });
 
+test("successful scopes emit closing and closed transition events", async () => {
+  const events = [];
+
+  const result = await group(async (task) => {
+    await task(async (ctx) => {
+      ctx.scope.onEvent((item) => events.push(item));
+      return "ok";
+    });
+    return "done";
+  });
+
+  assert.equal(result, "done");
+  assert.ok(events.some((item) => item.type === "scope:closing" && item.reason === "completed"));
+  assert.ok(events.some((item) => item.type === "scope:closed"));
+});
+
+test("scope boundary strings and defer caps are enforced", async () => {
+  await assert.rejects(
+    group(async (task) => {
+      await task(async () => "bad", { name: "" });
+    }),
+    /task name/
+  );
+
+  await assert.rejects(
+    group(async (task) => {
+      await task(async () => "bad", { idempotencyKey: "x".repeat(513) });
+    }),
+    /idempotency key/
+  );
+
+  await assert.rejects(
+    group(async (task) => {
+      await task(async (ctx) => {
+        ctx.scope.cancel("");
+      });
+    }),
+    /manual cancel tag/
+  );
+
+  await assert.rejects(
+    group(async (task) => {
+      await task(async (ctx) => {
+        for (let index = 0; index < 10_000; index++) ctx.defer(() => {});
+        ctx.defer(() => {});
+      });
+    }),
+    /cleanup callbacks/
+  );
+
+  await assert.rejects(
+    group(async (task) => {
+      await task(async (ctx) => {
+        for (let index = 0; index < 10_000; index++) ctx.scope.defer(() => {});
+        ctx.scope.defer(() => {});
+      });
+    }),
+    /cleanup callbacks/
+  );
+});
+
+test("scope closing events classify every cancellation reason", async () => {
+  const cases = [
+    [{ kind: "parent_failed", error: new Error("parent") }, "errored"],
+    [{ kind: "sibling_failed", siblingId: "task-sibling", error: new Error("sibling") }, "errored"],
+    [{ kind: "budget", budgetKey: "CostBudget", limit: 1, spent: 2 }, "errored"],
+    [{ kind: "user", message: "stop" }, "cancelled"],
+    [{ kind: "deadline", deadlineAt: Date.now(), elapsedMs: 1 }, "cancelled"],
+    [{ kind: "timeout", timeoutMs: 1 }, "cancelled"],
+    [{ kind: "race_lost", winnerId: "task-winner" }, "cancelled"],
+    [{ kind: "scope_ended" }, "cancelled"],
+    [{ kind: "manual", tag: "manual" }, "cancelled"],
+  ];
+
+  for (const [reason, expected] of cases) {
+    const events = [];
+
+    await group(async (task) => {
+      await task(async (ctx) => {
+        ctx.scope.onEvent((item) => events.push(item));
+        ctx.scope.cancel(reason);
+        return "ok";
+      });
+    });
+
+    assert.ok(
+      events.some((item) => item.type === "scope:closing" && item.reason === expected),
+      `expected ${reason.kind} to close as ${expected}`
+    );
+  }
+});
+
 test("task handle getters report fields log levels and custom budget consumption work", async () => {
   const CustomBudget = createBudget("CustomBudget", { unit: "credits" });
   const events = [];
   const budget = { spent: 0, limit: 5 };
+  const context = new ContextBagImpl().with(CustomBudget, budget);
 
   await group(async (task) => {
     const handle = task(async (ctx) => {
@@ -241,10 +375,10 @@ test("task handle getters report fields log levels and custom budget consumption
     assert.equal(await handle, "ok");
     assert.equal(handle.status, "succeeded");
   }, {
-    context: new ContextBagImpl().with(CustomBudget, budget),
+    context,
   });
 
-  assert.equal(budget.spent, 2);
+  assert.equal(context.get(CustomBudget).spent, 2);
   assert.ok(events.some((item) => item.message === "halfway" && item.data.step === 1));
   assert.ok(events.some((item) => item.data?.logLevel === "debug"));
   assert.ok(events.some((item) => item.data?.logLevel === "warn"));
@@ -597,4 +731,14 @@ test("error constructors expose optional metadata branches", () => {
 
   assert.equal(withoutUnit.unit, undefined);
   assert.equal(withoutUnit.name, "BudgetExceededError");
+
+  const cancelRealmLike = { [Symbol.for("workjs.error.CancellationError")]: true };
+  const timeout = new TimeoutError(10);
+  const aggregate = new WorkAggregateError([new Error("x")]);
+
+  assert.equal(cancelRealmLike instanceof CancellationError, true);
+  assert.equal(timeout instanceof CancellationError, true);
+  assert.equal(timeout instanceof TimeoutError, true);
+  assert.equal(withoutUnit instanceof BudgetExceededError, true);
+  assert.equal(aggregate instanceof WorkAggregateError, true);
 });

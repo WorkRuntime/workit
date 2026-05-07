@@ -2,6 +2,7 @@
  * Scope - the structured concurrency primitive.
  *
  * @author Admilson B. F. Cossa
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Implements the current in-process scope engine: scope ownership, task
  * spawning, cancellation propagation, deadline cancellation, cleanup defers,
@@ -36,10 +37,11 @@ import type {
   ContextKey,
   BudgetState,
   Duration,
+  RetryOpts,
   Unsubscribe,
   TaskLogger,
 } from "../types/index.js";
-import { CancellationError, BudgetExceededError, CostBudget } from "../types/index.js";
+import { CancellationError, BudgetExceededError, CostBudget, TimeoutError } from "../types/index.js";
 import { ContextBagImpl } from "./context.js";
 import { EventBus } from "./event-bus.js";
 import { parseDuration } from "./duration.js";
@@ -49,6 +51,9 @@ import { renderTree } from "./tree.js";
 let _nextId = 0;
 const makeScopeId = (): ScopeId => `scope-${++_nextId}` as ScopeId;
 const makeTaskId = (): TaskId => `task-${++_nextId}` as TaskId;
+const MAX_TASK_NAME_LENGTH = 128;
+const MAX_IDEMPOTENCY_KEY_LENGTH = 512;
+const MAX_DEFERS_PER_OWNER = 10_000;
 
 // --- AsyncLocalStorage for current scope ------------------------------
 const currentScope = new AsyncLocalStorage<ScopeImpl>();
@@ -102,6 +107,7 @@ export class ScopeImpl implements Scope {
   private readonly ownAbort = new AbortController();
   private readonly tasks = new Map<TaskId, TaskRecord>();
   private readonly childScopes = new Set<ScopeImpl>();
+  private readonly idempotencyHandles = new Map<string, TaskHandle<unknown>>();
   private readonly defers: Array<() => void | Promise<void>> = [];
   private readonly cancelHandlers = new Set<(r: CancelReason) => void>();
   private state: "running" | "cancelling" | "closed" = "running";
@@ -109,6 +115,11 @@ export class ScopeImpl implements Scope {
   private deadlineAt?: number;
   private deadlineTimer?: ReturnType<typeof setTimeout>;
   private firstChildFailure: unknown = undefined;
+  private closingEmitted = false;
+  private resolveClosed!: () => void;
+  private readonly closedPromise = new Promise<void>((resolve) => {
+    this.resolveClosed = resolve;
+  });
 
   /** Opens a scope under an optional parent and emits `scope:opened`. */
   constructor(parent: ScopeImpl | null, opts: ScopeOpts = {}) {
@@ -141,6 +152,15 @@ export class ScopeImpl implements Scope {
     if (this.state !== "running") {
       throw new Error(`Cannot spawn on a ${this.state} scope`);
     }
+    if (opts.name !== undefined) assertBoundedString("task name", opts.name, MAX_TASK_NAME_LENGTH);
+    if (opts.idempotencyKey !== undefined) {
+      assertBoundedString("idempotency key", opts.idempotencyKey, MAX_IDEMPOTENCY_KEY_LENGTH);
+    }
+    if (opts.idempotencyKey !== undefined) {
+      const existing = this.idempotencyHandles.get(opts.idempotencyKey);
+      if (existing !== undefined) return existing as TaskHandle<T>;
+    }
+
     const id = makeTaskId();
     const name = opts.name ?? "anonymous";
     const kind = opts.kind ?? "io";
@@ -169,10 +189,12 @@ export class ScopeImpl implements Scope {
       this.context
     );
 
+    const executable = applyTaskPolicies(task, opts, this, id);
+
     const promise = (async () => {
       record.status = "running";
       try {
-        const value = await currentScope.run(this, () => task(ctx));
+        const value = await currentScope.run(this, () => executable(ctx));
         record.status = "succeeded";
         record.endedAt = Date.now();
         this.bus.emit(
@@ -224,10 +246,13 @@ export class ScopeImpl implements Scope {
     Object.defineProperty(handle, "status", { get: () => record.status });
     Object.defineProperty(handle, "cancel", {
       value: (reason: CancelReason | string = "manual") => {
+        if (typeof reason === "string") assertBoundedString("manual cancel tag", reason, MAX_TASK_NAME_LENGTH);
         const r: CancelReason = typeof reason === "string" ? { kind: "manual", tag: reason } : reason;
         record.cancel(r);
       },
     });
+
+    if (opts.idempotencyKey !== undefined) this.idempotencyHandles.set(opts.idempotencyKey, handle);
 
     return handle;
   }
@@ -243,6 +268,7 @@ export class ScopeImpl implements Scope {
    */
   cancel(reason: CancelReason | string = "manual"): void {
     if (this.state !== "running") return;
+    if (typeof reason === "string") assertBoundedString("manual cancel tag", reason, MAX_TASK_NAME_LENGTH);
     const r: CancelReason = typeof reason === "string" ? { kind: "manual", tag: reason } : reason;
     this.state = "cancelling";
     if (this.deadlineTimer) clearTimeout(this.deadlineTimer);
@@ -250,10 +276,7 @@ export class ScopeImpl implements Scope {
     for (const handler of this.cancelHandlers) {
       try { handler(r); } catch { /* cancel handler errors must not propagate */ }
     }
-    this.bus.emit(
-      { type: "scope:closing", scopeId: this.id, reason: "cancelled", at: Date.now() },
-      this.context
-    );
+    this.emitClosing(classifyClosingReason(r));
   }
 
   /** Installs a relative deadline that cancels this scope when elapsed. */
@@ -271,6 +294,7 @@ export class ScopeImpl implements Scope {
 
   /** Registers scope-level cleanup to run in reverse registration order. */
   defer(cleanup: () => void | Promise<void>): void {
+    assertCanAddDefer(this.defers.length);
     this.defers.push(cleanup);
   }
 
@@ -322,18 +346,24 @@ export class ScopeImpl implements Scope {
     }
 
     if (this.parent) this.parent.childScopes.delete(this);
+    this.emitClosing(this.firstChildFailure === undefined ? "completed" : "errored");
     this.state = "closed";
     this.bus.emit(
-      { type: "scope:closed", scopeId: this.id, durationMs: Date.now() - this.startedAt, at: Date.now() },
+      {
+        type: "scope:closed",
+        scopeId: this.id,
+        durationMs: Date.now() - this.startedAt,
+        droppedTelemetryEvents: this.bus.droppedEventCount(),
+        at: Date.now(),
+      },
       this.context
     );
+    this.resolveClosed();
   }
 
   /** Waits until this scope reaches `closed` without cancelling it. */
   private async awaitClose(): Promise<void> {
-    while (this.state !== "closed") {
-      await new Promise<void>(r => setTimeout(r, 0));
-    }
+    await this.closedPromise;
   }
 
   // -- Status snapshot ---------------------------------------------------------
@@ -405,7 +435,10 @@ export class ScopeImpl implements Scope {
       id, name, kind,
       context: this.context,
       log,
-      defer(fn) { defers.push(fn); },
+      defer(fn) {
+        assertCanAddDefer(defers.length);
+        defers.push(fn);
+      },
       report(p) {
         scope.bus.emit({
           type: "task:progress",
@@ -425,6 +458,28 @@ export class ScopeImpl implements Scope {
   /** Returns the first non-background child failure observed by this scope. */
   childFailure(): unknown {
     return this.firstChildFailure;
+  }
+
+  /** Updates the visible attempt for a running task snapshot. */
+  updateTaskAttempt(taskId: TaskId, attempt: number): void {
+    const record = this.tasks.get(taskId);
+    /* v8 ignore next -- retry wrappers update only task ids owned by this scope. */
+    if (record !== undefined) record.attempt = attempt;
+  }
+
+  /** Emits a typed retry event for wrappers executing inside this scope. */
+  emitTaskRetry(taskId: TaskId, attempt: number, error: unknown, nextDelayMs: number): void {
+    this.bus.emit({ type: "task:retrying", taskId, attempt, error, nextDelayMs, at: Date.now() }, this.context);
+  }
+
+  /** Emits exactly one scope closing transition event. */
+  private emitClosing(reason: "completed" | "errored" | "cancelled"): void {
+    if (this.closingEmitted) return;
+    this.closingEmitted = true;
+    this.bus.emit(
+      { type: "scope:closing", scopeId: this.id, reason, at: Date.now() },
+      this.context
+    );
   }
 }
 
@@ -481,7 +536,8 @@ function consumeBudget<T extends BudgetState>(
   key: ContextKey<T>,
   amount: number
 ): void {
-  const state = scope.context.get(key);
+  assertBudgetCharge(amount);
+  const state = getMutableBudgetState(scope.context, key);
   if (state === undefined) {
     throw new Error(`Budget "${key.name}" not set in scope`);
   }
@@ -491,7 +547,7 @@ function consumeBudget<T extends BudgetState>(
     const err = new BudgetExceededError({
       budgetKey: key.name,
       limit: state.limit,
-      spent: state.spent,
+      spent: nextSpent,
       attempted: amount,
       ...(unit !== undefined ? { unit } : {}),
     });
@@ -501,6 +557,23 @@ function consumeBudget<T extends BudgetState>(
     throw err;
   }
   state.spent = nextSpent;
+}
+
+/** Maps cancellation reasons to scope-level close outcomes. */
+function classifyClosingReason(reason: CancelReason): "completed" | "errored" | "cancelled" {
+  switch (reason.kind) {
+    case "parent_failed":
+    case "sibling_failed":
+    case "budget":
+      return "errored";
+    case "user":
+    case "deadline":
+    case "timeout":
+    case "race_lost":
+    case "scope_ended":
+    case "manual":
+      return "cancelled";
+  }
 }
 
 /** Normalizes decimal budget arithmetic to avoid floating-point drift. */
@@ -513,17 +586,174 @@ function findBudgetOwner<T extends BudgetState>(
   scope: ScopeImpl,
   key: ContextKey<T>
 ): ScopeImpl | null {
-  const visibleState = scope.context.get(key);
+  const visibleState = getBudgetIdentity(scope.context, key) ?? getMutableBudgetState(scope.context, key);
   let cur: ScopeImpl | null = scope;
   while (cur) {
-    const ownsVisibleState = cur.context.has(key) && cur.context.get(key) === visibleState;
-    const parentHasSameState = cur.parent?.context.get(key) === visibleState;
+    const curIdentity = getBudgetIdentity(cur.context, key) ?? getMutableBudgetState(cur.context, key);
+    const parentIdentity = cur.parent === null
+      ? undefined
+      : getBudgetIdentity(cur.parent.context, key) ?? getMutableBudgetState(cur.parent.context, key);
+    const ownsVisibleState = cur.context.has(key) && curIdentity === visibleState;
+    const parentHasSameState = parentIdentity === visibleState;
     if (ownsVisibleState && !parentHasSameState) {
       return cur;
     }
     cur = cur.parent;
   }
   return null;
+}
+
+function getMutableBudgetState<T extends BudgetState>(
+  context: ContextBag,
+  key: ContextKey<T>
+): T | undefined {
+  if (context instanceof ContextBagImpl) return context.getMutableBudget(key);
+  return context.get(key);
+}
+
+function getBudgetIdentity<T extends BudgetState>(
+  context: ContextBag,
+  key: ContextKey<T>
+): unknown {
+  return context instanceof ContextBagImpl ? context.budgetIdentity(key) : undefined;
+}
+
+function assertBudgetCharge(amount: number): void {
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw new RangeError("Budget charge amount must be a finite non-negative number");
+  }
+}
+
+function assertCanAddDefer(currentCount: number): void {
+  if (currentCount >= MAX_DEFERS_PER_OWNER) {
+    throw new RangeError(`A task or scope cannot register more than ${MAX_DEFERS_PER_OWNER} cleanup callbacks`);
+  }
+}
+
+function assertBoundedString(label: string, value: string, maxLength: number): void {
+  if (value.length === 0 || value.length > maxLength) {
+    throw new RangeError(`${label} must be 1-${maxLength} characters`);
+  }
+}
+
+// --- Task option policies ------------------------------------------------------
+
+/** Applies task-local resilience policies declared at the spawn boundary. */
+function applyTaskPolicies<T>(
+  task: TaskFn<T>,
+  opts: TaskOpts,
+  scope: ScopeImpl,
+  taskId: TaskId
+): TaskFn<T> {
+  let wrapped = task;
+  if (opts.retry !== undefined) wrapped = wrapRetry(wrapped, opts.retry, scope, taskId);
+  if (opts.timeout !== undefined) wrapped = wrapTimeout(wrapped, opts.timeout);
+  if (opts.deadline !== undefined) {
+    const at = typeof opts.deadline === "number" ? opts.deadline : opts.deadline.getTime();
+    wrapped = wrapTimeout(wrapped, Math.max(0, at - Date.now()));
+  }
+  return wrapped;
+}
+
+/** Wraps one task with a cancel-aware timeout. */
+function wrapTimeout<T>(task: TaskFn<T>, duration: Duration): TaskFn<T> {
+  const timeoutMs = parseDuration(duration);
+  return async (ctx) => {
+    const ctrl = new AbortController();
+    const signal = anySignal([ctx.signal, ctrl.signal]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => {
+        const err = new TimeoutError(timeoutMs);
+        ctrl.abort(err);
+        reject(err);
+      }, timeoutMs);
+    });
+
+    try {
+      return await Promise.race([task({ ...ctx, signal }), timeoutPromise]);
+    } finally {
+      /* v8 ignore if -- timeoutPromise assigns the timer synchronously. */
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  };
+}
+
+/** Wraps one task with a cancel-aware retry policy and typed retry events. */
+function wrapRetry<T>(
+  task: TaskFn<T>,
+  opts: number | RetryOpts,
+  scope: ScopeImpl,
+  taskId: TaskId
+): TaskFn<T> {
+  const policy = normalizeRetry(opts);
+  return async (ctx) => {
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= policy.times; attempt++) {
+      scope.updateTaskAttempt(taskId, attempt);
+      try {
+        return await task({ ...ctx, attempt });
+      } catch (err) {
+        lastErr = err;
+        if (err instanceof CancellationError) throw err;
+        if (attempt >= policy.times || !policy.retryIf(err, attempt)) throw err;
+
+        const delayMs = computeDelay(attempt, policy);
+        scope.emitTaskRetry(taskId, attempt + 1, err, delayMs);
+        await sleep(delayMs, ctx.signal);
+      }
+    }
+    /* v8 ignore next -- normalizeRetry guarantees the loop executes at least once. */
+    throw lastErr;
+  };
+}
+
+function normalizeRetry(opts: number | RetryOpts): Required<Pick<RetryOpts, "times" | "initialDelay" | "maxDelay" | "jitter" | "retryIf">> & {
+  backoff: NonNullable<RetryOpts["backoff"]>;
+} {
+  const raw = typeof opts === "number" ? { times: opts } : opts;
+  return {
+    times: Math.max(1, raw.times),
+    backoff: raw.backoff ?? "exponential",
+    initialDelay: raw.initialDelay ?? 100,
+    maxDelay: raw.maxDelay ?? 30_000,
+    jitter: raw.jitter ?? true,
+    retryIf: raw.retryIf ?? (() => true),
+  };
+}
+
+function computeDelay(attempt: number, policy: ReturnType<typeof normalizeRetry>): number {
+  return computeBackoffDelay(attempt, policy.backoff, parseDuration(policy.initialDelay), parseDuration(policy.maxDelay), policy.jitter);
+}
+
+function computeBackoffDelay(
+  attempt: number,
+  backoff: RetryOpts["backoff"] = "fixed",
+  initialMs = 100,
+  maxMs = 30_000,
+  jitter = false
+): number {
+  let delay: number;
+  if (typeof backoff === "function") delay = parseDuration(backoff(attempt));
+  else if (backoff === "linear") delay = initialMs * attempt;
+  else if (backoff === "exponential") delay = initialMs * Math.pow(2, attempt - 1);
+  else delay = initialMs;
+  delay = Math.min(delay, maxMs);
+  return jitter ? delay * (0.5 + Math.random() * 0.5) : delay;
+}
+
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    }, { once: true });
+  });
 }
 
 // --- run.group - the canonical scope opener -----------------------------------

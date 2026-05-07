@@ -2,6 +2,7 @@
  * Work builder - fluent bounded batch execution.
  *
  * @author Admilson B. F. Cossa
+ * SPDX-License-Identifier: Apache-2.0
  *
  * The builder keeps conservative defaults: sequential execution, no retry, no
  * timeout, and fail-fast error handling unless the caller explicitly opts into
@@ -9,6 +10,7 @@
  */
 
 import type {
+  CancelledItem,
   Duration,
   ItemError,
   RetryOpts,
@@ -17,7 +19,9 @@ import type {
   TaskFn,
   WorkBuilder,
   WorkFactory,
+  WorkItemDoneEvent,
   WorkOutput,
+  WorkProgressEvent,
 } from "../types/index.js";
 import { CancellationError } from "../types/index.js";
 import { run } from "../run/index.js";
@@ -29,11 +33,15 @@ type Transform =
 
 interface WorkConfig {
   concurrency?: number;
+  rateLimitPerSecond?: number;
   retry?: number | RetryOpts;
   timeout?: Duration;
   deadlineAt?: number;
   errorMode?: "fail" | "continue" | "collect";
+  cancelMode?: "throw" | "partial";
   transforms: Transform[];
+  progressHandlers?: Array<(event: WorkProgressEvent<unknown>) => void>;
+  itemDoneHandlers?: Array<(event: WorkItemDoneEvent<unknown, unknown>) => void>;
 }
 
 const SKIP = Symbol("work.skip");
@@ -61,6 +69,11 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
     return this.inParallel(n);
   }
 
+  withRateLimit(perSecond: number): WorkBuilder<I, O> {
+    assertRateLimit(perSecond);
+    return new WorkBuilderImpl<I, O>(this.source, { ...this.cfg, rateLimitPerSecond: perSecond });
+  }
+
   withRetry(opts: number | RetryOpts): WorkBuilder<I, O> {
     return new WorkBuilderImpl<I, O>(this.source, { ...this.cfg, retry: opts });
   }
@@ -76,6 +89,30 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
 
   onError(strategy: "fail" | "continue" | "collect"): WorkBuilder<I, O> {
     return new WorkBuilderImpl<I, O>(this.source, { ...this.cfg, errorMode: strategy });
+  }
+
+  onCancel(strategy: "throw" | "partial"): WorkBuilder<I, O> {
+    return new WorkBuilderImpl<I, O>(this.source, { ...this.cfg, cancelMode: strategy });
+  }
+
+  onProgress(handler: (event: WorkProgressEvent<I>) => void): WorkBuilder<I, O> {
+    return new WorkBuilderImpl<I, O>(this.source, {
+      ...this.cfg,
+      progressHandlers: [
+        ...(this.cfg.progressHandlers ?? []),
+        handler as (event: WorkProgressEvent<unknown>) => void,
+      ],
+    });
+  }
+
+  onItemDone<R>(handler: (event: WorkItemDoneEvent<I, R>) => void): WorkBuilder<I, O> {
+    return new WorkBuilderImpl<I, O>(this.source, {
+      ...this.cfg,
+      itemDoneHandlers: [
+        ...(this.cfg.itemDoneHandlers ?? []),
+        handler as (event: WorkItemDoneEvent<unknown, unknown>) => void,
+      ],
+    });
   }
 
   map<R>(fn: (item: O, ctx: TaskContext) => R | Promise<R>): WorkBuilder<I, R> {
@@ -111,9 +148,11 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
   async do<R>(fn: (item: O, ctx: TaskContext) => R | Promise<R>): Promise<WorkOutput<R>> {
     const items = await toArray(this.source);
     const mode = this.cfg.errorMode ?? "fail";
-    const tasks = items.map((item, index) => this.makeTask(item, index, fn));
+    const cancelMode = this.cfg.cancelMode ?? "throw";
+    const execution = createExecution(this.cfg);
+    const tasks = items.map((item, index) => this.makeTask(item, index, fn, execution));
 
-    if (mode === "fail") {
+    if (mode === "fail" && cancelMode === "throw") {
       const raw = await run.pool(this.cfg.concurrency ?? 1, tasks);
       return { mode: "fail", results: raw.filter(isNotSkipped) };
     }
@@ -127,6 +166,7 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
         if (err instanceof CancellationError) {
           return { status: "cancelled", reason: err.reason } satisfies Settled<R>;
         }
+        if (mode === "fail") throw err;
         return {
           status: "rejected",
           reason: toItemError(index, items[index], err),
@@ -139,9 +179,16 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
 
     const results: R[] = [];
     const errors: ItemError[] = [];
-    for (const item of settled) {
+    const cancelled: CancelledItem[] = [];
+    for (let index = 0; index < settled.length; index++) {
+      const item = settled[index]!;
       if (item.status === "fulfilled") results.push(item.value);
       else if (item.status === "rejected") errors.push(item.reason as ItemError);
+      else cancelled.push({ index, item: items[index], reason: item.reason });
+    }
+    if (mode === "fail") {
+      if (cancelled.length === 0) return { mode: "fail", results };
+      return { mode: "partial", results, errors, cancelled, reason: cancelled[0]!.reason };
     }
     return { mode: "continue", results, errors };
   }
@@ -157,6 +204,7 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
   async *stream(): AsyncIterable<O> {
     const iterator = toAsyncIterator(this.source);
     const concurrency = this.cfg.concurrency ?? 1;
+    const execution = createExecution(this.cfg);
     let nextKey = 0;
 
     while (true) {
@@ -164,7 +212,7 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
       while (tasks.length < concurrency) {
         const next = await iterator.next();
         if (next.done === true) break;
-        tasks.push(this.makeTask<O>(next.value, nextKey++, (item) => item));
+        tasks.push(this.makeTask<O>(next.value, nextKey++, (item) => item, execution));
       }
       if (tasks.length === 0) break;
 
@@ -177,19 +225,72 @@ class WorkBuilderImpl<I, O> implements WorkBuilder<I, O> {
   private makeTask<R>(
     item: I,
     index: number,
-    terminal: (item: O, ctx: TaskContext) => R | Promise<R>
+    terminal: (item: O, ctx: TaskContext) => R | Promise<R>,
+    execution: WorkExecution
   ): TaskFn<R | typeof SKIP> {
     let task: TaskFn<R | typeof SKIP> = async (ctx) => {
-      const transformed = await this.applyTransforms(item, ctx);
+      if (execution.rateLimiter !== undefined) await execution.rateLimiter.wait(ctx.signal);
+      const observedCtx = this.observeContext(ctx, item, index);
+      const transformed = await this.applyTransforms(item, observedCtx);
       if (transformed === SKIP) return SKIP;
-      return await terminal(transformed as O, ctx);
+      return await terminal(transformed as O, observedCtx);
     };
 
     if (this.cfg.retry !== undefined) task = run.retry(task, this.cfg.retry);
     if (this.cfg.timeout !== undefined) task = run.timeout(task, this.cfg.timeout);
     if (this.cfg.deadlineAt !== undefined) task = run.deadline(task, this.cfg.deadlineAt);
 
-    return async (ctx) => task({ ...ctx, name: `work-item-${index}` });
+    return async (ctx) => {
+      const nextCtx = { ...ctx, name: `work-item-${index}` };
+      try {
+        const value = await task(nextCtx);
+        if (value === SKIP) {
+          this.emitItemDone({
+            index,
+            item,
+            status: "cancelled",
+            reason: { kind: "manual", tag: "filtered" },
+          });
+        } else {
+          this.emitItemDone({ index, item, status: "fulfilled", value });
+        }
+        return value;
+      } catch (err) {
+        if (err instanceof CancellationError) {
+          this.emitItemDone({ index, item, status: "cancelled", reason: err.reason });
+        } else {
+          this.emitItemDone({ index, item, status: "rejected", error: err });
+        }
+        throw err;
+      }
+    };
+  }
+
+  private observeContext(ctx: TaskContext, item: I, index: number): TaskContext {
+    const handlers = this.cfg.progressHandlers;
+    if (handlers === undefined || handlers.length === 0) return ctx;
+
+    return {
+      ...ctx,
+      report: (progress) => {
+        ctx.report(progress);
+        const event: WorkProgressEvent<I> = {
+          index,
+          item,
+          taskId: ctx.id,
+          ...(progress.pct !== undefined ? { pct: progress.pct } : {}),
+          ...(progress.message !== undefined ? { message: progress.message } : {}),
+          ...(progress.data !== undefined ? { data: progress.data } : {}),
+        };
+        for (const handler of handlers) handler(event as WorkProgressEvent<unknown>);
+      },
+    };
+  }
+
+  private emitItemDone(event: WorkItemDoneEvent<I, unknown>): void {
+    for (const handler of this.cfg.itemDoneHandlers ?? []) {
+      handler(event as WorkItemDoneEvent<unknown, unknown>);
+    }
   }
 
   private async applyTransforms(item: I, ctx: TaskContext): Promise<unknown | typeof SKIP> {
@@ -232,10 +333,71 @@ function assertConcurrency(n: number): void {
   }
 }
 
+function assertRateLimit(perSecond: number): void {
+  if (!Number.isFinite(perSecond) || perSecond <= 0) {
+    throw new RangeError("work().withRateLimit(perSecond) requires a positive finite number");
+  }
+}
+
 function isNotSkipped<R>(value: R | typeof SKIP): value is R {
   return value !== SKIP;
 }
 
 function toItemError(index: number, item: unknown, error: unknown): ItemError {
   return { index, item, error, attempts: 1 };
+}
+
+interface WorkExecution {
+  rateLimiter?: RateLimiter;
+}
+
+interface RateLimiter {
+  wait(signal: AbortSignal): Promise<void>;
+}
+
+function createExecution(cfg: WorkConfig): WorkExecution {
+  const rateLimiter = cfg.rateLimitPerSecond !== undefined
+    ? createRateLimiter(cfg.rateLimitPerSecond)
+    : undefined;
+  return rateLimiter === undefined ? {} : { rateLimiter };
+}
+
+function createRateLimiter(perSecond: number): RateLimiter {
+  const intervalMs = 1_000 / perSecond;
+  let nextStart = 0;
+  let chain = Promise.resolve();
+
+  return {
+    wait(signal) {
+      const runWait = async () => {
+        /* v8 ignore if -- task timeouts cancel scheduled waits after the wait starts. */
+        if (signal.aborted) throw signal.reason;
+        const now = Date.now();
+        const startAt = Math.max(now, nextStart);
+        nextStart = startAt + intervalMs;
+        await sleepUntil(startAt, signal);
+      };
+      const current = chain.then(runWait, runWait);
+      chain = current.catch(() => undefined);
+      return current;
+    },
+  };
+}
+
+function sleepUntil(at: number, signal: AbortSignal): Promise<void> {
+  const delayMs = Math.max(0, at - Date.now());
+  if (delayMs === 0) return Promise.resolve();
+
+  return new Promise((resolve, reject) => {
+    /* v8 ignore if -- rate waits are scheduled before their task signal is aborted. */
+    if (signal.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    const timer = setTimeout(resolve, delayMs);
+    signal.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    }, { once: true });
+  });
 }

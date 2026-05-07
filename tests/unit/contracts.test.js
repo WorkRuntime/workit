@@ -2,6 +2,7 @@
  * Public contract tests for boundary validation and failure policy.
  *
  * @author Admilson B. F. Cossa
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import { test } from "vitest";

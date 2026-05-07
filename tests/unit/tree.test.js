@@ -2,6 +2,7 @@
  * Scope tree renderer tests.
  *
  * @author Admilson B. F. Cossa
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import { test } from "vitest";

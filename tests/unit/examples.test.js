@@ -2,6 +2,7 @@
  * Executable adoption examples for WorkJS.
  *
  * @author Admilson B. F. Cossa
+ * SPDX-License-Identifier: Apache-2.0
  *
  * These tests keep public examples honest by running them against the compiled
  * package. Provider calls are explicit fakes at the boundary; WorkJS still uses
@@ -109,6 +110,7 @@ test("example: racing providers returns the winner and aborts losing calls", asy
 
 test("example: budget-capped RAG query composes all helpers without network clients", async () => {
   const budget = { spent: 0, limit: 10, unit: "USD" };
+  const context = new ContextBagImpl().with(CostBudget, budget);
   const audits = [];
 
   const answer = await group(async (task) => {
@@ -149,12 +151,12 @@ test("example: budget-capped RAG query composes all helpers without network clie
     }, { name: "rag.synthesize", kind: "llm" });
   }, {
     name: "rag.query",
-    context: new ContextBagImpl().with(CostBudget, budget),
+    context,
   });
 
   assert.equal(answer, "answer:keyword:structured concurrency adoption");
   assert.deepEqual(audits, [{ rewritten: "structured concurrency adoption", count: 2 }]);
-  assert.equal(budget.spent, 8);
+  assert.equal(context.get(CostBudget).spent, 8);
 });
 
 test("example: cost overrun stops a composed query before the final provider call", async () => {
@@ -190,6 +192,7 @@ test("example: cost overrun stops a composed query before the final provider cal
 test("example: 100k embeddings use bounded concurrency and exact token accounting", async () => {
   const total = 100_000;
   const budget = { spent: 0, limit: total, unit: "tokens" };
+  const context = new ContextBagImpl().with(OpenAITokens, budget);
   let active = 0;
   let maxActive = 0;
 
@@ -212,18 +215,19 @@ test("example: 100k embeddings use bounded concurrency and exact token accountin
     }, {
       concurrency: 32,
     }),
-    { context: new ContextBagImpl().with(OpenAITokens, budget) }
+    { context }
   );
 
   assert.equal(output.mode, "fail");
   assert.equal(output.results.length, total);
   assert.ok(maxActive <= 32);
-  assert.equal(budget.spent, total);
+  assert.equal(context.get(OpenAITokens).spent, total);
   assert.equal(active, 0);
 });
 
 test("example: high-concurrency budget charges land at the exact total", async () => {
   const budget = { spent: 0, limit: 1_000, unit: "credits" };
+  const context = new ContextBagImpl().with(CostBudget, budget);
 
   await group(async () => {
     await run.pool(64, Array.from({ length: 1_000 }, () => async (ctx) => {
@@ -231,8 +235,8 @@ test("example: high-concurrency budget charges land at the exact total", async (
       return ctx.budgets().find((item) => item.key === CostBudget.name).state.spent;
     }));
   }, {
-    context: new ContextBagImpl().with(CostBudget, budget),
+    context,
   });
 
-  assert.equal(budget.spent, 1_000);
+  assert.equal(context.get(CostBudget).spent, 1_000);
 });

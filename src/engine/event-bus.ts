@@ -2,6 +2,7 @@
  * EventBus - propagating event stream with cost-aware emission.
  *
  * @author Admilson B. F. Cossa
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Key properties:
  *   - Zero dispatch work when no handlers are subscribed (fast path).
@@ -12,6 +13,9 @@
 
 import type { TaskEvent, Unsubscribe, BudgetState, ContextBag } from "../types/index.js";
 import { TelemetryBudget } from "../types/index.js";
+import { ContextBagImpl } from "./context.js";
+
+const MAX_EVENT_HANDLERS = 10_000;
 
 /**
  * Scope-local event stream with parent bubbling.
@@ -33,6 +37,9 @@ export class EventBus {
 
   /** Registers an event handler and returns its unsubscribe function. */
   on(handler: (e: TaskEvent) => void): Unsubscribe {
+    if (this.handlers.size >= MAX_EVENT_HANDLERS) {
+      throw new RangeError(`EventBus cannot register more than ${MAX_EVENT_HANDLERS} handlers`);
+    }
     this.handlers.add(handler);
     return () => this.handlers.delete(handler);
   }
@@ -52,13 +59,20 @@ export class EventBus {
     if (!this.hasAnyHandler()) return;
 
     if (ctx) {
-      const budget = ctx.get(TelemetryBudget);
+      const budget = getTelemetryBudget(ctx);
       if (budget && budget.spent >= budget.limit) {
+        if (event.type === "scope:closed") {
+          this.dispatch({
+            ...event,
+            droppedTelemetryEvents: Math.max(event.droppedTelemetryEvents ?? 0, this.droppedCount),
+          });
+          return;
+        }
         if (!this.overrunWarned) {
           this.overrunWarned = true;
           this.emitOverrunWarning(budget);
         }
-        this.droppedCount++;
+        this.recordDrop();
         return;
       }
       if (budget) budget.spent++;
@@ -95,4 +109,13 @@ export class EventBus {
   droppedEventCount(): number {
     return this.droppedCount;
   }
+
+  private recordDrop(): void {
+    if (this.droppedCount < Number.MAX_SAFE_INTEGER) this.droppedCount++;
+  }
+}
+
+function getTelemetryBudget(context: ContextBag): BudgetState | undefined {
+  if (context instanceof ContextBagImpl) return context.getMutableBudget(TelemetryBudget);
+  return context.get(TelemetryBudget);
 }

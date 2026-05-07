@@ -2,6 +2,7 @@
  * WorkJS - Public Types
  *
  * @author Admilson B. F. Cossa
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Every type here is normative; implementations must match these signatures exactly.
  */
@@ -43,9 +44,26 @@ export type CancelReason =
 
 // --- Errors ---------------------------------------------------------------
 
+const WORKJS_ERROR_BRAND = Symbol.for("workjs.error");
+const CANCELLATION_ERROR_BRAND = Symbol.for("workjs.error.CancellationError");
+const TIMEOUT_ERROR_BRAND = Symbol.for("workjs.error.TimeoutError");
+const BUDGET_ERROR_BRAND = Symbol.for("workjs.error.BudgetExceededError");
+const AGGREGATE_ERROR_BRAND = Symbol.for("workjs.error.WorkAggregateError");
+
+function hasErrorBrand(value: unknown, brand: symbol): boolean {
+  return typeof value === "object" && value !== null && (value as Record<symbol, unknown>)[brand] === true;
+}
+
 /** Error thrown when work observes a structured cancellation reason. */
 export class CancellationError extends Error {
+  readonly [WORKJS_ERROR_BRAND] = true;
+  readonly [CANCELLATION_ERROR_BRAND] = true;
   readonly reason: CancelReason;
+
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return hasErrorBrand(value, CANCELLATION_ERROR_BRAND);
+  }
+
   constructor(reason: CancelReason) {
     super(`Cancelled: ${reason.kind}`);
     this.name = "CancellationError";
@@ -55,7 +73,13 @@ export class CancellationError extends Error {
 
 /** Cancellation error raised by timeout policies. */
 export class TimeoutError extends CancellationError {
+  readonly [TIMEOUT_ERROR_BRAND] = true;
   readonly timeoutMs: number;
+
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return hasErrorBrand(value, TIMEOUT_ERROR_BRAND);
+  }
+
   constructor(timeoutMs: number) {
     super({ kind: "timeout", timeoutMs });
     this.name = "TimeoutError";
@@ -65,14 +89,21 @@ export class TimeoutError extends CancellationError {
 
 /** Budget cancellation error raised when a cooperative budget charge exceeds its limit. */
 export class BudgetExceededError extends CancellationError {
+  readonly [BUDGET_ERROR_BRAND] = true;
   readonly budgetKey: string;
   readonly limit: number;
   readonly spent: number;
   readonly attempted: number;
   readonly unit?: string;
+
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return hasErrorBrand(value, BUDGET_ERROR_BRAND);
+  }
+
   constructor(opts: {
     budgetKey: string;
     limit: number;
+    /** Budget value after applying the failed charge attempt. */
     spent: number;
     attempted: number;
     unit?: string;
@@ -89,7 +120,13 @@ export class BudgetExceededError extends CancellationError {
 
 /** Aggregate failure used by APIs that need to preserve all failed attempts. */
 export class WorkAggregateError extends Error {
+  readonly [WORKJS_ERROR_BRAND] = true;
+  readonly [AGGREGATE_ERROR_BRAND] = true;
   readonly errors: readonly unknown[];
+
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return hasErrorBrand(value, AGGREGATE_ERROR_BRAND);
+  }
 
   constructor(errors: readonly unknown[], message = "All WorkJS tasks failed") {
     super(message);
@@ -115,7 +152,8 @@ export type TaskResults<T extends readonly TaskFn<unknown>[]> = {
 export type WorkOutput<R> =
   | { mode: "fail"; results: R[] }
   | { mode: "continue"; results: R[]; errors: ItemError[] }
-  | { mode: "collect"; results: Settled<R>[] };
+  | { mode: "collect"; results: Settled<R>[] }
+  | { mode: "partial"; results: R[]; errors: ItemError[]; cancelled: CancelledItem[]; reason?: CancelReason };
 
 /** Item-level error captured by continuing batch work. */
 export interface ItemError {
@@ -123,6 +161,13 @@ export interface ItemError {
   item: unknown;
   error: unknown;
   attempts: number;
+}
+
+/** Item-level cancellation captured by partial batch work. */
+export interface CancelledItem {
+  index: number;
+  item: unknown;
+  reason: CancelReason;
 }
 
 // --- Progress reports -----------------------------------------------------
@@ -133,6 +178,19 @@ export interface ProgressReport {
   message?: string;
   data?: unknown;
 }
+
+/** Progress event surfaced by the fluent work builder. */
+export interface WorkProgressEvent<I> extends ProgressReport {
+  index: number;
+  item: I;
+  taskId: TaskId;
+}
+
+/** Completion event surfaced by the fluent work builder. */
+export type WorkItemDoneEvent<I, R> =
+  | { index: number; item: I; status: "fulfilled"; value: R }
+  | { index: number; item: I; status: "rejected"; error: unknown }
+  | { index: number; item: I; status: "cancelled"; reason: CancelReason };
 
 /** Cardinality-safe task logger that emits through WorkJS events, never console. */
 export interface TaskLogger {
@@ -161,7 +219,7 @@ export type TaskEvent =
   | { type: "task:cancelled"; taskId: TaskId; reason: CancelReason; durationMs: number; at: number }
   | { type: "scope:opened"; scopeId: ScopeId; parentId: ScopeId | null; at: number }
   | { type: "scope:closing"; scopeId: ScopeId; reason: "completed" | "errored" | "cancelled"; at: number }
-  | { type: "scope:closed"; scopeId: ScopeId; durationMs: number; at: number };
+  | { type: "scope:closed"; scopeId: ScopeId; durationMs: number; droppedTelemetryEvents?: number; at: number };
 
 /** Removes a previously registered event or cancellation handler. */
 export type Unsubscribe = () => void;
@@ -329,6 +387,10 @@ export interface TaskOpts {
   name?: string;
   kind?: TaskKind;
   meta?: Record<string, unknown>;
+  timeout?: Duration;
+  deadline?: number | Date;
+  retry?: number | RetryOpts;
+  idempotencyKey?: string;
 }
 
 // --- Scope options --------------------------------------------------------
@@ -369,7 +431,7 @@ export interface RunNamespace {
   }): TaskHandle<T>;
   context: {
     current(): ContextBag;
-    with<T>(key: ContextKey<T>, value: T, body: () => Promise<unknown>): Promise<unknown>;
+    with<T, R>(key: ContextKey<T>, value: T, body: () => Promise<R>): Promise<R>;
     get<T>(key: ContextKey<T>): T | undefined;
   };
 }
@@ -384,10 +446,14 @@ export interface WorkBuilder<I, O> {
   inParallel(n: number): WorkBuilder<I, O>;
   inSeries(): WorkBuilder<I, O>;
   withConcurrencyLimit(n: number): WorkBuilder<I, O>;
+  withRateLimit(perSecond: number): WorkBuilder<I, O>;
   withRetry(opts: number | RetryOpts): WorkBuilder<I, O>;
   withTimeout(duration: Duration): WorkBuilder<I, O>;
   withDeadline(at: number | Date): WorkBuilder<I, O>;
   onError(strategy: "fail" | "continue" | "collect"): WorkBuilder<I, O>;
+  onCancel(strategy: "throw" | "partial"): WorkBuilder<I, O>;
+  onProgress(handler: (event: WorkProgressEvent<I>) => void): WorkBuilder<I, O>;
+  onItemDone<R>(handler: (event: WorkItemDoneEvent<I, R>) => void): WorkBuilder<I, O>;
   map<R>(fn: (item: O, ctx: TaskContext) => R | Promise<R>): WorkBuilder<I, R>;
   filter(fn: (item: O, ctx: TaskContext) => boolean | Promise<boolean>): WorkBuilder<I, O>;
   tap(fn: (item: O, ctx: TaskContext) => void | Promise<void>): WorkBuilder<I, O>;
