@@ -5,8 +5,9 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Local verification cannot mint GitHub OIDC provenance. This gate validates
- * the future release workflow while keeping the package non-publishable until
- * final release approval.
+ * the release workflow, signed-tag policy, and publishable package state. When
+ * asked for a registry dry run, it also exercises the npm publish path without
+ * creating a public version.
  */
 
 import assert from "node:assert/strict";
@@ -25,7 +26,7 @@ const requireRegistryDryRun = process.argv.includes("--registry-dry-run");
 const execFileAsync = promisify(execFile);
 
 assert.equal(packageJson.name, "@workjs/core", "release package identity must remain @workjs/core");
-assert.equal(packageJson.private, true, "package.json must remain private until final release approval");
+assert.equal(packageJson.private, false, "package.json must be publishable after final release approval");
 assert.equal(packageJson.publishConfig?.access, "public", "publishConfig.access must be public");
 assert.equal(packageJson.license, "Apache-2.0", "release license must remain Apache-2.0");
 assert.ok(packageJson.files.includes("SECURITY.md"), "published package must include SECURITY.md");
@@ -48,13 +49,12 @@ assert.match(scorecard, /security-events:\s*write/u, "Scorecard workflow must be
 await assertExistingTagsAreSigned();
 
 if (!requireRegistryDryRun) {
-  console.log("release-policy-gate: provenance workflow validated and package remains private");
+  console.log("release-policy-gate: provenance workflow validated and package is publishable");
   process.exit(0);
 }
 
-throw new Error(
-  "npm registry dry-run is intentionally blocked while package.json has private: true. Finish release evaluations, prove @workjs npm scope ownership, then flip private to false in a scoped release commit."
-);
+await runNpm(["publish", "--dry-run", "--access", "public"]);
+console.log("release-policy-gate: npm publish dry run completed");
 
 async function readRequiredFile(path) {
   try {
@@ -80,4 +80,16 @@ async function assertExistingTagsAreSigned() {
   for (const tag of stdout.split(/\r?\n/u).filter(Boolean)) {
     await execFileAsync("git", ["tag", "-v", tag]);
   }
+}
+
+async function runNpm(args) {
+  if (process.env.npm_execpath !== undefined) {
+    await execFileAsync(process.execPath, [process.env.npm_execpath, ...args], {
+      timeout: 120_000,
+    });
+    return;
+  }
+
+  const npmExecutable = process.platform === "win32" ? "npm.cmd" : "npm";
+  await execFileAsync(npmExecutable, args, { timeout: 120_000 });
 }

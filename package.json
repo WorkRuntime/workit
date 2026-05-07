@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Structured concurrency runtime for TypeScript.",
   "type": "module",
-  "private": true,
+  "private": false,
   "license": "Apache-2.0",
   "author": "Admilson B. F. Cossa",
   "main": "./dist/index.js",
