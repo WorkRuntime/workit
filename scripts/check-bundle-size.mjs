@@ -19,8 +19,8 @@ const BUDGETS = [
   {
     name: "public-api",
     source: `export * from "${DIST_ENTRY}";`,
-    maxMinifiedBytes: 28_700,
-    maxGzipBytes: 9_300,
+    maxMinifiedBytes: 28_800,
+    maxGzipBytes: 9_350,
   },
   {
     name: "core-group-import",

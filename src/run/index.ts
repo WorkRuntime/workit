@@ -315,31 +315,48 @@ function circuitBreaker<T>(task: TaskFn<T>, opts: BreakerOpts): TaskFn<T> {
   let state: "closed" | "open" | "half_open" = "closed";
   let openedUntil = 0;
   let halfOpenCalls = 0;
+  let halfOpenEpoch = 0;
 
   return async (ctx) => {
     if (state === "open") {
       if (Date.now() < openedUntil) throw new Error("Circuit breaker is open");
       state = "half_open";
       halfOpenCalls = 0;
+      failures = 0;
+      halfOpenEpoch++;
     }
 
     if (state === "half_open" && halfOpenCalls >= (opts.halfOpenMaxCalls ?? 1)) {
       throw new Error("Circuit breaker is half-open");
     }
 
-    if (state === "half_open") halfOpenCalls++;
+    const enteredHalfOpen = state === "half_open";
+    const enteredHalfOpenEpoch = halfOpenEpoch;
+    if (enteredHalfOpen) halfOpenCalls++;
 
     try {
       const value = await task(ctx);
-      failures = 0;
-      state = "closed";
+      if (!enteredHalfOpen || (state === "half_open" && enteredHalfOpenEpoch === halfOpenEpoch)) {
+        failures = 0;
+        state = "closed";
+        halfOpenCalls = 0;
+      }
       return value;
     } catch (err) {
       if (err instanceof CancellationError) throw err;
-      failures++;
-      if (failures >= opts.failureThreshold || state === "half_open") {
+      if (enteredHalfOpen) {
         state = "open";
         openedUntil = Date.now() + parseDuration(opts.resetAfter);
+        failures = 0;
+        halfOpenCalls = 0;
+        halfOpenEpoch++;
+        throw err;
+      }
+      failures++;
+      if (failures >= opts.failureThreshold) {
+        state = "open";
+        openedUntil = Date.now() + parseDuration(opts.resetAfter);
+        halfOpenCalls = 0;
       }
       throw err;
     }

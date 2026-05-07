@@ -230,6 +230,58 @@ test("run.circuitBreaker admits one half-open probe under concurrent pressure", 
   assert.equal(probes, 2);
 });
 
+test("run.circuitBreaker reopens when any admitted half-open probe fails", async () => {
+  let calls = 0;
+  const wrapped = run.circuitBreaker(async (ctx) => {
+    calls++;
+    if (calls <= 3) throw new Error(`opening failure ${calls}`);
+    if (calls === 4) {
+      await sleep(1, ctx.signal);
+      return "half-open-success";
+    }
+    if (calls === 5) {
+      await sleep(20, ctx.signal);
+      throw new Error("half-open-failure");
+    }
+    return "must-not-pass";
+  }, { failureThreshold: 3, resetAfter: 50, halfOpenMaxCalls: 2 });
+
+  await assert.rejects(run.group(async (task) => task(wrapped)), /opening failure 1/);
+  await assert.rejects(run.group(async (task) => task(wrapped)), /opening failure 2/);
+  await assert.rejects(run.group(async (task) => task(wrapped)), /opening failure 3/);
+  await sleep(60);
+
+  const probes = await run.allSettled([wrapped, wrapped]);
+  assert.deepEqual(probes.map((item) => item.status), ["fulfilled", "rejected"]);
+  await assert.rejects(run.group(async (task) => task(wrapped)), /Circuit breaker is open/);
+});
+
+test("run.circuitBreaker ignores stale half-open success after a probe failure", async () => {
+  let calls = 0;
+  const wrapped = run.circuitBreaker(async (ctx) => {
+    calls++;
+    if (calls <= 3) throw new Error(`opening failure ${calls}`);
+    if (calls === 4) {
+      await sleep(1, ctx.signal);
+      throw new Error("half-open-failure");
+    }
+    if (calls === 5) {
+      await sleep(20, ctx.signal);
+      return "stale-success";
+    }
+    return "must-not-pass";
+  }, { failureThreshold: 3, resetAfter: 50, halfOpenMaxCalls: 2 });
+
+  await assert.rejects(run.group(async (task) => task(wrapped)), /opening failure 1/);
+  await assert.rejects(run.group(async (task) => task(wrapped)), /opening failure 2/);
+  await assert.rejects(run.group(async (task) => task(wrapped)), /opening failure 3/);
+  await sleep(60);
+
+  const probes = await run.allSettled([wrapped, wrapped]);
+  assert.deepEqual(probes.map((item) => item.status), ["rejected", "fulfilled"]);
+  await assert.rejects(run.group(async (task) => task(wrapped)), /Circuit breaker is open/);
+});
+
 test("run.background requires a scope and keeps work owned by that scope", async () => {
   await assert.rejects(
     async () => run.background(async () => "outside"),
