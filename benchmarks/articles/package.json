@@ -1,0 +1,31 @@
+{
+  "name": "@workit/articles-bench",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Self-contained side-by-side benches for the WorkIt article series. Zero external dependencies; promise-helper baselines are inlined.",
+  "author": "Admilson B. F. Cossa",
+  "license": "Apache-2.0",
+  "scripts": {
+    "bench": "node run-all.mjs",
+    "bench:run-all": "node 01-run-all-vs-promise-all.mjs",
+    "bench:run-race": "node 02-run-race-vs-promise-race.mjs",
+    "bench:run-any": "node 03-run-any-vs-promise-any.mjs",
+    "bench:pool": "node 04-pool-vs-semaphore.mjs",
+    "bench:retry": "node 05-retry-on-cancel.mjs",
+    "bench:hedge": "node 06-hedge-tied-requests.mjs",
+    "bench:hard-kill": "node 07-worker-hard-kill.mjs",
+    "bench:uncancellable": "node 08-uncancellable-shield.mjs",
+    "bench:stream-1b": "node 09-stream-1b-lazy.mjs",
+    "bench:stream-slow": "node 10-stream-slow-consumer.mjs",
+    "bench:channel": "node 11-channel-contract.mjs",
+    "bench:bracket": "node 12-bracket-vs-try-finally.mjs",
+    "bench:budget": "node 13-budget-atomicity-and-cancel.mjs",
+    "bench:context": "node 14-context-overlay-perf.mjs",
+    "bench:no-network": "node 15-core-zero-network.mjs",
+    "bench:sampling": "node 16-sampling-and-aggregation.mjs",
+    "bench:cardinality": "node 17-cardinality-safe-metrics.mjs",
+    "bench:diagnostics": "node 18-diagnostics-finding-codes.mjs",
+    "bench:agent": "node 19-agent-scope.mjs"
+  }
+}
