@@ -5,14 +5,20 @@ SPDX-License-Identifier: Apache-2.0
 
 # WorkIt
 
-Structured concurrency for TypeScript systems that need owned async work, cancellation, cleanup, limits, and observability.
+Structured concurrency for TypeScript systems that need owned async work:
+bounded parallelism, cancellation, cleanup, retries, timeouts, budgets,
+backpressure, worker offload, and observable task lifecycles.
 
-Native `Promise` remains appropriate for one-off async values. WorkIt is intended for async work that needs ownership.
+Native `Promise` is still the right tool for one asynchronous value. WorkIt is
+for the next step: a request, batch, agent run, provider race, stream, or
+background operation where related async tasks must live, fail, cancel, and
+clean up together.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20.11-brightgreen)](package.json)
 [![Runtime deps](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)](package.json)
-[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)](#verified-evidence)
+[![Verification](https://img.shields.io/badge/verify-green-brightgreen)](#verified-evidence)
+[![Article benches](https://img.shields.io/badge/article%20benches-19%2F19-brightgreen)](benchmarks/articles/)
 
 ## Install
 
@@ -20,548 +26,426 @@ Native `Promise` remains appropriate for one-off async values. WorkIt is intende
 npm install @workit/core
 ```
 
-WorkIt currently targets Node.js server runtimes. Browser and edge runtimes resolve to an explicit unsupported-runtime boundary.
+WorkIt targets Node.js server runtimes today. Browser and edge runtimes resolve
+to an explicit unsupported-runtime boundary.
 
-## Guide
-
-Use WorkIt by choosing the smallest primitive that owns the work you need:
-
-| Need | Use |
-| --- | --- |
-| One operation with child tasks | `group(async (task) => ...)` |
-| A few task functions together | `run.all()`, `run.race()`, `run.any()`, `run.series()` |
-| Bounded concurrency with ordered results | `run.pool(concurrency, tasks)` |
-| Batch transforms over items | `work(items).inParallel(n).do(fn)` |
-| Retry, timeout, fallback, or resource cleanup | `run.retry()`, `run.timeout()`, `run.fallback()`, `run.bracket()` |
-| Streaming batches with backpressure | `work(items).stream()` |
-| Producer-consumer coordination | `@workit/core/channel` |
-| Snapshot diagnosis | `@workit/core/diagnostics` |
-| AI tool/budget helper contracts | `@workit/core/ai` |
-| OpenTelemetry bridge | `@workit/core/otel` |
-| CPU or non-cooperative work boundary | `@workit/core/worker` |
-
-The main rule is: keep native `Promise` for single async values, and use WorkIt when the operation needs ownership, cancellation, cleanup, bounded concurrency, budgets, diagnostics, or observable task events.
-
-## Example
-
-```ts
-import { group } from "@workit/core";
-
-const result = await group(async (task) => {
-  const profile = task(async (ctx) => {
-    return await fetchProfile({ signal: ctx.signal });
-  }, { name: "profile.load" });
-
-  const account = task(async (ctx) => {
-    return await fetchAccount({ signal: ctx.signal });
-  }, { name: "account.load" });
-
-  task.background(async (ctx) => {
-    ctx.defer(() => flushAuditBuffer());
-    await writeAuditEvent({ signal: ctx.signal });
-  }, { name: "audit.write" });
-
-  return {
-    profile: await profile,
-    account: await account,
-  };
-});
-```
-
-If an owned foreground task fails, WorkIt cancels sibling work, preserves the cancellation reason, and runs registered cleanup before the scope closes.
-
-## Why WorkIt Exists
-
-JavaScript promises model async values. They do not model ownership.
-
-In production systems, async work often needs more than `Promise.all()`:
-
-| Requirement | Raw Promise | WorkIt |
-| --- | --- | --- |
-| Owned task tree | Manual implementation | Provided by scope model |
-| Cancel siblings on failure | Manual implementation | Scope cancellation |
-| Typed cancellation reason | Manual implementation | `CancelReason` |
-| Cleanup before scope closes | Manual implementation | `ctx.defer()` |
-| Bounded concurrency | External helper or custom queue | `run.pool()` and `work().inParallel()` |
-| Retry and timeout composition | Manual implementation | Task wrappers |
-| Budget accounting | Manual implementation | Context budgets |
-| Diagnostics | Manual implementation | Snapshot diagnostics |
-| Safe telemetry export | Manual | Opt-in |
-
-Typical use cases include backend orchestration, agent task trees, RAG ingestion, provider races, batch processing, streaming transcription, worker offload, and cancellation-safe tool execution.
-
-## Use Cases And Non-Goals
-
-Use WorkIt when:
-
-- multiple async tasks belong to one operation
-- child failures should cancel sibling work
-- cleanup must run before returning
-- provider calls need timeout, retry, fallback, or racing
-- batch work needs bounded concurrency and partial-result policy
-- tool execution needs token, cost, or call budgets
-- task events must be observable without leaking provider internals
-
-Do not use WorkIt when:
-
-- a single `await fetch()` is enough
-- you only need a tiny local semaphore
-- you need distributed rate limiting or cluster reservoirs
-- you need browser or edge runtime support today
-- your task body cannot cooperate with cancellation and cannot be moved to a worker
-
-## Guarantees
-
-The Node.js runtime is designed around these contracts:
-
-- every non-detached task belongs to exactly one scope
-- scopes wait for owned children before closing
-- scope cancellation propagates through `AbortSignal`
-- non-background child failure cancels sibling work
-- deferred cleanup runs in last-in, first-out order
-- retry sleeps and rate-limit waits remove abort listeners
-- idempotency handles are pruned after task settlement
-- `run.any()` and `run.race()` preserve parent cancellation reasons
-- cleanup failures emit typed cleanup events
-- budgets inherit through scope context with explicit shadowing
-- telemetry export is opt-in, sampled, bounded, and circuit-broken
-- worker offload rejects remote URLs, inline URLs, traversal paths, functions, symbols, and class instances
-
-## Verified Evidence
-
-The repository contains executable gates for runtime behavior, package behavior, supply-chain policy, and scale smoke tests.
-
-Current verification evidence:
-
-| Gate | Result |
-| --- | --- |
-| Unit tests | 214 tests passing |
-| Coverage | 100% statements, branches, functions, lines |
-| Runtime dependencies | 0 production dependencies |
-| Public API exports | 7 locked package export paths |
-| Public bundle | 29,255 B minified / 9,694 B gzip |
-| Core group import | 14,175 B minified / 4,835 B gzip |
-| Soak | 100,000 logical tasks, bounded concurrency |
-| Stream memory | 1,000,000 logical items, bounded producer growth |
-| Exporter stress | 100,000 events with bounded queue |
-| Package consumer | ESM, CJS, TypeScript, framework fixtures |
-| Security | headers, no-network, vulnerability, SBOM, release-policy gates |
-
-Run the full gate:
-
-```sh
-npm run verify
-```
-
-Run coverage:
-
-```sh
-npm run test:coverage
-```
-
-Run public proof validation:
-
-```sh
-npm run check:public-proof
-```
-
-Machine-readable reviewer evidence lives in `benchmarks/public-proof.json`. The public proof gate keeps that artifact aligned with the README, benchmark fixtures, migration guides, and runtime matrix.
-
-## Core API
-
-```ts
-import {
-  group,
-  run,
-  work,
-  renderTree,
-  createBudget,
-  createContextKey,
-  CostBudget,
-  TokenBudget,
-  TelemetryBudget,
-} from "@workit/core";
-```
-
-| Export | Purpose |
-| --- | --- |
-| `group()` | Opens an owned task scope. |
-| `run` | Task combinators: all, race, any, pool, retry, timeout, fallback, bracket, bounded shields, and execution helpers. |
-| `work()` | Batch builder with concurrency, retry, timeout, filtering, mapping, error policy, and streaming. |
-| `renderTree()` | Stable text rendering for scope snapshots. |
-| `createContextKey()` | Typed context keys. |
-| `createBudget()` | Typed cooperative budget keys. |
-
-## Run Helpers
-
-```ts
-import { run } from "@workit/core";
-
-const fastest = await run.race([
-  run.timeout(callPrimary, "800ms"),
-  run.timeout(callReplica, "800ms"),
-]);
-
-const resilient = run.fallback(
-  run.retry(callProvider, { times: 3, backoff: "exponential" }),
-  callBackupProvider
-);
-
-const batch = await run.pool(8, inputs.map((input) => async (ctx) => {
-  return await processInput(input, ctx.signal);
-}));
-```
-
-`run.race()` and `run.any()` cancel losing work. `run.pool()` preserves result order while bounding concurrency.
-
-## Retry Policy
-
-Retry defaults are resilience-oriented, not micro-benchmark-oriented.
-
-Both `run.retry(task, 3)` and `work(items).withRetry(3)` normalize to:
-
-```ts
-{
-  times: 3,
-  backoff: "exponential",
-  initialDelay: 100,
-  maxDelay: 30_000,
-  jitter: true,
-}
-```
-
-`times` is the maximum number of attempts including the first attempt. With `times: 3`, WorkIt can run one initial attempt and two retries.
-
-Use the numeric form for production calls where brief backoff is desired:
-
-```ts
-const resilient = run.retry(callProvider, 3);
-```
-
-Use an explicit zero-delay policy for local operations, tests, or fast in-memory retries:
-
-```ts
-const fast = run.retry(callLocalCache, {
-  times: 3,
-  initialDelay: "0ms",
-  maxDelay: "0ms",
-  jitter: false,
-});
-
-const output = await work(items)
-  .withRetry({
-    times: 3,
-    initialDelay: "0ms",
-    maxDelay: "0ms",
-    jitter: false,
-  })
-  .do(async (item) => processItem(item));
-```
-
-Use `retryIf` to keep retry policy explicit:
-
-```ts
-const providerCall = run.retry(callProvider, {
-  times: 4,
-  backoff: "exponential",
-  initialDelay: "200ms",
-  maxDelay: "5s",
-  retryIf: (err) => isTransientProviderError(err),
-});
-```
-
-Do not use retry to hide deterministic validation errors. Reject those at the boundary.
-
-## Resource Safety
-
-```ts
-import { run } from "@workit/core";
-
-await run.bracket(
-  async () => await openConnection(),
-  async (connection, ctx) => {
-    return await connection.query("select 1", { signal: ctx.signal });
-  },
-  async (connection) => {
-    await connection.close();
-  }
-);
-```
-
-`run.bracket()` releases exactly once on success, error, timeout, and cancellation.
-
-## Bounded Uncancellable Sections
-
-```ts
-import { run } from "@workit/core";
-
-const commit = run.uncancellable(async (ctx) => {
-  await writeFinalReceipt({ signal: ctx.signal });
-}, { timeout: "2s" });
-```
-
-`run.uncancellable()` delays parent cancellation while the protected body runs, but it does not hide cancellation. If the parent was cancelled during the shielded section, WorkIt rethrows the original cancellation after the section completes.
-
-JavaScript cannot forcibly stop non-cooperative in-process work. For hard CPU boundaries, use worker offload with a timeout.
-
-## Work Builder
+## Quick Start
 
 ```ts
 import { work } from "@workit/core";
 
-const output = await work(documents)
+const doubled = await work([1, 2, 3])
+  .inParallel(2)
+  .do(async (value, _ctx) => value * 2);
+```
+
+The context parameter is available when the task needs cancellation, progress,
+budgets, or scoped resources. It can be ignored for plain transformations.
+
+## Why Ownership Matters
+
+Consider this batch helper:
+
+```ts
+type BatchEvent<T> =
+  | { type: "item:started"; item: T; attempt: number }
+  | { type: "item:retried"; item: T; attempt: number; error: unknown }
+  | { type: "item:completed"; item: T };
+
+type BatchOptions<T, R> = {
+  concurrency: number;
+  retries: number;
+  timeoutMs: number;
+  signal: AbortSignal;
+  events: { emit(event: BatchEvent<T>): void };
+  run: (item: T, options: { signal: AbortSignal }) => Promise<R>;
+};
+
+function backoffMs(attempt: number): number {
+  return Math.min(1000 * 2 ** (attempt - 1), 10_000);
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(signal.reason);
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    };
+
+    const abort = (): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(signal?.reason);
+    };
+
+    const timer = setTimeout(finish, ms);
+    signal?.addEventListener("abort", abort, { once: true });
+  });
+}
+
+async function runBatch<T, R>(
+  items: readonly T[],
+  options: BatchOptions<T, R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+
+  async function worker(): Promise<void> {
+    while (!options.signal.aborted) {
+      const index = nextIndex++;
+      if (index >= items.length) return;
+
+      const item = items[index];
+      for (let attempt = 1; attempt <= options.retries + 1; attempt++) {
+        const timeout = AbortSignal.timeout(options.timeoutMs);
+        const signal = AbortSignal.any([options.signal, timeout]);
+
+        try {
+          options.events.emit({ type: "item:started", item, attempt });
+          results[index] = await options.run(item, { signal });
+          options.events.emit({ type: "item:completed", item });
+          break;
+        } catch (error) {
+          if (attempt > options.retries || options.signal.aborted) throw error;
+          options.events.emit({ type: "item:retried", item, attempt, error });
+          await sleep(backoffMs(attempt), options.signal);
+        }
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: options.concurrency }, () => worker())
+  );
+
+  return results;
+}
+```
+
+It covers bounded parallelism, timeout, parent cancellation, ordered results,
+typed events, and retry backoff. The lifecycle is still split across the queue,
+timeout signals, retry loop, event sink, and caller. Adding sibling
+cancellation, cleanup, budgets, partial results, or diagnostics extends the
+same ownership protocol in several places.
+
+With WorkIt, the ownership boundary is the API:
+
+```ts
+import { work } from "@workit/core";
+
+const results = await work(items)
   .inParallel(8)
-  .withRetry({ times: 3, backoff: "exponential" })
+  .withRetry(3)
   .withTimeout("5s")
-  .filter((doc) => doc.enabled)
-  .onError("collect")
-  .do(async (doc, ctx) => {
-    return await embedDocument(doc, { signal: ctx.signal });
+  .do(async (item, ctx) => {
+    ctx.report({ message: `processing ${item.id}` });
+    return apiCall(item, { signal: ctx.signal });
   });
 ```
 
-The builder defaults to sequential, fail-fast execution. Concurrency and partial-result policy are explicit.
+This gives the batch one lifecycle contract:
 
-## Budgets And Context
+- at most 8 items run at once
+- transient failures retry with cancel-aware backoff
+- each item has a 5 second timeout
+- every task receives the same cancellation model through `ctx.signal`
+- progress is a typed runtime event
+- queued and active work stop together when the owner is cancelled
+
+## What WorkIt Replaces
+
+WorkIt does not replace promises as values. It replaces repeated lifecycle
+orchestration around promises.
+
+| Existing pattern | Real limitation | Ownership contract | WorkIt primitive |
+|---|---|---:|---|
+| Hand-written concurrency queue | Queue, retry, timeout, and caller cancellation each own part of the lifecycle | no single owner | `work().inParallel()` / `run.pool()` |
+| Manual scope object with cancellation tokens | Works until every new feature must reimplement the same lifecycle rules | local convention | `group()` / `run.*` |
+| Provider race with `Promise.race()` | Losing calls keep running unless each branch is wired to cancellation | no | `run.race()` |
+| Retry loop with delayed backoff | Cancellation has to be remembered in every sleep and retry branch | no | `run.retry()` |
+| Request fan-out with `Promise.all()` | Sibling cancellation and cleanup are not part of the value contract | no | `group()` / `run.all()` |
+| Manual `try/finally` cleanup | Cleanup can hang or obscure the original failure without an explicit policy | partial | `run.bracket()` |
+| Async iterator prefetch | Producer control and consumer demand are easy to separate accidentally | partial | `work().stream()` |
+| Ad hoc token or cost counters | Nested work can charge the wrong owner without a shared context contract | partial | context budgets |
+| CPU loop with `AbortController` | Cooperative signals cannot preempt the main thread | no | `offload()` |
+
+WorkIt's ownership contract is the combination of scope, cancellation reason,
+child task set, defer stack, context, and event stream.
+
+## Mental Model
+
+WorkIt creates a scope tree. A scope owns its tasks. When a foreground task
+fails, times out, or is cancelled, the scope cancels sibling work, waits for
+owned children, runs cleanup, emits lifecycle events, and then settles.
+
+```mermaid
+flowchart TD
+  A[scope created] --> B[foreground tasks start]
+  A --> C[background tasks start]
+  B --> D{failure, timeout, or cancel}
+  D -- no --> E[foreground values settle]
+  D -- yes --> F[cancel siblings with typed reason]
+  E --> G[await owned background tasks]
+  F --> G
+  G --> H[run defer stack and bracket cleanup]
+  H --> I[scope closes]
+  A -. explicit escape .-> J[detached task]
+  J -. not awaited by scope .-> K[external owner required]
+```
+
+Rules:
+
+1. Every task runs inside exactly one scope.
+2. A scope owns cancellation, cleanup, context, child tasks, and events.
+3. Cancelling a scope aborts its signal and propagates a typed reason.
+4. A scope cannot close while non-detached children are still pending.
+5. `background` is owned and delays closure.
+6. `detached` is explicit and transfers ownership to the caller.
+
+## Core API
+
+| Need | Use |
+|---|---|
+| One owned operation with child tasks | `group(async (task) => ...)` |
+| Batch work over items | `work(items)` |
+| Bounded parallel task functions | `run.pool(concurrency, tasks)` |
+| Safer `Promise.all` / `race` / `any` | `run.all()`, `run.race()`, `run.any()` |
+| Retry, timeout, fallback, hedge | `run.retry()`, `run.timeout()`, `run.fallback()`, `run.hedge()` |
+| Resource safety | `run.bracket()` |
+| Critical sections | `run.uncancellable()` |
+| Backpressured streams | `work(items).stream()` |
+| Producer-consumer coordination | `@workit/core/channel` |
+| Worker-thread hard boundary | `@workit/core/worker` |
+| Diagnostics and snapshots | `@workit/core/diagnostics` |
+| OpenTelemetry bridge | `@workit/core/otel` |
+| Agent helper contracts | `@workit/core/ai` |
+
+## Common Use Cases
+
+These are short entry points. The full narrative and benchmark discussion live
+in [`articles/`](articles/).
+
+### Owned Request Fan-Out
 
 ```ts
-import { CostBudget, TokenBudget, group, run } from "@workit/core";
+import { group } from "@workit/core";
 
-await run.context.with(CostBudget, { spent: 0, limit: 100, unit: "USD" }, async () =>
-  run.context.with(TokenBudget, { spent: 0, limit: 10_000, unit: "tokens" }, async () =>
-    group(async (task) => {
-      await task(async (ctx) => {
-        ctx.consume(CostBudget, 25);
-        ctx.consume(TokenBudget, 1_200);
-        return await callModel({ signal: ctx.signal });
-      });
+const response = await group(async (task) => {
+  const profile = task((ctx) => fetchProfile({ signal: ctx.signal }));
+  const account = task((ctx) => fetchAccount({ signal: ctx.signal }));
+
+  task.background(async (ctx) => {
+    ctx.defer(() => flushAuditBuffer());
+    await writeAuditEvent({ signal: ctx.signal });
+  });
+
+  return { profile: await profile, account: await account };
+});
+```
+
+If `profile` fails, the account and audit tasks are cancelled. The audit cleanup
+runs before the scope closes.
+
+### Provider Race
+
+```ts
+import { run } from "@workit/core";
+
+const result = await run.race([
+  run.timeout((ctx) => primary.generate({ signal: ctx.signal }), "5s"),
+  run.timeout((ctx) => backup.generate({ signal: ctx.signal }), "5s"),
+]);
+```
+
+The first success wins. Losing branches receive `CancelReason { kind:
+"race_lost" }`.
+
+### Retry With Timeout
+
+```ts
+import { run } from "@workit/core";
+
+const receipt = await run.retry(
+  (ctx) =>
+    run.timeout(
+      (timeoutCtx) =>
+        chargeCustomer(invoice, {
+          signal: AbortSignal.any([ctx.signal, timeoutCtx.signal]),
+        }),
+      "5s"
+    ),
+  { retries: 3 }
+);
+```
+
+The retry policy, timeout, and caller cancellation share one owned execution
+path instead of living in separate helper layers.
+
+### Backpressured Stream
+
+```ts
+import { work } from "@workit/core";
+
+for await (const summary of work(documents())
+  .inParallel(8)
+  .map((doc, ctx) => summarize(doc, { signal: ctx.signal }))
+  .stream()) {
+  if (summary.enough) break;
+}
+```
+
+Breaking the loop cancels remaining in-flight work and stops pulling from the
+producer.
+
+### Budgeted Agent Work
+
+```ts
+import { CostBudget, TokenBudget, run, work } from "@workit/core";
+
+await run.context.with(CostBudget, { spent: 0, limit: 0.50, unit: "USD" }, () =>
+  run.context.with(TokenBudget, { spent: 0, limit: 100_000, unit: "tokens" }, () =>
+    work(chunks).inParallel(8).do(async (chunk, ctx) => {
+      ctx.consume(TokenBudget, chunk.estimatedTokens);
+      ctx.consume(CostBudget, chunk.estimatedCost);
+      return embed(chunk, { signal: ctx.signal });
     })
   )
 );
 ```
 
-Budget snapshots exposed to consumers are readonly. Mutation happens through `ctx.consume()`.
+Budget overrun cancels the scope that installed the budget.
 
-## Diagnostics
-
-```ts
-import { diagnoseSnapshot } from "@workit/core/diagnostics";
-
-const report = diagnoseSnapshot(scope.status(), {
-  staleTaskMs: 30_000,
-  events: recentEvents,
-});
-```
-
-Diagnostics are subpath-only to keep the root runtime small. Reports identify old pending tasks, cleanup timeouts, cancelling scopes, and pending child scopes.
-
-## Channels
-
-```ts
-import { createChannel } from "@workit/core/channel";
-
-const channel = createChannel<string>({ capacity: 16 });
-
-await channel.send("item");
-const item = await channel.receive();
-```
-
-Channels provide bounded in-process backpressure with close and cancellation semantics.
-
-## AI Helpers
-
-```ts
-import { runAgent, streamLLM } from "@workit/core/ai";
-
-const result = await runAgent(async (agent) => {
-  return await agent.tool("search", { q: "structured concurrency" }, async (input, ctx) => {
-    return await search(input.q, { signal: ctx.signal });
-  }, {
-    timeout: "5s",
-    tokens: 12,
-    toolCalls: 1,
-  });
-});
-```
-
-The AI subpath supplies contracts and structured execution helpers only. It does not import OpenAI, Anthropic, cloud SDKs, HTTP clients, or provider runtimes.
-
-## Observability
-
-```ts
-import { attachTelemetryExporter } from "@workit/core/observability";
-
-const attachment = attachTelemetryExporter(scope, async (event) => {
-  await telemetry.write(event);
-}, {
-  sampling: { mode: "errors_and_slow", slowThresholdMs: 2_000 },
-  circuitBreaker: { failureThreshold: 3, openForMs: 60_000 },
-  sanitize: (event) => event,
-});
-
-attachment.unsubscribe();
-```
-
-The root event bus is local and dependency-free. Exporting events is explicit, sampled, bounded, sanitized, and circuit-broken.
-
-OpenTelemetry integration is opt-in:
-
-```ts
-import { attachOpenTelemetry } from "@workit/core/otel";
-```
-
-`@opentelemetry/api` is an optional peer dependency so the root package can stay dependency-free. Install it only when using the OTel subpath:
-
-```sh
-npm install @opentelemetry/api
-```
-
-If the peer is missing and `attachOpenTelemetry()` needs the default OTel API, WorkIt throws:
-
-```txt
-To use @workit/core/otel, install:
-npm install @opentelemetry/api
-```
-
-You may also pass explicit `tracer` and `meter` objects for tests or custom OTel wiring.
-
-## Worker Offload Boundary
+### Worker Boundary
 
 ```ts
 import { offload } from "@workit/core/worker";
 
 const result = await offload(
   new URL("./cpu-worker.js", import.meta.url),
-  "fibonacci",
-  42,
+  "compute",
+  input,
   { timeout: "2s" }
 );
 ```
 
-Worker modules must be local application-controlled files. WorkIt rejects remote URLs, inline URLs, empty module references, and parent directory segments before the worker imports anything.
+`AbortController` cannot preempt a tight CPU loop on the main thread. Worker
+offload gives CPU-bound or plugin-like work a hard timeout boundary.
 
-Accepted worker inputs include primitives, arrays, plain objects, `Map`, `Set`, `Date`, `RegExp`, `ArrayBuffer`, `SharedArrayBuffer`, and typed array views.
+## Worker Offload Boundary
 
-Rejected worker inputs include functions, symbols, class instances, objects with custom prototypes, remote module URLs, inline module URLs, and traversal paths.
+`offload()` is an execution boundary and a structured-clone boundary.
 
-## Examples Index
+Accepted worker inputs include primitives, arrays, plain objects, `Map`, `Set`,
+dates, regexps, buffers, and typed arrays.
 
-Samples run against the compiled package:
+Rejected worker inputs include class instances, functions, symbols, custom
+prototype objects, inline or remote module URLs, and parent directory segments
+in worker paths.
 
-```sh
-npm run sample:1b
-npm run sample:concurrency
-npm run sample:cancel
-npm run sample:timeout
-npm run sample:no-orphan
-npm run sample:all
-npm run sample:agent
-npm run sample:race
-npm run sample:rag
-npm run sample:batch
-npm run sample:stream
-npm run sample:embed100k
-npm run sample:bisection
-npm run sample:stt-disconnect
-npm run sample:worker
-npm run sample:aws
-npm run sample:azure
-npm run sample:next
-npm run sample:otel
-npm run sample:logging
-```
+When `timeout` fires, WorkIt terminates the worker thread. This is different
+from cooperative `AbortSignal` cancellation inside the main JavaScript thread.
 
-| Sample | Scenario |
-| --- | --- |
-| `sample:all` | Safer `Promise.all()` replacement with sibling cancellation and cleanup. |
-| `sample:concurrency` | Bounded parallelism with budget consumption. |
-| `sample:cancel` | Typed cancellation reason propagation. |
-| `sample:timeout` | Timeout-driven cancellation. |
-| `sample:no-orphan` | Scope ownership preventing orphaned child work. |
-| `sample:agent` | Agent-style task tree cancellation. |
-| `sample:race` | Provider race with loser cancellation. |
-| `sample:rag` | RAG-style budgeted work. |
-| `sample:batch` | Batch upload with retry and partial-result handling. |
-| `sample:stream` | Streaming summarizer with bounded work. |
-| `sample:embed100k` | 100,000 logical embedding tasks. |
-| `sample:bisection` | Batch bisection for partial provider failures. |
-| `sample:stt-disconnect` | Speech-to-text cancellation on disconnect. |
-| `sample:worker` | Worker offload for CPU/non-cooperative work. |
-| `sample:aws` | AWS Lambda-shaped handler. |
-| `sample:azure` | Azure Functions-shaped handler. |
-| `sample:next` | Next.js route-shaped handler. |
-| `sample:otel` | OpenTelemetry adapter use. |
-| `sample:logging` | Logging-to-telemetry bridge. |
+## Runnable Samples
 
-## Benchmarks And Reproducibility
+| Sample | What it demonstrates |
+|---|---|
+| [`samples/progress-parallel.sample.js`](samples/progress-parallel.sample.js) | progress events during bounded parallel work |
+| [`samples/race-providers.sample.js`](samples/race-providers.sample.js) | provider race with loser cancellation |
+| [`samples/no-orphan.sample.js`](samples/no-orphan.sample.js) | owned background work waits before scope close |
+| [`samples/streaming-summarizer.sample.js`](samples/streaming-summarizer.sample.js) | streaming summarization with early stop |
+| [`samples/embed-bisection.sample.js`](samples/embed-bisection.sample.js) | bad-batch bisection for embedding pipelines |
+| [`samples/supervision.sample.js`](samples/supervision.sample.js) | supervised long-lived work |
+| [`samples/worker-offload.sample.js`](samples/worker-offload.sample.js) | worker timeout against non-cooperative CPU work |
+| [`samples/budget-rag.sample.js`](samples/budget-rag.sample.js) | request-scoped cost budget |
+| [`samples/logging-otel-bridge.sample.js`](samples/logging-otel-bridge.sample.js) | local events bridged to telemetry |
 
-WorkIt benchmark claims are tied to executable gates in the repository. They are release checks, not synthetic marketing numbers.
+## Verified Evidence
 
-| Command | What it validates |
-| --- | --- |
-| `npm run check:benchmark` | Basic runtime throughput for `group()` and `run.all()`. |
-| `npm run check:1b` | One-billion logical item streaming shape with bounded concurrency. |
-| `npm run check:stream-memory` | Slow-consumer stream memory ceiling and producer backpressure. |
-| `npm run check:soak` | 100,000 logical task runtime soak. |
-| `npm run check:exporter-stress` | Bounded telemetry exporter behavior under high event volume. |
-| `npm run check:package-consumer` | Installed package behavior across ESM, CJS, TypeScript, framework fixtures, browser bundle split, and Cloudflare dry-run unsupported boundary. |
-| `npm run check:claims` | Executable claim fixtures derived from review findings. |
+WorkIt claims are tied to executable gates. The benchmark timings below are
+representative captured runs; the gates assert semantic invariants and budget
+thresholds, not exact milliseconds.
 
-Run all public proof gates:
+| Evidence | Current result |
+|---|---:|
+| Unit tests | 214 passing |
+| Coverage gate | 100% statements, branches, functions, lines |
+| Runtime dependencies | 0 |
+| Article benchmark suite | 19/19 passing |
+| Core group import | 14,175 B minified / 4,835 B gzip |
+| Public bundle | 29,255 B minified / 9,694 B gzip |
+| Stream gate | 1,000,000 logical items with bounded producer growth |
+| Soak gate | 100,000 logical tasks with bounded concurrency |
+| Exporter stress | 100,000 events with bounded queue |
+
+Representative article-benchmark results:
+
+| Benchmark | Baseline | WorkIt |
+|---|---:|---:|
+| Provider race losers after winner | losers continue until their sleeps finish | losers cancelled in scope close |
+| Retry after cancellation | 7 extra attempts, 622 ms latency | 0 extra attempts, 1 ms latency |
+| Context `.with()` over 5,000 keys | 31.68 ms | 0.014 ms |
+| 1B-row source, take 25 | 281 items pulled | 40 items pulled |
+| Sampling volume | 1,300 events | 36 events |
+
+Run the main verification gate:
 
 ```sh
 npm run verify
 ```
 
-Run only the public proof artifact gate:
+`npm run verify` runs type-checking, header and test hygiene, unit tests,
+security checks, vulnerability audit, SBOM validation, API and bundle-size
+locks, runtime benchmarks, stream and soak gates, exporter stress,
+package-consumer fixtures, public-proof validation, worker-contract checks,
+release-policy checks, and `npm pack --dry-run`.
+
+Run the article benchmark suite:
 
 ```sh
-npm run check:public-proof
+npm run bench:articles
 ```
 
-The static proof artifact is `benchmarks/public-proof.json`. It records evidence commands, benchmark fixture thresholds, migration-guide coverage, and runtime matrix rows.
+Run the curated publication evidence suite:
 
-When comparing WorkIt with another library, keep the comparison scoped:
+```sh
+npm run test:evidence
+```
 
-- compare raw throughput only for equivalent operations
-- include cancellation, cleanup, and ownership when those are part of the requirement
-- report Node.js version, operating system, CPU, command, iteration count, concurrency, and heap flags
-- use `--expose-gc` for memory gates that require explicit garbage collection
-- do not compare a structured runtime against a semaphore without naming the semantic difference
+Run verification commands sequentially when they depend on `dist/`. Some gates,
+including `npm run test:coverage` and `npm run verify`, rebuild or clean the
+compiled artifacts. Running them in parallel with `npm run bench:articles` can
+delete `dist/` while benchmark processes are importing it.
 
-## WorkIt Compared With Common Alternatives
+Machine-readable reviewer evidence lives in
+[`benchmarks/public-proof.json`](benchmarks/public-proof.json), the article
+benchmark capture lives in
+[`benchmarks/results/articles.latest.json`](benchmarks/results/articles.latest.json),
+and the public claim ledger lives in
+[`evidence/claims.json`](evidence/claims.json).
 
-| Tool | Primary model | Use it when | Use WorkIt when |
-| --- | --- | --- | --- |
-| Native `Promise` | Async value | One async value or a small local composition is enough. | The operation needs ownership, cancellation, cleanup, or diagnostics. |
-| `p-limit` | Local concurrency limiter | You only need a tiny semaphore. | Bounded work also needs scope ownership, cancellation, retry, timeout, or task events. |
-| `p-map` | Concurrent mapping | You need a focused map helper. | Mapping also needs retry, timeout, stream policy, budgets, or partial-result contracts. |
-| RxJS | Observable transformation graph | You are modeling rich event streams and operators. | You are modeling owned async task lifecycles. |
-| Bottleneck | Rate limiting and reservoirs | You need distributed or reservoir-based rate limiting. | You need local structured concurrency and lifecycle control. |
+## Security And Release Integrity
 
-WorkIt is not a replacement for every async library. It is a structured-concurrency runtime for owned work. The correct choice depends on whether lifecycle semantics are part of the problem.
+| Guarantee | Enforcement |
+|---|---|
+| Runtime core has no production dependencies | package metadata and security gate |
+| Core does not import networking modules | static no-network gate |
+| Published package includes an SBOM | CycloneDX SBOM generation and validation |
+| Release workflow uses provenance controls | release-policy gate |
+| Public API and bundle size are locked | API and size gates |
+| Consumer fixtures install the package artifact | package-consumer gate |
 
-## Migration Notes
+Additional repository controls include pinned dev dependencies, vulnerability
+audit, SHA-pinned GitHub Actions, OSSF Scorecard workflow, CODEOWNERS,
+Dependabot, and signed release tag policy.
 
-### From native Promise
-
-Keep native promises for simple async values. Use WorkIt when the work needs ownership, cancellation, cleanup, bounded concurrency, budgets, diagnostics, or observability.
-
-### From p-limit
-
-Use `run.pool()` when bounded concurrency also needs scope ownership and cancellation. Keep `p-limit` for a tiny standalone semaphore.
-
-### From p-map
-
-Use `work(items).inParallel(n).do(fn)` when mapping needs retry, timeout, item-level error policy, or streaming.
-
-### From RxJS
-
-Keep RxJS for rich observable transformation graphs. Use WorkIt for owned async work and task lifecycle control.
-
-### From Bottleneck
-
-Keep Bottleneck for distributed rate limits and reservoirs. Use WorkIt for local structured concurrency.
+Security reports should follow [`SECURITY.md`](SECURITY.md).
 
 ## Runtime Support
 
@@ -582,43 +466,86 @@ Unsupported today:
 - Cloudflare Workers
 - Next.js Edge / Vercel Edge
 
-Unsupported runtimes resolve to an explicit unsupported boundary.
+Unsupported runtimes resolve to an explicit unsupported boundary. An edge-safe
+context runtime is future work.
 
-## Security And Release Integrity
+## When To Use Alternatives
 
-The repository includes gates for:
+| Tool | Prefer it when | Prefer WorkIt when |
+|---|---|---|
+| Native `Promise` | One async value is enough | Work needs ownership, cancellation, cleanup, or diagnostics |
+| Manual scope object | The lifecycle is local and small enough to audit in one file | The lifecycle becomes a reusable cross-module contract |
+| `p-limit` | You only need a tiny semaphore | Bounded work also needs lifecycle semantics |
+| `p-map` | You need a focused concurrent map | Mapping needs retry, timeout, stream policy, or partial results |
+| RxJS | You are modelling rich event streams | You are modelling owned async task lifecycles |
+| Bottleneck | You need distributed reservoirs or rate limits | You need local structured concurrency |
+| Effection | You want structured concurrency via operations/generators | You want plain `async`/`await` task functions |
+| Effect-TS | You want a full effect system | You want owned async work without migrating to a DSL |
 
-- author and SPDX headers
-- no runtime network clients in core
-- no install lifecycle scripts
-- pinned dev dependencies
-- production vulnerability audit
-- SBOM validation
-- API surface lock
-- bundle-size lock
-- package-consumer fixtures
-- release provenance workflow validation
-- SHA-pinned GitHub Actions
-- OSSF Scorecard workflow
-- CODEOWNERS
-- Dependabot
-- signed release tag policy
+These comparisons are about ownership and composition. Some libraries expose
+cancellation hooks or queue controls; WorkIt's claim is that cancellation,
+cleanup, retry, timeout, budgets, backpressure, and diagnostics compose under
+one owner.
+
+## Migration Notes
+
+These are orientation notes, not codemods. Keep the old tool when it owns the
+problem better.
+
+### From p-limit
+
+Use `run.pool()` or `work(items).inParallel(n)` when the semaphore also needs
+sibling cancellation, retry, timeout, cleanup, progress, or partial-result
+policy under one owner.
+
+### From p-map
+
+Use `work(items).inParallel(n).do(fn)` for concurrent maps that need the same
+lifecycle semantics as the caller. Keep `p-map` for a small one-file map where
+concurrency is the only concern.
+
+### From RxJS
+
+Keep RxJS for rich observable graphs. Use WorkIt when the problem is owned task
+lifecycle: request fan-out, provider racing, agent tools, bounded streams, or
+cleanup around async work.
+
+### From Bottleneck
+
+Keep Bottleneck for distributed reservoirs and external rate-limit state. Use
+WorkIt for local process ownership where bounded concurrency must compose with
+cancel, retry, timeout, budgets, and diagnostics.
+
+## Documentation
+
+| Resource | Purpose |
+|---|---|
+| [`articles/`](articles/) | Narrative articles with examples and benchmark discussion |
+| [`benchmarks/articles/`](benchmarks/articles/) | Reproducible article benchmark suite |
+| [`evidence/`](evidence/) | Machine-readable claim ledger and evidence policy |
+| [`tests/evidence/`](tests/evidence/) | Curated publication evidence proofs |
+| [`samples/`](samples/) | Runnable examples against the compiled package |
+| [`SECURITY.md`](SECURITY.md) | Security reporting and release integrity policy |
 
 ## Contributing
 
-Please read `CONTRIBUTING.md` before opening a pull request.
+Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a pull request.
 
 Before submitting code:
 
 ```sh
 npm run verify
 npm run test:coverage
+npm run bench:articles
+npm run test:evidence
 ```
 
-Bug reports should include the WorkIt version, Node.js version, reproduction code, and whether the failure occurs from source or the installed package.
+Run these commands sequentially. Several verification commands clean and rebuild
+`dist/`, while article benchmarks import the compiled package artifact.
 
-Security reports should follow `SECURITY.md`.
+Bug reports should include the WorkIt version, Node.js version, reproduction
+code, and whether the failure occurs from source or the installed package.
 
 ## License
 
-Apache-2.0. See `LICENSE`.
+Apache-2.0. See [`LICENSE`](LICENSE).
