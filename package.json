@@ -98,6 +98,8 @@
     "check:worker-contract": "node scripts/check-worker-contract-docs.mjs",
     "check:release-policy": "npm run build && node scripts/check-release-provenance.mjs",
     "check:release": "npm run build && node scripts/check-release-provenance.mjs --registry-dry-run",
+    "bench:articles": "node benchmarks/articles/run-all.mjs",
+    "test:evidence": "node tests/evidence/run-all.mjs",
     "pack:dry": "npm pack --dry-run --json",
     "sample:1b": "npm run build && node samples/1b-stream.sample.js",
     "sample:concurrency": "npm run build && node samples/concurrency-budget.sample.js",

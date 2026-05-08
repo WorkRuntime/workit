@@ -1,0 +1,161 @@
+{
+  "author": "Admilson B. F. Cossa",
+  "spdxLicense": "Apache-2.0",
+  "artifact": "workit-claim-ledger",
+  "version": 1,
+  "authority": [
+    "runtime source and npm run verify",
+    "benchmarks/articles/run-all.mjs",
+    "tests/evidence/run-all.mjs"
+  ],
+  "allowedClasses": [
+    "security",
+    "correctness",
+    "lifecycle",
+    "release",
+    "performance",
+    "product-decision"
+  ],
+  "claims": [
+    {
+      "id": "LIFE-001",
+      "title": "run.race cancels losing branches",
+      "class": "lifecycle",
+      "status": "proven",
+      "proof": "tests/evidence/lifecycle/owned-work.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "losing branches receive race_lost cancellation",
+      "limitations": "Provider billing or remote execution stops only when the underlying provider honors AbortSignal."
+    },
+    {
+      "id": "LIFE-002",
+      "title": "run.retry stops on parent cancellation",
+      "class": "lifecycle",
+      "status": "proven",
+      "proof": "tests/evidence/lifecycle/owned-work.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "no extra retry attempt runs after cancellation is observed",
+      "limitations": "The guarantee applies to WorkIt retry sleeps and task bodies that observe ctx.signal."
+    },
+    {
+      "id": "LIFE-003",
+      "title": "run.bracket cleanup timeout is bounded and observable",
+      "class": "lifecycle",
+      "status": "proven",
+      "proof": "tests/evidence/lifecycle/owned-work.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "a hanging cleanup emits task:cleanup_timeout and the owner settles",
+      "limitations": "The timeout bounds WorkIt cleanup waiting; external systems still need their own timeout and idempotency policies."
+    },
+    {
+      "id": "CORR-001",
+      "title": "budget inputs are immutable boundary values",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/runtime-contracts.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "caller input object is not mutated; final spent value is read from run.context.budget",
+      "limitations": "Applications must read runtime budget state through the context API rather than expecting mutation of the original object."
+    },
+    {
+      "id": "CORR-002",
+      "title": "channel capacity applies producer backpressure",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/runtime-contracts.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "third send to capacity-two channel blocks until a receive drains one item",
+      "limitations": "This proof covers local channel capacity, not distributed queue semantics."
+    },
+    {
+      "id": "CORR-003",
+      "title": "diagnostics report stable cleanup finding codes",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/runtime-contracts.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "cleanup timeout events produce cleanup_timeout findings",
+      "limitations": "Rich rendering and exporter behavior are separate optional surfaces."
+    },
+    {
+      "id": "CORR-004",
+      "title": "retry policy rejects unsafe attempt counts",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/runtime-contracts.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "unbounded retry counts are rejected at the policy boundary",
+      "limitations": "The cap prevents accidental huge retry policies; application-level retry budgets may be stricter."
+    },
+    {
+      "id": "SEC-001",
+      "title": "worker offload rejects remote and executable URL schemes",
+      "class": "security",
+      "status": "proven",
+      "proof": "tests/evidence/security/worker-boundary.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "data, http, https, and javascript worker inputs are rejected before import",
+      "limitations": "Local file URLs remain application authority; WorkIt does not sandbox arbitrary trusted local code."
+    },
+    {
+      "id": "SEC-002",
+      "title": "worker timeout terminates non-cooperative CPU work",
+      "class": "security",
+      "status": "proven",
+      "proof": "tests/evidence/security/worker-boundary.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "late marker is not written after offload timeout",
+      "limitations": "The hard boundary applies to worker offload; JavaScript cannot preempt a CPU loop on the main thread."
+    },
+    {
+      "id": "REL-001",
+      "title": "public proof artifact exposes release evidence",
+      "class": "release",
+      "status": "proven",
+      "proof": "tests/evidence/release/release-integrity.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "benchmarks/public-proof.json exposes commands, fixtures, guides, and runtime matrix",
+      "limitations": "This verifies repository artifact shape, not an external registry publication event."
+    },
+    {
+      "id": "REL-002",
+      "title": "release policy documents signed tags and worker boundary",
+      "class": "release",
+      "status": "proven",
+      "proof": "tests/evidence/release/release-integrity.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "SECURITY.md documents signed tags and structured-clone worker input",
+      "limitations": "Documentation must remain aligned with the actual release workflow."
+    },
+    {
+      "id": "REL-003",
+      "title": "release provenance gate verifies tag policy",
+      "class": "release",
+      "status": "proven",
+      "proof": "tests/evidence/release/release-integrity.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "release-provenance script contains signed-tag verification logic",
+      "limitations": "A dry-run gate cannot guarantee a future maintainer will sign a tag; it verifies that the repository policy gate exists."
+    },
+    {
+      "id": "PERF-001",
+      "title": "article benchmark suite has expected executable coverage",
+      "class": "performance",
+      "status": "proven",
+      "proof": "tests/evidence/performance/benchmark-contracts.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "benchmarks/articles contains exactly 19 numbered benchmark scripts",
+      "limitations": "Coverage count does not prove a benchmark result; individual benchmark assertions do."
+    },
+    {
+      "id": "PERF-002",
+      "title": "captured article benchmark result is machine-readable",
+      "class": "performance",
+      "status": "proven",
+      "proof": "tests/evidence/performance/benchmark-contracts.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "benchmarks/results/articles.latest.json records 19 passing benches",
+      "limitations": "Timing values are representative for the captured machine and run; semantic assertions are the portable claim."
+    }
+  ]
+}

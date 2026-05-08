@@ -1,0 +1,1037 @@
+{
+  "author": "Admilson B. F. Cossa",
+  "spdxLicense": "Apache-2.0",
+  "benches": [
+    {
+      "file": "01-run-all-vs-promise-all.mjs",
+      "exitCode": 0,
+      "wallMs": 295,
+      "stderr": null,
+      "report": {
+        "bench": "01-run-all-vs-promise-all",
+        "native": {
+          "outerRejectedAt": 34,
+          "A": {
+            "name": "A",
+            "startedAt": 0,
+            "settledAt": 64,
+            "settledAs": "fulfilled",
+            "signalAbortedAt": -1,
+            "deferRanAt": -1
+          },
+          "B": {
+            "name": "B",
+            "startedAt": 0,
+            "settledAt": 33,
+            "settledAs": "rejected",
+            "signalAbortedAt": -1,
+            "deferRanAt": -1
+          },
+          "C": {
+            "name": "C",
+            "startedAt": 0,
+            "settledAt": 110,
+            "settledAs": "fulfilled",
+            "signalAbortedAt": -1,
+            "deferRanAt": -1
+          },
+          "losersStillRanForMs": {
+            "A": 30,
+            "C": 76
+          },
+          "losersWereCancelled": false
+        },
+        "workit": {
+          "outerRejectedAt": 33,
+          "A": {
+            "name": "A",
+            "startedAt": 1,
+            "settledAt": 32,
+            "settledAs": "cancelled",
+            "signalAbortedAt": 32,
+            "deferRanAt": 33
+          },
+          "B": {
+            "name": "B",
+            "startedAt": 1,
+            "settledAt": 32,
+            "settledAs": "rejected",
+            "signalAbortedAt": -1,
+            "deferRanAt": -1
+          },
+          "C": {
+            "name": "C",
+            "startedAt": 1,
+            "settledAt": 32,
+            "settledAs": "cancelled",
+            "signalAbortedAt": 32,
+            "deferRanAt": 33
+          },
+          "losersWereCancelled": true,
+          "cancellationLatencyFromBFailure": {
+            "A": 0,
+            "C": 0
+          },
+          "deferRanBeforeOuterReject": {
+            "A": true,
+            "C": true
+          }
+        }
+      }
+    },
+    {
+      "file": "02-run-race-vs-promise-race.mjs",
+      "exitCode": 0,
+      "wallMs": 220,
+      "stderr": null,
+      "report": {
+        "bench": "02-run-race-vs-promise-race",
+        "native": {
+          "winner": "anthropic",
+          "winnerSettledAt": 13,
+          "probes": {
+            "openai": {
+              "name": "openai",
+              "startedAt": 0,
+              "settledAt": 61,
+              "settledAs": "fulfilled",
+              "signalAbortedAt": -1,
+              "deferRanAt": -1
+            },
+            "anthropic": {
+              "name": "anthropic",
+              "startedAt": 0,
+              "settledAt": 13,
+              "settledAs": "fulfilled",
+              "signalAbortedAt": -1,
+              "deferRanAt": -1
+            },
+            "gemini": {
+              "name": "gemini",
+              "startedAt": 0,
+              "settledAt": 92,
+              "settledAs": "fulfilled",
+              "signalAbortedAt": -1,
+              "deferRanAt": -1
+            }
+          },
+          "losersStillRanForMs": {
+            "openai": 48,
+            "gemini": 79
+          },
+          "losersWereCancelled": false
+        },
+        "workit": {
+          "winner": "anthropic",
+          "winnerSettledAt": 17,
+          "probes": {
+            "openai": {
+              "name": "openai",
+              "startedAt": 1,
+              "settledAt": 17,
+              "settledAs": "cancelled",
+              "signalAbortedAt": 17,
+              "deferRanAt": 17,
+              "cancelReasonKind": "race_lost"
+            },
+            "anthropic": {
+              "name": "anthropic",
+              "startedAt": 2,
+              "settledAt": 16,
+              "settledAs": "fulfilled",
+              "signalAbortedAt": -1,
+              "deferRanAt": 17
+            },
+            "gemini": {
+              "name": "gemini",
+              "startedAt": 2,
+              "settledAt": 17,
+              "settledAs": "cancelled",
+              "signalAbortedAt": 17,
+              "deferRanAt": 17,
+              "cancelReasonKind": "race_lost"
+            }
+          },
+          "losersWereCancelled": true,
+          "cancelReasonKindForLosers": {
+            "openai": "race_lost",
+            "gemini": "race_lost"
+          }
+        }
+      }
+    },
+    {
+      "file": "03-run-any-vs-promise-any.mjs",
+      "exitCode": 0,
+      "wallMs": 342,
+      "stderr": null,
+      "report": {
+        "bench": "03-run-any-vs-promise-any",
+        "native": {
+          "winner": "B",
+          "winnerSettledAt": 57,
+          "A": {
+            "name": "A",
+            "startedAt": 0,
+            "settledAt": 41,
+            "settledAs": "rejected",
+            "signalAbortedAt": -1,
+            "deferRanAt": -1
+          },
+          "B": {
+            "name": "B",
+            "startedAt": 0,
+            "settledAt": 57,
+            "settledAs": "fulfilled",
+            "signalAbortedAt": -1,
+            "deferRanAt": -1
+          },
+          "C": {
+            "name": "C",
+            "startedAt": 0,
+            "settledAt": 103,
+            "settledAs": "fulfilled",
+            "signalAbortedAt": -1,
+            "deferRanAt": -1
+          },
+          "cStillRanForMs": 46,
+          "losersWereCancelled": false
+        },
+        "workit": {
+          "winner": "B",
+          "winnerSettledAt": 63,
+          "A": {
+            "name": "A",
+            "startedAt": 1,
+            "settledAt": 32,
+            "settledAs": "rejected",
+            "signalAbortedAt": 63,
+            "deferRanAt": 32
+          },
+          "B": {
+            "name": "B",
+            "startedAt": 1,
+            "settledAt": 63,
+            "settledAs": "fulfilled",
+            "signalAbortedAt": -1,
+            "deferRanAt": 63
+          },
+          "C": {
+            "name": "C",
+            "startedAt": 1,
+            "settledAt": 63,
+            "settledAs": "cancelled",
+            "signalAbortedAt": 63,
+            "deferRanAt": 63,
+            "cancelReasonKind": "race_lost"
+          },
+          "cWasCancelled": true,
+          "cancelLatencyForC": 0,
+          "deferRanForC": true
+        }
+      }
+    },
+    {
+      "file": "04-pool-vs-semaphore.mjs",
+      "exitCode": 0,
+      "wallMs": 417,
+      "stderr": null,
+      "report": {
+        "bench": "04-pool-vs-semaphore",
+        "native": {
+          "outerRejectedAt": 24,
+          "started": 10,
+          "fulfilledAfterRejection": 9,
+          "cancelled": 0,
+          "longestPostRejectionRunMs": 293,
+          "probes": [
+            {
+              "name": "item-0",
+              "startedAt": 0,
+              "settledAt": 101,
+              "settledAs": "fulfilled",
+              "signalAbortedAt": -1,
+              "deferRanAt": -1
+            },
+            {
+              "name": "item-1",
+              "startedAt": 0,
+              "settledAt": 101,
+              "settledAs": "fulfilled",
+              "signalAbortedAt": -1,
+              "deferRanAt": -1
+            },
+            {
+              "name": "item-2",
+              "startedAt": 0,
+              "settledAt": 101,
+              "settledAs": "fulfilled",
+              "signalAbortedAt": -1,
+              "deferRanAt": -1
+            },
+            {
+              "name": "item-3",
+              "startedAt": 0,
+              "settledAt": 24,
+              "settledAs": "rejected",
+              "signalAbortedAt": -1,
+              "deferRanAt": -1
+            },
+            {
+              "name": "item-4",
+              "startedAt": 24,
+              "settledAt": 132,
+              "settledAs": "fulfilled",
+              "signalAbortedAt": -1,
+              "deferRanAt": -1
+            },
+            {
+              "name": "item-5",
+              "startedAt": 101,
+              "settledAt": 209,
+              "settledAs": "fulfilled",
+              "signalAbortedAt": -1,
+              "deferRanAt": -1
+            },
+            {
+              "name": "item-6",
+              "startedAt": 101,
+              "settledAt": 209,
+              "settledAs": "fulfilled",
+              "signalAbortedAt": -1,
+              "deferRanAt": -1
+            },
+            {
+              "name": "item-7",
+              "startedAt": 101,
+              "settledAt": 209,
+              "settledAs": "fulfilled",
+              "signalAbortedAt": -1,
+              "deferRanAt": -1
+            },
+            {
+              "name": "item-8",
+              "startedAt": 132,
+              "settledAt": 240,
+              "settledAs": "fulfilled",
+              "signalAbortedAt": -1,
+              "deferRanAt": -1
+            },
+            {
+              "name": "item-9",
+              "startedAt": 209,
+              "settledAt": 317,
+              "settledAs": "fulfilled",
+              "signalAbortedAt": -1,
+              "deferRanAt": -1
+            }
+          ]
+        },
+        "workit": {
+          "outerRejectedAt": 32,
+          "started": 4,
+          "fulfilledAfterRejection": 0,
+          "cancelled": 3,
+          "notStarted": 6,
+          "cancelReasonKindsForCancelled": [
+            "sibling_failed"
+          ],
+          "probes": [
+            {
+              "name": "item-0",
+              "startedAt": 1,
+              "settledAt": 32,
+              "settledAs": "cancelled",
+              "signalAbortedAt": 32,
+              "deferRanAt": 32,
+              "cancelReasonKind": "sibling_failed"
+            },
+            {
+              "name": "item-1",
+              "startedAt": 1,
+              "settledAt": 32,
+              "settledAs": "cancelled",
+              "signalAbortedAt": 32,
+              "deferRanAt": 32,
+              "cancelReasonKind": "sibling_failed"
+            },
+            {
+              "name": "item-2",
+              "startedAt": 1,
+              "settledAt": 32,
+              "settledAs": "cancelled",
+              "signalAbortedAt": 32,
+              "deferRanAt": 32,
+              "cancelReasonKind": "sibling_failed"
+            },
+            {
+              "name": "item-3",
+              "startedAt": 1,
+              "settledAt": 31,
+              "settledAs": "rejected",
+              "signalAbortedAt": 32,
+              "deferRanAt": 32
+            },
+            {
+              "name": "item-4",
+              "startedAt": -1,
+              "settledAt": -1,
+              "settledAs": "pending",
+              "signalAbortedAt": -1,
+              "deferRanAt": -1
+            },
+            {
+              "name": "item-5",
+              "startedAt": -1,
+              "settledAt": -1,
+              "settledAs": "pending",
+              "signalAbortedAt": -1,
+              "deferRanAt": -1
+            },
+            {
+              "name": "item-6",
+              "startedAt": -1,
+              "settledAt": -1,
+              "settledAs": "pending",
+              "signalAbortedAt": -1,
+              "deferRanAt": -1
+            },
+            {
+              "name": "item-7",
+              "startedAt": -1,
+              "settledAt": -1,
+              "settledAs": "pending",
+              "signalAbortedAt": -1,
+              "deferRanAt": -1
+            },
+            {
+              "name": "item-8",
+              "startedAt": -1,
+              "settledAt": -1,
+              "settledAs": "pending",
+              "signalAbortedAt": -1,
+              "deferRanAt": -1
+            },
+            {
+              "name": "item-9",
+              "startedAt": -1,
+              "settledAt": -1,
+              "settledAs": "pending",
+              "signalAbortedAt": -1,
+              "deferRanAt": -1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "file": "05-retry-on-cancel.mjs",
+      "exitCode": 0,
+      "wallMs": 824,
+      "stderr": null,
+      "report": {
+        "bench": "05-retry-on-cancel",
+        "native": {
+          "cancelRequestedAt": 65,
+          "outerSettledAt": 687,
+          "cancelLatencyMs": 622,
+          "attemptsAfterCancel": 7,
+          "settledAs": "rejected",
+          "signalAwareSleep": false
+        },
+        "workit": {
+          "cancelRequestedAt": 63,
+          "outerSettledAt": 64,
+          "cancelLatencyMs": 1,
+          "attemptsAfterCancel": 0,
+          "settledAs": "cancelled",
+          "cancelReasonKind": "manual",
+          "signalAwareSleep": true
+        }
+      }
+    },
+    {
+      "file": "06-hedge-tied-requests.mjs",
+      "exitCode": 0,
+      "wallMs": 310,
+      "stderr": null,
+      "report": {
+        "bench": "06-hedge-tied-requests",
+        "slow": {
+          "scenario": "slow",
+          "bodyMs": 200,
+          "hedgeOpts": {
+            "after": "50ms",
+            "max": 3
+          },
+          "winner": 1,
+          "attemptsFired": 3,
+          "fired": [
+            {
+              "id": 1,
+              "t": 1
+            },
+            {
+              "id": 2,
+              "t": 61
+            },
+            {
+              "id": 3,
+              "t": 108
+            }
+          ],
+          "settled": [
+            {
+              "id": 1,
+              "kind": "fulfilled",
+              "t": 216
+            },
+            {
+              "id": 2,
+              "kind": "cancelled",
+              "t": 216,
+              "reason": "race_lost"
+            },
+            {
+              "id": 3,
+              "kind": "cancelled",
+              "t": 216,
+              "reason": "race_lost"
+            }
+          ],
+          "losersCancelled": 2
+        },
+        "fast": {
+          "scenario": "fast",
+          "bodyMs": 30,
+          "hedgeOpts": {
+            "after": "50ms",
+            "max": 3
+          },
+          "winner": 1,
+          "attemptsFired": 1,
+          "fired": [
+            {
+              "id": 1,
+              "t": 1
+            }
+          ],
+          "settled": [
+            {
+              "id": 1,
+              "kind": "fulfilled",
+              "t": 31
+            }
+          ],
+          "losersCancelled": 0
+        }
+      }
+    },
+    {
+      "file": "07-worker-hard-kill.mjs",
+      "exitCode": 0,
+      "wallMs": 6097,
+      "stderr": null,
+      "report": {
+        "bench": "07-worker-hard-kill",
+        "native": {
+          "abortRequestedAt": -1,
+          "abortVisibleAt": -1,
+          "completedAt": 5002,
+          "bodyCompleted": true,
+          "elapsedMs": 5000,
+          "markerExists": true
+        },
+        "workit": {
+          "timeoutMs": 200,
+          "rejectedAt": 211,
+          "rejectionClass": "TimeoutError",
+          "markerExistsAfterRejection": false,
+          "markerExistsAfterGrace": false
+        }
+      }
+    },
+    {
+      "file": "08-uncancellable-shield.mjs",
+      "exitCode": 0,
+      "wallMs": 390,
+      "stderr": null,
+      "report": {
+        "bench": "08-uncancellable-shield",
+        "A_parent_cancel_during_body": {
+          "parentCancelRequestedAt": 44,
+          "bodyStartedAt": 2,
+          "bodyCompletedAt": 122,
+          "bodyObservedAbort": false,
+          "outerSettledAt": 123,
+          "outerSettledAs": "cancelled",
+          "outerCancelReasonKind": "manual",
+          "bodyOutlivedCancelByMs": 78
+        },
+        "B_shield_timeout": {
+          "bodyStartedAt": 0,
+          "bodyObservedAbort": true,
+          "bodyAbortReasonClass": "TimeoutError",
+          "outerSettledAt": 108,
+          "outerSettledClass": "TimeoutError"
+        },
+        "C_nested_shields": {
+          "parentCancelRequestedAt": 31,
+          "innerCompletedAt": 93,
+          "outerInnerCompletedAt": 93,
+          "outerSettledAt": 93,
+          "outerCancelReasonKind": "manual"
+        }
+      }
+    },
+    {
+      "file": "09-stream-1b-lazy.mjs",
+      "exitCode": 0,
+      "wallMs": 70,
+      "stderr": null,
+      "report": {
+        "bench": "09-stream-1b-lazy",
+        "naive": {
+          "settledAt": 3,
+          "consumed": 25,
+          "produced": 281,
+          "prefetch": 256,
+          "maxActive": 1,
+          "activeAfter": 0
+        },
+        "workit": {
+          "settledAt": 3,
+          "consumed": 25,
+          "produced": 40,
+          "concurrency": 16,
+          "maxActive": 1,
+          "activeAfter": 0,
+          "producedBound": 41
+        }
+      }
+    },
+    {
+      "file": "10-stream-slow-consumer.mjs",
+      "exitCode": 0,
+      "wallMs": 3195,
+      "stderr": null,
+      "report": {
+        "bench": "10-stream-slow-consumer",
+        "workit": {
+          "sourceSize": 5000,
+          "take": 200,
+          "concurrency": 16,
+          "consumeDelayMs": 5,
+          "consumed": 200,
+          "produced": 215,
+          "producedAtFirstConsume": 16,
+          "producedAtLastConsume": 215,
+          "maxActive": 1,
+          "activeAfterBreak": 0,
+          "elapsedMs": 3126,
+          "producerOvershoot": 15,
+          "producerOvershootBound": 17
+        }
+      }
+    },
+    {
+      "file": "11-channel-contract.mjs",
+      "exitCode": 0,
+      "wallMs": 78,
+      "stderr": null,
+      "report": {
+        "bench": "11-channel-contract",
+        "A_capacity_backpressure": {
+          "capacity": 2,
+          "sizeAfterTwoSends": 2,
+          "thirdSendStartedAt": 0,
+          "thirdSendCompletedAt": 0,
+          "thirdSettledBeforeReceive": false,
+          "firstReceived": {
+            "done": false,
+            "value": "a"
+          },
+          "thirdSendUnblockedWithinMs": 0
+        },
+        "B_close_drains": {
+          "collected": [
+            1,
+            2,
+            3
+          ],
+          "iterationEndedCleanly": true
+        },
+        "C_close_rejects_pending": {
+          "rejectedClass": "ChannelClosedError",
+          "rejectionReason": {
+            "tag": "shutdown"
+          }
+        },
+        "D_signal_cancels_receive": {
+          "rejectedClass": "Error"
+        },
+        "E_capacity_validation": {
+          "rejected": [
+            {
+              "bad": 0,
+              "error": "RangeError"
+            },
+            {
+              "bad": -1,
+              "error": "RangeError"
+            },
+            {
+              "bad": 0.5,
+              "error": "RangeError"
+            },
+            {
+              "bad": null,
+              "error": "RangeError"
+            },
+            {
+              "bad": null,
+              "error": "RangeError"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "file": "12-bracket-vs-try-finally.mjs",
+      "exitCode": 0,
+      "wallMs": 531,
+      "stderr": null,
+      "report": {
+        "bench": "12-bracket-vs-try-finally",
+        "A_success": {
+          "order": [
+            "acquire",
+            "use",
+            "release:RES-A"
+          ],
+          "out": "RES-A:used",
+          "releaseCount": 1
+        },
+        "B_use_throws": {
+          "order": [
+            "acquire",
+            "use",
+            "release:RES-B"
+          ],
+          "caughtMessage": "use-failed",
+          "releaseRanWithResource": true
+        },
+        "C_acquire_throws": {
+          "order": [
+            "acquire"
+          ],
+          "caughtMessage": "acquire-failed",
+          "releaseRan": false
+        },
+        "D_parent_cancel_during_use": {
+          "order": [
+            "acquire",
+            "use",
+            "release:RES-D"
+          ],
+          "releasedAt": 40,
+          "outerSettledClass": "CancellationError",
+          "outerCancelReasonKind": "manual"
+        },
+        "E_hanging_release": {
+          "native": {
+            "outerSettledAt": 265,
+            "outcome": "still_pending_after_250ms",
+            "releaseCompleted": false
+          },
+          "workit": {
+            "cleanupTimeoutMs": 150,
+            "bracketSettledAt": 156,
+            "bracketSettledClass": "fulfilled",
+            "cleanupEventsObserved": [
+              "task:cleanup_timeout"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "file": "13-budget-atomicity-and-cancel.mjs",
+      "exitCode": 0,
+      "wallMs": 69,
+      "stderr": null,
+      "report": {
+        "bench": "13-budget-atomicity-and-cancel",
+        "A_atomic_concurrent_charges": {
+          "siblings": 100,
+          "perCharge": 0.01,
+          "finalSpent": 1,
+          "expectedSpent": 1,
+          "callerObjectSpentAfter": 0
+        },
+        "B_owning_scope_cancel": {
+          "chargeAttemptedAtDepth": 5,
+          "outerSettledAt": 2,
+          "outerCancelKind": "budget"
+        },
+        "C_caller_immutability": {
+          "callerSpentAfter": 0,
+          "liveSpentAfter": 0.5,
+          "callerLimitAfter": 1
+        }
+      }
+    },
+    {
+      "file": "14-context-overlay-perf.mjs",
+      "exitCode": 0,
+      "wallMs": 676,
+      "stderr": null,
+      "report": {
+        "bench": "14-context-overlay-perf",
+        "naive": {
+          "keys": 5000,
+          "withCalls": 100,
+          "elapsedMs": 31.253,
+          "perCallMs": 0.3125,
+          "deepestLookup": "override-99"
+        },
+        "workit": {
+          "keys": 5000,
+          "withCalls": 100,
+          "elapsedMs": 0.011,
+          "perCallMs": 0.0001,
+          "deepestLookup": "override-99",
+          "speedupVsNaive": 2741
+        }
+      }
+    },
+    {
+      "file": "15-core-zero-network.mjs",
+      "exitCode": 0,
+      "wallMs": 57,
+      "stderr": null,
+      "report": {
+        "bench": "15-core-zero-network",
+        "filesScanned": 14,
+        "hits": [],
+        "excluded": [
+          "observability",
+          "otel",
+          "worker"
+        ],
+        "passed": true
+      }
+    },
+    {
+      "file": "16-sampling-and-aggregation.mjs",
+      "exitCode": 0,
+      "wallMs": 199,
+      "stderr": null,
+      "report": {
+        "bench": "16-sampling-and-aggregation",
+        "unsampled_per_task": {
+          "taskEvents": 1300
+        },
+        "errors_and_slow_per_task": {
+          "taskEvents": 36
+        },
+        "reduction_factor": 36.11,
+        "workload": {
+          "rootScopes": 100,
+          "tasksPerRoot": 5,
+          "slowRate": 0.05,
+          "errorRate": 0.02,
+          "slowMs": 60
+        }
+      }
+    },
+    {
+      "file": "17-cardinality-safe-metrics.mjs",
+      "exitCode": 0,
+      "wallMs": 50,
+      "stderr": null,
+      "report": {
+        "bench": "17-cardinality-safe-metrics",
+        "emitted": [
+          {
+            "name": "task.duration",
+            "value": 12,
+            "labels": {
+              "task.kind": "io",
+              "outcome": "succeeded"
+            }
+          },
+          {
+            "name": "task.duration",
+            "value": 35,
+            "labels": {
+              "task.kind": "llm",
+              "outcome": "failed"
+            }
+          },
+          {
+            "name": "task.duration",
+            "value": 21,
+            "labels": {
+              "task.kind": "evil"
+            }
+          }
+        ],
+        "rejected": [
+          {
+            "name": "task.duration",
+            "labels": {
+              "task.kind": "tool",
+              "task.id": "uuid-abc"
+            },
+            "errorClass": "Error",
+            "errorMessage": "Metric label \"task.id\" is not in the allowed label set"
+          },
+          {
+            "name": "task.duration",
+            "labels": {
+              "task.kind": "io",
+              "error.message": "EHOSTUNREACH at 10.0.0.42 retrying"
+            },
+            "errorClass": "Error",
+            "errorMessage": "Metric label \"error.message\" is not in the allowed label set"
+          }
+        ],
+        "summary": {
+          "emittedCount": 3,
+          "rejectedCount": 2,
+          "emittedKinds": [
+            "io",
+            "llm",
+            "evil"
+          ]
+        }
+      }
+    },
+    {
+      "file": "18-diagnostics-finding-codes.mjs",
+      "exitCode": 0,
+      "wallMs": 50,
+      "stderr": null,
+      "report": {
+        "bench": "18-diagnostics-finding-codes",
+        "scenarios": {
+          "healthy": {
+            "status": "ok",
+            "findingCodes": []
+          },
+          "old_pending_task": {
+            "status": "needs_attention",
+            "findingCodes": [
+              "old_pending_task"
+            ]
+          },
+          "scope_cancelling": {
+            "status": "needs_attention",
+            "findingCodes": [
+              "scope_cancelling"
+            ]
+          },
+          "pending_child_scope": {
+            "status": "needs_attention",
+            "findingCodes": [
+              "pending_child_scope",
+              "old_pending_task"
+            ]
+          },
+          "cleanup_timeout": {
+            "status": "needs_attention",
+            "findingCodes": [
+              "cleanup_timeout"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "file": "19-agent-scope.mjs",
+      "exitCode": 0,
+      "wallMs": 879,
+      "stderr": null,
+      "report": {
+        "bench": "19-agent-scope",
+        "A_tool_events": {
+          "finalResult": 9,
+          "eventCount": 4,
+          "eventTypesInOrder": [
+            "agent:started",
+            "agent:tool_started",
+            "agent:tool_succeeded",
+            "agent:completed"
+          ],
+          "toolName": "calc",
+          "seqs": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "monotonicAt": true,
+          "sameAgentId": true
+        },
+        "B_tool_calls_budget": {
+          "class": "BudgetExceededError",
+          "budgetKey": "AgentToolCalls",
+          "limit": 1,
+          "attempted": 1
+        },
+        "C_tokens_budget": {
+          "final": {
+            "spent": 75,
+            "limit": 1000,
+            "unit": "tokens"
+          }
+        },
+        "D_parent_cancel": {
+          "winner": "done",
+          "toolSignalAborted": true,
+          "outerErrorClass": "CancellationError",
+          "cancelReasonKind": "manual",
+          "cancelReasonTag": "user-stop"
+        },
+        "E_replayable_log": {
+          "eventCount": 8,
+          "eventTypes": [
+            "agent:started",
+            "agent:tool_started",
+            "agent:tool_succeeded",
+            "agent:tool_started",
+            "agent:tool_succeeded",
+            "agent:tool_started",
+            "agent:tool_succeeded",
+            "agent:completed"
+          ],
+          "seqs": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "monotonicAt": true,
+          "sameAgentId": true,
+          "toolStartedNames": [
+            "plan",
+            "fetch",
+            "summarize"
+          ],
+          "toolSucceededNames": [
+            "plan",
+            "fetch",
+            "summarize"
+          ]
+        }
+      }
+    }
+  ],
+  "passed": 19,
+  "failed": 0
+}

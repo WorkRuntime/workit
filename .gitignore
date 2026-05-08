@@ -28,6 +28,8 @@ dist-cjs/
 build/
 out/
 lib/
+!benchmarks/articles/lib/
+!benchmarks/articles/lib/**
 coverage/
 .nyc_output/
 mnt/
