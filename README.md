@@ -19,6 +19,7 @@ clean up together.
 [![Runtime deps](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)](package.json)
 [![Verification](https://img.shields.io/badge/verify-green-brightgreen)](#verified-evidence)
 [![Article benches](https://img.shields.io/badge/article%20benches-19%2F19-brightgreen)](benchmarks/articles/)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12807/badge)](https://www.bestpractices.dev/projects/12807)
 
 ## Install
 
