@@ -63,17 +63,22 @@ npm pack --dry-run --json
 ```
 
 The provenance workflow is defined in `.github/workflows/release-provenance.yml`.
-Registry dry-runs and real publication are intentionally blocked while
-`package.json` has `private: true`. Final release requires a separate scoped
-commit that proves `@workit` npm scope ownership, flips `private` to `false`,
-and runs:
+Registry dry-runs and real publication must be triggered only from a signed
+release tag after the scoped release commit is clean and verified. The publish
+step runs:
 
 ```sh
 npm publish --provenance --access public --dry-run
 ```
 
-The package must not publish source maps, local docs, tests, secrets, temporary
-files, debug output, or private agent instructions.
+for dry runs, and:
+
+```sh
+npm publish --provenance --access public
+```
+
+for an approved release. The package must not publish source maps, local docs,
+tests, secrets, temporary files, debug output, or private agent instructions.
 
 Release tags must be signed. The release operator must create the version tag
 only after the scoped release commit is clean and verified:
@@ -84,6 +89,14 @@ git tag -v vX.Y.Z
 ```
 
 Unsigned release tags are not valid release evidence.
+
+## OpenSSF Best Practices
+
+The OpenSSF Best Practices badge is tracked as a public supply-chain hygiene
+process, not as a marketing badge. The project must not claim a passing badge
+until the external OpenSSF checklist is completed and the project entry exists.
+
+The process is documented in `OPENSSF-BEST-PRACTICES.md`.
 
 ## Responsible Disclosure Scope
 
