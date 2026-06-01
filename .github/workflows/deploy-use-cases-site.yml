@@ -10,12 +10,18 @@ on:
     paths:
       - ".github/workflows/deploy-use-cases-site.yml"
       - "apps/use-cases-site/**"
+      - "package.json"
+      - "package-lock.json"
+      - "samples/**"
   push:
     branches:
       - main
     paths:
       - ".github/workflows/deploy-use-cases-site.yml"
       - "apps/use-cases-site/**"
+      - "package.json"
+      - "package-lock.json"
+      - "samples/**"
 
 permissions:
   contents: read
@@ -37,7 +43,12 @@ jobs:
         with:
           node-version: "22.x"
           cache: npm
-          cache-dependency-path: apps/use-cases-site/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            apps/use-cases-site/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
 
       - name: Install site dependencies
         run: npm ci
