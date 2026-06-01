@@ -1,6 +1,6 @@
 {
   "name": "@workit/core",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Structured concurrency runtime for TypeScript.",
   "type": "module",
   "private": false,
@@ -99,6 +99,7 @@
     "check:release-policy": "npm run build && node scripts/check-release-provenance.mjs",
     "check:release": "npm run build && node scripts/check-release-provenance.mjs --registry-dry-run",
     "bench:articles": "node benchmarks/articles/run-all.mjs",
+    "bench:articles:repeated": "node benchmarks/articles/run-repeated.mjs",
     "test:evidence": "node tests/evidence/run-all.mjs",
     "test:property": "npm run build && vitest run tests/property",
     "pack:dry": "npm pack --dry-run --json",

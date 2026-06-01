@@ -40,7 +40,7 @@ interface OpenTelemetryApi {
 
 function createPeerRequire(): NodeJS.Require {
   /* v8 ignore next -- CommonJS branch is validated by check-package-consumer. */
-  return createRequire(typeof __filename === "string" ? __filename : import.meta.url);
+  return createRequire(typeof __filename === "string" && __filename !== "[eval]" ? __filename : import.meta.url);
 }
 
 /** Options used to attach WorkIt events to OpenTelemetry. */

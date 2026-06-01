@@ -8,6 +8,7 @@
   "license": "Apache-2.0",
   "scripts": {
     "bench": "node run-all.mjs",
+    "bench:repeated": "node run-repeated.mjs",
     "bench:run-all": "node 01-run-all-vs-promise-all.mjs",
     "bench:run-race": "node 02-run-race-vs-promise-race.mjs",
     "bench:run-any": "node 03-run-any-vs-promise-any.mjs",
