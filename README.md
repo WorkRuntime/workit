@@ -21,6 +21,9 @@ clean up together.
 [![Article benches](https://img.shields.io/badge/article%20benches-19%2F19-brightgreen)](benchmarks/articles/)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12807/badge)](https://www.bestpractices.dev/projects/12807)
 
+Live examples: <https://workruntime.github.io/workit/>
+npm package: <https://www.npmjs.com/package/@workit/core>
+
 ## Install
 
 ```sh
