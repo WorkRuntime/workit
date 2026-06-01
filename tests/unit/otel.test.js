@@ -7,8 +7,12 @@
 
 import { test } from "vitest";
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import moduleBuiltin from "node:module";
+import { promisify } from "node:util";
 import { attachOpenTelemetry } from "../../dist/otel/index.js";
+
+const execFileAsync = promisify(execFile);
 
 function createScopeHarness() {
   const handlers = new Set();
@@ -250,6 +254,15 @@ test("OpenTelemetry adapter explains the missing optional peer dependency", () =
   } finally {
     moduleBuiltin._load = originalLoad;
   }
+});
+
+test("OpenTelemetry adapter can be imported from node eval", async () => {
+  const { stdout } = await execFileAsync(process.execPath, [
+    "-e",
+    "import('./dist/otel/index.js').then((mod) => console.log(typeof mod.attachOpenTelemetry))",
+  ], { cwd: process.cwd() });
+
+  assert.equal(stdout.trim(), "function");
 });
 
 test("OpenTelemetry adapter preserves non-peer loader errors", () => {
