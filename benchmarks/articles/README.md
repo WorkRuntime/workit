@@ -44,6 +44,8 @@ From the repo root:
 ```sh
 npm run build                            # produces dist/
 node benchmarks/articles/run-all.mjs     # full suite, JSON to stdout
+node benchmarks/articles/run-repeated.mjs --runs 30 \
+  --out benchmarks/results/articles.repeated.json
 node benchmarks/articles/01-run-all-vs-promise-all.mjs  # one bench
 ```
 
@@ -51,6 +53,7 @@ Or from this folder:
 
 ```sh
 npm run bench                            # full suite
+npm run bench:repeated                   # 30 runs per bench, JSON to stdout
 npm run bench:run-all                    # bench 01
 npm run bench:run-race                   # bench 02
 npm run bench:run-any                    # bench 03
@@ -87,6 +90,20 @@ Each individual bench prints one JSON object to stdout with the structure:
 ```
 
 The runner (`run-all.mjs`) wraps every individual report in a `benches[]` array along with `wallMs` and `exitCode`, so a regression is discoverable both by `assert` failure inside the bench and by the runner's exit code.
+
+For publication measurements, `run-repeated.mjs` executes the same benchmark
+files multiple times and keeps both raw runs and numeric path summaries. It is
+the source for median/IQR/min/max figures:
+
+```sh
+node benchmarks/articles/run-repeated.mjs --runs 30 \
+  --out benchmarks/results/articles.repeated.json
+node benchmarks/articles/run-repeated.mjs --runs 5 --filter 02-run-race
+```
+
+The repeated runner still relies on each benchmark's own assertions. Timing
+statistics explain observed distributions; semantic claims remain the invariant
+checks inside each bench.
 
 ## How the baselines stay honest
 
