@@ -8,6 +8,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createRuntimeServer } from "../server/runtime-server.mjs";
+import { runtimeFailureLogLine, runtimeFailureResponse } from "../server/runtime-errors.mjs";
 
 const siteRoot = fileURLToPath(new URL("..", import.meta.url));
 const port = String(46_000 + Math.floor(Math.random() * 1_000));
@@ -30,6 +32,8 @@ server.stderr.on("data", (chunk) => {
 });
 
 try {
+  assertRuntimeFailureContract();
+  await assertRuntimeFailureHttpResponse();
   await waitForHealth();
   await assertVibeCodingRun();
   await assertConversationRun();
@@ -38,6 +42,48 @@ try {
   process.stdout.write("site-runtime-smoke: passed\n");
 } finally {
   server.kill();
+}
+
+function assertRuntimeFailureContract() {
+  const privateError = new Error("private stack detail");
+  const response = runtimeFailureResponse();
+  const logLine = runtimeFailureLogLine(privateError);
+
+  assert.deepEqual(response, {
+    error: "runtime_failed",
+    message: "An internal error occurred.",
+  });
+  assert.equal(JSON.stringify(response).includes(privateError.message), false);
+  assert.equal(logLine.includes(privateError.message), true);
+}
+
+async function assertRuntimeFailureHttpResponse() {
+  const privateError = new Error("private runner detail");
+  let logged = "";
+  const failingServer = createRuntimeServer({
+    runners: {
+      "failing-example": async () => {
+        throw privateError;
+      },
+    },
+    writeRuntimeError(error) {
+      logged += runtimeFailureLogLine(error);
+    },
+  });
+
+  const failingOrigin = await listenOnEphemeralPort(failingServer);
+
+  try {
+    const response = await fetch(`${failingOrigin}/api/examples/failing-example/run`);
+    const body = await response.json();
+
+    assert.equal(response.status, 500);
+    assert.deepEqual(body, runtimeFailureResponse());
+    assert.equal(JSON.stringify(body).includes(privateError.message), false);
+    assert.equal(logged.includes(privateError.message), true);
+  } finally {
+    await closeServer(failingServer);
+  }
 }
 
 async function assertVibeCodingRun() {
@@ -145,5 +191,35 @@ function assertNoLines(lines, denied) {
 function delay(ms) {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
+  });
+}
+
+function listenOnEphemeralPort(server) {
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      const address = server.address();
+
+      if (!address || typeof address === "string") {
+        reject(new Error("Runtime smoke server did not bind to a TCP port."));
+        return;
+      }
+
+      resolve(`http://127.0.0.1:${address.port}`);
+    });
+  });
+}
+
+function closeServer(server) {
+  return new Promise((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
   });
 }

@@ -6,26 +6,38 @@
  */
 
 import { createServer } from "node:http";
+import { pathToFileURL } from "node:url";
+import { runtimeFailureLogLine, runtimeFailureResponse } from "./runtime-errors.mjs";
 import { runners } from "./runners.mjs";
 
 const PORT = Number.parseInt(process.env.WORKIT_SITE_RUNTIME_PORT ?? "4176", 10);
 
-const server = createServer(async (request, response) => {
-  try {
-    await route(request, response);
-  } catch (error) {
-    sendJson(response, 500, {
-      error: "runtime_failed",
-      message: error instanceof Error ? error.message : String(error),
-    });
-  }
-});
+/** Create the local runtime API server used by the WorkIt examples site. */
+export function createRuntimeServer(options = {}) {
+  const runtimeRunners = options.runners ?? runners;
+  const writeRuntimeError = options.writeRuntimeError ?? ((error) => {
+    process.stderr.write(runtimeFailureLogLine(error));
+  });
 
-server.listen(PORT, "127.0.0.1", () => {
-  process.stdout.write(`workit-site-runtime listening on http://127.0.0.1:${PORT}\n`);
-});
+  return createServer(async (request, response) => {
+    try {
+      await route(request, response, runtimeRunners);
+    } catch (error) {
+      writeRuntimeError(error);
+      sendJson(response, 500, runtimeFailureResponse());
+    }
+  });
+}
 
-async function route(request, response) {
+if (isMainModule()) {
+  const server = createRuntimeServer();
+
+  server.listen(PORT, "127.0.0.1", () => {
+    process.stdout.write(`workit-site-runtime listening on http://127.0.0.1:${PORT}\n`);
+  });
+}
+
+async function route(request, response, runtimeRunners) {
   if (!request.url) {
     sendJson(response, 400, { error: "missing_url" });
     return;
@@ -57,7 +69,7 @@ async function route(request, response) {
   }
 
   const id = decodeURIComponent(match[1]);
-  const runner = runners[id];
+  const runner = runtimeRunners[id];
 
   if (!runner) {
     sendJson(response, 404, { error: "unknown_example", id });
@@ -69,6 +81,12 @@ async function route(request, response) {
     source: "live-node",
     ...result,
   });
+}
+
+function isMainModule() {
+  return process.argv[1]
+    ? import.meta.url === pathToFileURL(process.argv[1]).href
+    : false;
 }
 
 function sendJson(response, status, value) {
