@@ -169,13 +169,13 @@ export const useCases: UseCase[] = [
     evidence: [
       {
         claim: "Parent cancellation reaches in-flight tool work.",
-        path: "samples/agent-tree-cancel.sample.js",
+        path: "packages/core/samples/agent-tree-cancel.sample.js",
         invariant: "search, browser, and code tasks all cancel with the same reason.",
         status: "tracked",
       },
       {
         claim: "Cleanup runs after cancellation.",
-        path: "tests/unit/sanity.test.js",
+        path: "packages/core/tests/unit/sanity.test.js",
         invariant: "deferred cleanup executes for cancelled scope work.",
         status: "tracked",
       },
@@ -282,13 +282,13 @@ export const useCases: UseCase[] = [
     evidence: [
       {
         claim: "Streaming work can be scoped with the same owner as tool work.",
-        path: "samples/conversation-agent.sample.js",
+        path: "packages/core/samples/conversation-agent.sample.js",
         invariant: "stream, tool, memory, and cleanup work stay under one runtime owner.",
         status: "tracked",
       },
       {
         claim: "Agent trees expose cancellable child lifecycles.",
-        path: "samples/agent-tree-cancel.sample.js",
+        path: "packages/core/samples/agent-tree-cancel.sample.js",
         invariant: "in-flight child tasks receive the parent cancellation reason.",
         status: "tracked",
       },
@@ -379,7 +379,7 @@ export const useCases: UseCase[] = [
     evidence: [
       {
         claim: "Provider race cancels losing requests.",
-        path: "samples/race-providers.sample.js",
+        path: "packages/core/samples/race-providers.sample.js",
         invariant: "anthropic wins and openai/gemini are cancelled.",
         status: "tracked",
       },
@@ -486,7 +486,7 @@ export const useCases: UseCase[] = [
     evidence: [
       {
         claim: "RAG budget and background audit work remain attached to the request owner.",
-        path: "samples/budget-rag.sample.js",
+        path: "packages/core/samples/budget-rag.sample.js",
         invariant: "answer is produced, budget spent is 8, audit record is written.",
         status: "tracked",
       },

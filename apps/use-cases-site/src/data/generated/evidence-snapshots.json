@@ -3,7 +3,7 @@
   "generatedBy": "apps/use-cases-site/scripts/generate-evidence.mjs",
   "samples": {
     "agent-tree-cancel": {
-      "path": "samples/agent-tree-cancel.sample.js",
+      "path": "packages/core/samples/agent-tree-cancel.sample.js",
       "result": {
         "sample": "agent-tree-cancel",
         "cancelled": [
@@ -24,7 +24,7 @@
       "source": "/**\n * Agent tree cancellation sample.\n *\n * @author Admilson B. F. Cossa\n * SPDX-License-Identifier: Apache-2.0\n *\n * Demonstrates parent-scope cancellation across multiple in-flight tool tasks.\n * Each task receives the same typed cancellation reason and runs cleanup.\n */\n\nimport assert from \"node:assert/strict\";\nimport { CancellationError, run } from \"../dist/index.js\";\n\nconst cancelled = [];\nconst cleanups = [];\n\nawait run.scope(async (scope) => {\n  const tools = [\"search\", \"browser\", \"code\"];\n  const handles = tools.map((name) => scope.spawn(async (ctx) => {\n    ctx.defer(() => cleanups.push(name));\n    try {\n      await sleep(1_000, ctx.signal);\n      return name;\n    } catch (err) {\n      if (err instanceof CancellationError) {\n        cancelled.push({ name, reason: err.reason });\n      }\n      throw err;\n    }\n  }, { name: `tool.${name}`, kind: \"tool\" }));\n\n  await sleep(5, scope.signal);\n  scope.cancel({ kind: \"manual\", tag: \"user_stopped_agent\" });\n  await Promise.allSettled(handles);\n}, { name: \"agent.tree\" });\n\nassert.deepEqual(cancelled.map((item) => item.name).sort(), [\"browser\", \"code\", \"search\"]);\nassert.deepEqual(cleanups.sort(), [\"browser\", \"code\", \"search\"]);\nassert.ok(cancelled.every((item) => item.reason.tag === \"user_stopped_agent\"));\n\nprocess.stdout.write(`${JSON.stringify({\n  sample: \"agent-tree-cancel\",\n  cancelled: cancelled.map((item) => item.name).sort(),\n  reason: cancelled[0]?.reason,\n  cleanups: cleanups.sort(),\n})}\\n`);\n\nfunction sleep(ms, signal) {\n  return new Promise((resolve, reject) => {\n    const timer = setTimeout(resolve, ms);\n    signal.addEventListener(\"abort\", () => {\n      clearTimeout(timer);\n      reject(signal.reason);\n    }, { once: true });\n  });\n}\n"
     },
     "conversation-agent": {
-      "path": "samples/conversation-agent.sample.js",
+      "path": "packages/core/samples/conversation-agent.sample.js",
       "result": {
         "sample": "conversation-agent",
         "tokens": [
@@ -47,7 +47,7 @@
       "source": "/**\n * Conversation agent sample.\n *\n * @author Admilson B. F. Cossa\n * SPDX-License-Identifier: Apache-2.0\n *\n * Runs a chat turn with streaming, tool calls, memory write, and cleanup under\n * one WorkIt scope.\n */\n\nimport assert from \"node:assert/strict\";\nimport { run } from \"../dist/index.js\";\n\nconst tokens = [];\nconst cleanups = [];\nlet memoryWrites = 0;\n\nconst toolResults = await run.scope(async (scope) => {\n  const stream = scope.spawn(async (ctx) => {\n    ctx.defer(() => cleanups.push(\"stream\"));\n    for (const token of [\"plan\", \"search\", \"edit\", \"reply\"]) {\n      await sleep(1, ctx.signal);\n      tokens.push(token);\n    }\n    return tokens.length;\n  }, { name: \"llm.stream\", kind: \"llm\" });\n\n  const search = scope.spawn(async (ctx) => {\n    ctx.defer(() => cleanups.push(\"tools\"));\n    await sleep(2, ctx.signal);\n    return \"search:2\";\n  }, { name: \"tool.search\", kind: \"tool\" });\n\n  const repo = scope.spawn(async (ctx) => {\n    await sleep(3, ctx.signal);\n    return \"repo:clean\";\n  }, { name: \"tool.repo\", kind: \"tool\" });\n\n  const memory = scope.spawn(async (ctx) => {\n    ctx.defer(() => cleanups.push(\"memory\"));\n    await sleep(4, ctx.signal);\n    memoryWrites++;\n    return memoryWrites;\n  }, { name: \"memory.write\", kind: \"io\" });\n\n  const results = await Promise.all([search, repo]);\n  await Promise.all([stream, memory]);\n  return results;\n}, { name: \"chat.turn\" });\n\nassert.deepEqual(tokens, [\"plan\", \"search\", \"edit\", \"reply\"]);\nassert.deepEqual(toolResults, [\"search:2\", \"repo:clean\"]);\nassert.equal(memoryWrites, 1);\nassert.deepEqual(cleanups.sort(), [\"memory\", \"stream\", \"tools\"]);\n\nprocess.stdout.write(`${JSON.stringify({\n  sample: \"conversation-agent\",\n  tokens,\n  toolResults,\n  memoryWrites,\n  cleanups: cleanups.sort(),\n})}\\n`);\n\nfunction sleep(ms, signal) {\n  return new Promise((resolve, reject) => {\n    const timer = setTimeout(resolve, ms);\n    signal.addEventListener(\"abort\", () => {\n      clearTimeout(timer);\n      reject(signal.reason);\n    }, { once: true });\n  });\n}\n"
     },
     "race-providers": {
-      "path": "samples/race-providers.sample.js",
+      "path": "packages/core/samples/race-providers.sample.js",
       "result": {
         "sample": "race-providers",
         "winner": "anthropic",
@@ -59,7 +59,7 @@
       "source": "/**\n * Provider race sample.\n *\n * @author Admilson B. F. Cossa\n * SPDX-License-Identifier: Apache-2.0\n *\n * Races three provider calls and cancels the losing requests through the shared\n * task signal.\n */\n\nimport assert from \"node:assert/strict\";\nimport { CancellationError, run } from \"../dist/index.js\";\n\nconst cancelledProviders = [];\n\nconst winner = await run.race([\n  provider(\"openai\", 50),\n  provider(\"anthropic\", 10),\n  provider(\"gemini\", 80),\n]);\n\nassert.equal(winner.provider, \"anthropic\");\nassert.deepEqual(cancelledProviders.sort(), [\"gemini\", \"openai\"]);\n\nprocess.stdout.write(`${JSON.stringify({\n  sample: \"race-providers\",\n  winner: winner.provider,\n  cancelledProviders: cancelledProviders.sort(),\n})}\\n`);\n\nfunction provider(name, latencyMs) {\n  return async (ctx) => {\n    try {\n      await sleep(latencyMs, ctx.signal);\n      return { provider: name, text: `${name}:ok` };\n    } catch (err) {\n      if (err instanceof CancellationError) cancelledProviders.push(name);\n      throw err;\n    }\n  };\n}\n\nfunction sleep(ms, signal) {\n  return new Promise((resolve, reject) => {\n    const timer = setTimeout(resolve, ms);\n    signal.addEventListener(\"abort\", () => {\n      clearTimeout(timer);\n      reject(signal.reason);\n    }, { once: true });\n  });\n}\n"
     },
     "budget-rag": {
-      "path": "samples/budget-rag.sample.js",
+      "path": "packages/core/samples/budget-rag.sample.js",
       "result": {
         "sample": "budget-rag",
         "answer": "answer:keyword:structured concurrency",

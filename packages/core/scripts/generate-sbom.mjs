@@ -14,8 +14,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 const packageJson = JSON.parse(await readFile("package.json", "utf8"));
-const packageLock = JSON.parse(await readFile("package-lock.json", "utf8"));
-const rootLock = packageLock.packages?.[""] ?? {};
+const packageLock = JSON.parse(await readFile("../../package-lock.json", "utf8"));
+const packageLockEntry = packageLock.packages?.["packages/core"] ?? {};
 const runtimeDependencies = Object.keys(packageJson.dependencies ?? {});
 
 if (runtimeDependencies.length > 0) {
@@ -25,10 +25,10 @@ if (runtimeDependencies.length > 0) {
 const bomRef = packagePurl(packageJson.name, packageJson.version);
 const lockDigest = createHash("sha256")
   .update(JSON.stringify({
-    name: rootLock.name,
-    version: rootLock.version,
-    license: rootLock.license,
-    peerDependencies: rootLock.peerDependencies ?? {},
+    name: packageLockEntry.name,
+    version: packageLockEntry.version,
+    license: packageLockEntry.license,
+    peerDependencies: packageLockEntry.peerDependencies ?? {},
   }))
   .digest("hex");
 

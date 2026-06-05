@@ -14,18 +14,18 @@ import { join } from "node:path";
 
 const failures = [];
 const packageJson = JSON.parse(await readFile("package.json", "utf8"));
-const packageLock = JSON.parse(await readFile("package-lock.json", "utf8"));
+const packageLock = JSON.parse(await readFile("../../package-lock.json", "utf8"));
 const tsconfig = JSON.parse(stripJsonComments(await readFile("tsconfig.json", "utf8")));
 const securityPolicy = await readFile("SECURITY.md", "utf8");
-const rootLock = packageLock.packages?.[""] ?? {};
+const packageLockEntry = packageLock.packages?.["packages/core"] ?? {};
 
 const runtimeDependencies = Object.keys(packageJson.dependencies ?? {});
 if (runtimeDependencies.length > 0) {
   failures.push(`Runtime dependencies must stay empty: ${runtimeDependencies.join(", ")}`);
 }
 
-if (packageLock.name !== packageJson.name || rootLock.name !== packageJson.name) {
-  failures.push("package-lock package name must match package.json");
+if (packageLockEntry.name !== packageJson.name) {
+  failures.push("package-lock workspace package name must match packages/core/package.json");
 }
 
 for (const [name, version] of Object.entries(packageJson.devDependencies ?? {})) {
@@ -34,12 +34,12 @@ for (const [name, version] of Object.entries(packageJson.devDependencies ?? {}))
   }
 }
 
-if (JSON.stringify(rootLock.devDependencies ?? {}) !== JSON.stringify(packageJson.devDependencies ?? {})) {
-  failures.push("package-lock root devDependencies must match package.json exactly");
+if (JSON.stringify(packageLockEntry.devDependencies ?? {}) !== JSON.stringify(packageJson.devDependencies ?? {})) {
+  failures.push("package-lock workspace devDependencies must match packages/core/package.json exactly");
 }
 
-if (JSON.stringify(rootLock.peerDependencies ?? {}) !== JSON.stringify(packageJson.peerDependencies ?? {})) {
-  failures.push("package-lock root peerDependencies must match package.json exactly");
+if (JSON.stringify(packageLockEntry.peerDependencies ?? {}) !== JSON.stringify(packageJson.peerDependencies ?? {})) {
+  failures.push("package-lock workspace peerDependencies must match packages/core/package.json exactly");
 }
 
 for (const lifecycle of ["preinstall", "install", "postinstall"]) {

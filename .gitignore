@@ -30,6 +30,8 @@ out/
 lib/
 !benchmarks/articles/lib/
 !benchmarks/articles/lib/**
+!packages/core/benchmarks/articles/lib/
+!packages/core/benchmarks/articles/lib/**
 coverage/
 .nyc_output/
 mnt/

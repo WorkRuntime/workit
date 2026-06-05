@@ -13,16 +13,19 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
+const packageRoot = new URL("../", import.meta.url);
+const repoRoot = new URL("../../../", import.meta.url);
 const packageJson = JSON.parse(await readFile("package.json", "utf8"));
-const workflow = await readFile(".github/workflows/release-provenance.yml", "utf8");
+const workflow = await readFile(new URL(".github/workflows/release-provenance.yml", repoRoot), "utf8");
 const security = await readFile("SECURITY.md", "utf8");
-const codeowners = await readRequiredFile(".github/CODEOWNERS");
-const allowedSigners = await readRequiredFile(".github/allowed_signers");
-const dependabot = await readRequiredFile(".github/dependabot.yml");
-const ci = await readRequiredFile(".github/workflows/ci.yml");
-const scorecard = await readRequiredFile(".github/workflows/scorecard.yml");
+const codeowners = await readRequiredFile(new URL(".github/CODEOWNERS", repoRoot));
+const allowedSigners = await readRequiredFile(new URL(".github/allowed_signers", repoRoot));
+const dependabot = await readRequiredFile(new URL(".github/dependabot.yml", repoRoot));
+const ci = await readRequiredFile(new URL(".github/workflows/ci.yml", repoRoot));
+const scorecard = await readRequiredFile(new URL(".github/workflows/scorecard.yml", repoRoot));
 const requireRegistryDryRun = process.argv.includes("--registry-dry-run");
 const execFileAsync = promisify(execFile);
 
@@ -49,7 +52,7 @@ assert.ok(packageJson.files.includes("SECURITY.md"), "published package must inc
 assert.ok(packageJson.files.includes("CONTRIBUTING.md"), "published package must include CONTRIBUTING.md");
 assert.match(workflow, /id-token:\s*write/u, "release workflow must allow OIDC id-token provenance");
 assert.match(workflow, /attestations:\s*write/u, "release workflow must allow GitHub artifact attestations");
-assert.match(workflow, /npm publish --provenance --access public/u, "release workflow must publish with npm provenance");
+assert.match(workflow, /npm publish --workspace @workit\/core --provenance --access public/u, "release workflow must publish @workit/core with npm provenance");
 assert.match(workflow, /npm run verify/u, "release workflow must run full verification before publish");
 assert.match(workflow, /npm run test:coverage/u, "release workflow must run coverage before publish");
 assert.match(workflow, /gpg\.ssh\.allowedSignersFile/u, "release workflow must configure SSH allowed signers before tag verification");
@@ -98,20 +101,21 @@ function assertShaPinnedActions(path, text) {
 }
 
 async function assertExistingTagsAreSigned() {
-  const { stdout } = await execFileAsync("git", ["tag", "--list"]);
+  const { stdout } = await execFileAsync("git", ["tag", "--list"], { cwd: fileURLToPath(repoRoot) });
   for (const tag of stdout.split(/\r?\n/u).filter(Boolean)) {
-    await execFileAsync("git", ["tag", "-v", tag]);
+    await execFileAsync("git", ["tag", "-v", tag], { cwd: fileURLToPath(repoRoot) });
   }
 }
 
 async function runNpm(args) {
   if (process.env.npm_execpath !== undefined) {
     await execFileAsync(process.execPath, [process.env.npm_execpath, ...args], {
+      cwd: fileURLToPath(packageRoot),
       timeout: 120_000,
     });
     return;
   }
 
   const npmExecutable = process.platform === "win32" ? "npm.cmd" : "npm";
-  await execFileAsync(npmExecutable, args, { timeout: 120_000 });
+  await execFileAsync(npmExecutable, args, { cwd: fileURLToPath(packageRoot), timeout: 120_000 });
 }

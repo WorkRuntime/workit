@@ -59,7 +59,7 @@ async function runAgentTree() {
       `reason.tag: ${reason.tag}`,
       `cleanups: ${cleanups.sort().join(", ")}`,
     ],
-    code: await readSample("samples/agent-tree-cancel.sample.js"),
+    code: await readSample("packages/core/samples/agent-tree-cancel.sample.js"),
   };
 }
 
@@ -87,7 +87,7 @@ async function runProviderFallback() {
       `winner: ${result.provider}`,
       `cancelledProviders: ${cancelledProviders.sort().join(", ")}`,
     ],
-    code: await readSample("samples/race-providers.sample.js"),
+    code: await readSample("packages/core/samples/race-providers.sample.js"),
   };
 }
 
@@ -153,7 +153,7 @@ async function runRagPipeline() {
       `limit: ${finalBudget.limit}`,
       `audit.sources: ${audits[0]?.sources ?? 0}`,
     ],
-    code: await readSample("samples/budget-rag.sample.js"),
+    code: await readSample("packages/core/samples/budget-rag.sample.js"),
   };
 }
 
@@ -209,7 +209,7 @@ async function runConversationAgent() {
       `memoryWrites: ${memoryWrites}`,
       `cleanups: ${cleanups.sort().join(", ")}`,
     ],
-    code: await readSample("samples/conversation-agent.sample.js"),
+    code: await readSample("packages/core/samples/conversation-agent.sample.js"),
   };
 }
 
