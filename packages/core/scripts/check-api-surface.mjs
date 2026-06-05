@@ -16,6 +16,7 @@ const require = createRequire(import.meta.url);
 
 const EXPECTED_EXPORT_MAP = [
   ".",
+  "./activity",
   "./ai",
   "./analysis",
   "./channel",
@@ -45,6 +46,14 @@ const EXPECTED_RUNTIME_EXPORTS = {
     "renderTree",
     "run",
     "work",
+  ],
+  "./activity": [
+    "ActivityConflictError",
+    "ActivityNotRunnableError",
+    "ActivitySerializationError",
+    "createFileActivityStore",
+    "createMemoryActivityStore",
+    "runActivity",
   ],
   "./ai": [
     "AgentToolCalls",
@@ -96,6 +105,7 @@ const EXPECTED_RUNTIME_EXPORTS = {
 
 const EXPECTED_EXPORT_CONDITIONS = {
   ".": ["default", "node", "types"],
+  "./activity": ["default", "node", "types"],
   "./ai": ["default", "node", "types"],
   "./analysis": ["import", "require", "types"],
   "./channel": ["import", "require", "types"],
@@ -109,6 +119,7 @@ const EXPECTED_EXPORT_CONDITIONS = {
 
 const MODULE_PATHS = {
   ".": "../dist/index.js",
+  "./activity": "../dist/activity/index.js",
   "./ai": "../dist/ai/index.js",
   "./analysis": "../dist/analysis/index.js",
   "./channel": "../dist/channel/index.js",
@@ -122,6 +133,7 @@ const MODULE_PATHS = {
 
 const CJS_MODULE_PATHS = {
   ".": "../dist-cjs/index.cjs",
+  "./activity": "../dist-cjs/activity/index.cjs",
   "./ai": "../dist-cjs/ai/index.cjs",
   "./analysis": "../dist-cjs/analysis/index.cjs",
   "./channel": "../dist-cjs/channel/index.cjs",

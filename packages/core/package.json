@@ -33,6 +33,14 @@
       },
       "default": "./dist/runtime/unsupported.js"
     },
+    "./activity": {
+      "types": "./dist/activity/index.d.ts",
+      "node": {
+        "import": "./dist/activity/index.js",
+        "require": "./dist-cjs/activity/index.cjs"
+      },
+      "default": "./dist/runtime/unsupported.js"
+    },
     "./analysis": {
       "types": "./dist/analysis/index.d.ts",
       "import": "./dist/analysis/index.js",

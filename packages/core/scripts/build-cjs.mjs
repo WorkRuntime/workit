@@ -14,6 +14,7 @@ import { build } from "esbuild";
 
 const ENTRIES = [
   { entry: "dist/index.js", outfile: "dist-cjs/index.cjs" },
+  { entry: "dist/activity/index.js", outfile: "dist-cjs/activity/index.cjs" },
   { entry: "dist/ai/index.js", outfile: "dist-cjs/ai/index.cjs" },
   { entry: "dist/analysis/index.js", outfile: "dist-cjs/analysis/index.cjs" },
   { entry: "dist/channel/index.js", outfile: "dist-cjs/channel/index.cjs" },

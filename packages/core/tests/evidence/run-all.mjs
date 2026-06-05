@@ -12,8 +12,10 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const files = [
   "lifecycle/owned-work.mjs",
+  "lifecycle/activity-restart.mjs",
   "lifecycle/replay-receipts.mjs",
   "correctness/analysis-verifiers.mjs",
+  "correctness/activity-boundary.mjs",
   "correctness/runtime-contracts.mjs",
   "correctness/source-protocol-analysis.mjs",
   "security/worker-boundary.mjs",

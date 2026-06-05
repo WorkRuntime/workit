@@ -68,6 +68,16 @@
       "limitations": "The reason is evidence captured from WorkIt-owned cancellation; external systems still need their own abort support."
     },
     {
+      "id": "LIFE-008",
+      "title": "file activity store replays completed activity after restart",
+      "class": "lifecycle",
+      "status": "proven",
+      "proof": "tests/evidence/lifecycle/activity-restart.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "a fresh file activity store returns the persisted terminal result without rerunning the activity body",
+      "limitations": "This is terminal activity replay for explicit activity ids; it is not arbitrary in-flight crash recovery or workflow replay."
+    },
+    {
       "id": "CORR-001",
       "title": "budget inputs are immutable boundary values",
       "class": "correctness",
@@ -116,6 +126,16 @@
       "command": "npm run test:evidence",
       "expectedInvariant": "a non-terminal receipt with pending tasks fails analysis with leaked_tasks",
       "limitations": "The verifier analyzes receipt evidence supplied to it; it does not observe work that was never captured."
+    },
+    {
+      "id": "CORR-012",
+      "title": "explicit activity boundary preserves terminal evidence",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/activity-boundary.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "completed activity returns the stored result on repeat and changed input conflicts before rerun",
+      "limitations": "The boundary records explicit terminal activity evidence; callers remain responsible for idempotent external side effects."
     },
     {
       "id": "CORR-013",
