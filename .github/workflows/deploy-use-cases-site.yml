@@ -12,7 +12,7 @@ on:
       - "apps/use-cases-site/**"
       - "package.json"
       - "package-lock.json"
-      - "samples/**"
+      - "packages/core/**"
   push:
     branches:
       - main
@@ -21,7 +21,7 @@ on:
       - "apps/use-cases-site/**"
       - "package.json"
       - "package-lock.json"
-      - "samples/**"
+      - "packages/core/**"
 
 permissions:
   contents: read

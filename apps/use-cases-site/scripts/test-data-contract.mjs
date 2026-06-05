@@ -23,7 +23,7 @@ const exampleContracts = [
   {
     id: "vibe-coding-agent",
     sampleId: "agent-tree-cancel",
-    samplePath: "samples/agent-tree-cancel.sample.js",
+    samplePath: "packages/core/samples/agent-tree-cancel.sample.js",
     liveReceipt: [
       "runtime: @workit/core",
       "sample: agent-tree-cancel",
@@ -37,7 +37,7 @@ const exampleContracts = [
   {
     id: "conversation-agent",
     sampleId: "conversation-agent",
-    samplePath: "samples/conversation-agent.sample.js",
+    samplePath: "packages/core/samples/conversation-agent.sample.js",
     liveReceipt: [
       "runtime: @workit/core",
       "sample: conversation-agent",
@@ -51,7 +51,7 @@ const exampleContracts = [
   {
     id: "provider-fallback",
     sampleId: "race-providers",
-    samplePath: "samples/race-providers.sample.js",
+    samplePath: "packages/core/samples/race-providers.sample.js",
     liveReceipt: [
       "runtime: @workit/core",
       "sample: race-providers",
@@ -63,7 +63,7 @@ const exampleContracts = [
   {
     id: "rag-pipeline",
     sampleId: "budget-rag",
-    samplePath: "samples/budget-rag.sample.js",
+    samplePath: "packages/core/samples/budget-rag.sample.js",
     liveReceipt: [
       "runtime: @workit/core",
       "sample: budget-rag",

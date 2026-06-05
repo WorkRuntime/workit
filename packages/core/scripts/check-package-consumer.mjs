@@ -17,14 +17,15 @@ import { promisify } from "node:util";
 import { build } from "esbuild";
 
 const execFileAsync = promisify(execFile);
-const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const tscCli = join(ROOT, "node_modules", "typescript", "bin", "tsc");
+const PACKAGE_ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
+const REPO_ROOT = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
+const tscCli = join(REPO_ROOT, "node_modules", "typescript", "bin", "tsc");
 const bunCli = await findExecutable(["bun.exe", "bun"], [join(homedir(), ".bun", "bin", "bun.exe")]);
 const denoCli = await findExecutable(["deno.exe", "deno"], [join(homedir(), ".deno", "bin", "deno.exe")]);
 const wranglerCli = await findExecutable(
   ["wrangler.cmd", "wrangler"],
   [
-    join(ROOT, "node_modules", ".bin", "wrangler.cmd"),
+    join(REPO_ROOT, "node_modules", ".bin", "wrangler.cmd"),
     join(homedir(), "node_modules", ".bin", "wrangler.cmd"),
   ]
 );
@@ -37,7 +38,7 @@ const temp = await mkdtemp(join(tmpdir(), "workit-consumer-"));
 
 try {
   const { stdout } = await runNpm(["pack", "--json", "--pack-destination", temp], {
-    cwd: ROOT,
+    cwd: PACKAGE_ROOT,
     timeout: 120_000,
   });
   const [pack] = JSON.parse(stdout);

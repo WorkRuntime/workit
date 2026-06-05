@@ -60,12 +60,12 @@ jobs:
 
       - name: Publish dry run
         if: inputs.dry_run == 'true'
-        run: npm publish --provenance --access public --dry-run
+        run: npm publish --workspace @workit/core --provenance --access public --dry-run
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish
         if: inputs.dry_run == 'false'
-        run: npm publish --provenance --access public
+        run: npm publish --workspace @workit/core --provenance --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

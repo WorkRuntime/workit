@@ -16,10 +16,10 @@ const repoRoot = resolve(siteRoot, "..", "..");
 const outputPath = resolve(siteRoot, "src", "data", "generated", "evidence-snapshots.json");
 
 const samples = [
-  { id: "agent-tree-cancel", path: "samples/agent-tree-cancel.sample.js" },
-  { id: "conversation-agent", path: "samples/conversation-agent.sample.js" },
-  { id: "race-providers", path: "samples/race-providers.sample.js" },
-  { id: "budget-rag", path: "samples/budget-rag.sample.js" },
+  { id: "agent-tree-cancel", path: "packages/core/samples/agent-tree-cancel.sample.js" },
+  { id: "conversation-agent", path: "packages/core/samples/conversation-agent.sample.js" },
+  { id: "race-providers", path: "packages/core/samples/race-providers.sample.js" },
+  { id: "budget-rag", path: "packages/core/samples/budget-rag.sample.js" },
 ];
 
 if (process.platform === "win32") {
