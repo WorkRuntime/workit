@@ -5,6 +5,13 @@ SPDX-License-Identifier: Apache-2.0
 
 # WorkIt
 
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D20.11-brightgreen)](package.json)
+[![Runtime deps](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)](package.json)
+[![Verification](https://img.shields.io/badge/verify-green-brightgreen)](#verified-evidence)
+[![Article benches](https://img.shields.io/badge/article%20benches-19%2F19-brightgreen)](benchmarks/articles/)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12807/badge)](https://www.bestpractices.dev/projects/12807)
+
 Structured concurrency for TypeScript systems that need owned async work:
 bounded parallelism, cancellation, cleanup, retries, timeouts, budgets,
 backpressure, worker offload, and observable task lifecycles.
@@ -14,16 +21,6 @@ for the next step: a request, batch, agent run, provider race, stream, or
 background operation where related async tasks must live, fail, cancel, and
 clean up together.
 
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%3E%3D20.11-brightgreen)](package.json)
-[![Runtime deps](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)](package.json)
-[![Verification](https://img.shields.io/badge/verify-green-brightgreen)](#verified-evidence)
-[![Article benches](https://img.shields.io/badge/article%20benches-19%2F19-brightgreen)](benchmarks/articles/)
-[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12807/badge)](https://www.bestpractices.dev/projects/12807)
-
-Live examples: <https://workruntime.github.io/workit/>
-npm package: <https://www.npmjs.com/package/@workit/core>
-
 ## Install
 
 ```sh
@@ -32,6 +29,10 @@ npm install @workit/core
 
 WorkIt targets Node.js server runtimes today. Browser and edge runtimes resolve
 to an explicit unsupported-runtime boundary.
+
+Live examples: <https://workruntime.github.io/workit/>
+npm package: <https://www.npmjs.com/package/@workit/core>
+Changelog: <https://github.com/WorkRuntime/workit/blob/main/CHANGELOG.md>
 
 ## Quick Start
 
@@ -234,7 +235,7 @@ Rules:
 ## Common Use Cases
 
 These are short entry points. The full narrative and benchmark discussion live
-in [`articles/`](articles/).
+in the repository [`articles/`](https://github.com/WorkRuntime/workit/tree/main/articles).
 
 ### Owned Request Fan-Out
 
@@ -378,7 +379,7 @@ thresholds, not exact milliseconds.
 
 | Evidence | Current result |
 |---|---:|
-| Unit tests | 214 passing |
+| Unit tests | 221 passing |
 | Coverage gate | 100% statements, branches, functions, lines |
 | Runtime dependencies | 0 |
 | Article benchmark suite | 19/19 passing |
@@ -524,12 +525,44 @@ cancel, retry, timeout, budgets, and diagnostics.
 
 | Resource | Purpose |
 |---|---|
-| [`articles/`](articles/) | Narrative articles with examples and benchmark discussion |
+| [`articles/`](https://github.com/WorkRuntime/workit/tree/main/articles) | Narrative articles with examples and benchmark discussion |
 | [`benchmarks/articles/`](benchmarks/articles/) | Reproducible article benchmark suite |
 | [`evidence/`](evidence/) | Machine-readable claim ledger and evidence policy |
 | [`tests/evidence/`](tests/evidence/) | Curated publication evidence proofs |
 | [`samples/`](samples/) | Runnable examples against the compiled package |
 | [`SECURITY.md`](SECURITY.md) | Security reporting and release integrity policy |
+
+## Versioning
+
+WorkIt follows semver with a stricter release discipline:
+
+- Patch releases, such as `0.1.x`, are for fixes, build/release hardening,
+  layout migrations, documentation, and evidence updates. They must not add new
+  public runtime APIs.
+- Minor releases, such as `0.2.0`, may add new subpaths or feature families when
+  they are backed by tests, evidence, package-consumer checks, and
+  documentation.
+- The root `@workit/core` import remains size-disciplined. New heavier
+  capabilities should live in subpaths or companion packages.
+- `1.0.0` will mark a frozen public API and long-term compatibility policy, not
+  a shortcut for credibility. Current `0.x` releases are validated and usable,
+  with changes managed through semver and release notes.
+
+## Citation
+
+If you use WorkIt in research, benchmarks, or reproducible artifacts, please
+cite the software release you used:
+
+```bibtex
+@software{workit2026,
+  author = {Admilson B. F. Cossa},
+  title = {WorkIt: A TypeScript Structured Concurrency Runtime for Node.js Server Runtimes},
+  year = {2026},
+  url = {https://github.com/WorkRuntime/workit},
+  version = {0.1.5},
+  license = {Apache-2.0}
+}
+```
 
 ## Contributing
 
