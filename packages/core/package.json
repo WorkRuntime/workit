@@ -33,6 +33,11 @@
       },
       "default": "./dist/runtime/unsupported.js"
     },
+    "./analysis": {
+      "types": "./dist/analysis/index.d.ts",
+      "import": "./dist/analysis/index.js",
+      "require": "./dist-cjs/analysis/index.cjs"
+    },
     "./channel": {
       "types": "./dist/channel/index.d.ts",
       "import": "./dist/channel/index.js",

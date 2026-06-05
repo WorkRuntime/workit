@@ -108,6 +108,36 @@
       "limitations": "The cap prevents accidental huge retry policies; application-level retry budgets may be stricter."
     },
     {
+      "id": "CORR-007",
+      "title": "receipt analysis detects leaked owned work",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/analysis-verifiers.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "a non-terminal receipt with pending tasks fails analysis with leaked_tasks",
+      "limitations": "The verifier analyzes receipt evidence supplied to it; it does not observe work that was never captured."
+    },
+    {
+      "id": "CORR-013",
+      "title": "receipt verifier proves declared lifecycle evidence",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/analysis-verifiers.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "a closed receipt with terminal and cleanup evidence verifies no orphaned owned tasks while preserving cleanup timeout warning evidence",
+      "limitations": "Verification is bounded to the receipt and snapshot supplied by the caller."
+    },
+    {
+      "id": "CORR-017",
+      "title": "source protocol analysis detects missing ownership edges",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/source-protocol-analysis.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "bounded source protocol specs pass when WorkIt ownership edges are present and fail with stable findings when ownership edges are missing",
+      "limitations": "This verifies caller-provided protocol specifications, not arbitrary TypeScript or JavaScript source."
+    },
+    {
       "id": "SEC-001",
       "title": "worker offload rejects remote and executable URL schemes",
       "class": "security",

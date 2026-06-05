@@ -17,6 +17,7 @@ const require = createRequire(import.meta.url);
 const EXPECTED_EXPORT_MAP = [
   ".",
   "./ai",
+  "./analysis",
   "./channel",
   "./diagnostics",
   "./ledger",
@@ -57,6 +58,12 @@ const EXPECTED_RUNTIME_EXPORTS = {
     "transcribeStream",
     "wrapAI",
   ],
+  "./analysis": [
+    "analyzeReceipt",
+    "verifyReceipt",
+    "verifyScopeProtocol",
+    "verifySourceProtocol",
+  ],
   "./channel": [
     "ChannelClosedError",
     "createChannel",
@@ -90,6 +97,7 @@ const EXPECTED_RUNTIME_EXPORTS = {
 const EXPECTED_EXPORT_CONDITIONS = {
   ".": ["default", "node", "types"],
   "./ai": ["default", "node", "types"],
+  "./analysis": ["import", "require", "types"],
   "./channel": ["import", "require", "types"],
   "./diagnostics": ["import", "require", "types"],
   "./ledger": ["default", "node", "types"],
@@ -102,6 +110,7 @@ const EXPECTED_EXPORT_CONDITIONS = {
 const MODULE_PATHS = {
   ".": "../dist/index.js",
   "./ai": "../dist/ai/index.js",
+  "./analysis": "../dist/analysis/index.js",
   "./channel": "../dist/channel/index.js",
   "./diagnostics": "../dist/diagnostics/index.js",
   "./ledger": "../dist/ledger/index.js",
@@ -114,6 +123,7 @@ const MODULE_PATHS = {
 const CJS_MODULE_PATHS = {
   ".": "../dist-cjs/index.cjs",
   "./ai": "../dist-cjs/ai/index.cjs",
+  "./analysis": "../dist-cjs/analysis/index.cjs",
   "./channel": "../dist-cjs/channel/index.cjs",
   "./diagnostics": "../dist-cjs/diagnostics/index.cjs",
   "./ledger": "../dist-cjs/ledger/index.cjs",
