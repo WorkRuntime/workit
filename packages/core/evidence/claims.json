@@ -48,6 +48,26 @@
       "limitations": "The timeout bounds WorkIt cleanup waiting; external systems still need their own timeout and idempotency policies."
     },
     {
+      "id": "LIFE-004",
+      "title": "replay receipts record completed scope closure",
+      "class": "lifecycle",
+      "status": "proven",
+      "proof": "tests/evidence/lifecycle/replay-receipts.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "a closed successful scope has completed terminal outcome and no leaked tasks",
+      "limitations": "Receipts are audit evidence over observed WorkIt events and snapshots; they are not deterministic scheduler replay."
+    },
+    {
+      "id": "LIFE-005",
+      "title": "replay receipts preserve typed cancellation reason",
+      "class": "lifecycle",
+      "status": "proven",
+      "proof": "tests/evidence/lifecycle/replay-receipts.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "a manually cancelled scope records the cancellation reason observed by owned work",
+      "limitations": "The reason is evidence captured from WorkIt-owned cancellation; external systems still need their own abort support."
+    },
+    {
       "id": "CORR-001",
       "title": "budget inputs are immutable boundary values",
       "class": "correctness",

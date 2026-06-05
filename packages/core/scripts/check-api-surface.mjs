@@ -21,6 +21,7 @@ const EXPECTED_EXPORT_MAP = [
   "./diagnostics",
   "./observability",
   "./otel",
+  "./replay",
   "./worker",
 ];
 
@@ -70,6 +71,11 @@ const EXPECTED_RUNTIME_EXPORTS = {
   "./otel": [
     "attachOpenTelemetry",
   ],
+  "./replay": [
+    "buildReceipt",
+    "createReceiptRecorder",
+    "redactReceipt",
+  ],
   "./worker": [
     "offload",
   ],
@@ -82,6 +88,7 @@ const EXPECTED_EXPORT_CONDITIONS = {
   "./diagnostics": ["import", "require", "types"],
   "./observability": ["import", "require", "types"],
   "./otel": ["import", "require", "types"],
+  "./replay": ["import", "require", "types"],
   "./worker": ["default", "node", "types"],
 };
 
@@ -92,6 +99,7 @@ const MODULE_PATHS = {
   "./diagnostics": "../dist/diagnostics/index.js",
   "./observability": "../dist/observability/index.js",
   "./otel": "../dist/otel/index.js",
+  "./replay": "../dist/replay/index.js",
   "./worker": "../dist/worker/index.js",
 };
 
@@ -101,6 +109,7 @@ const CJS_MODULE_PATHS = {
   "./channel": "../dist-cjs/channel/index.cjs",
   "./diagnostics": "../dist-cjs/diagnostics/index.cjs",
   "./observability": "../dist-cjs/observability/index.cjs",
+  "./replay": "../dist-cjs/replay/index.cjs",
 };
 
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));

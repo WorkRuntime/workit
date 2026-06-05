@@ -108,6 +108,7 @@ try {
     import { embedAll, streamWithBackpressure } from "@workit/core/ai";
     import { attachTelemetryExporter } from "@workit/core/observability";
     import { attachOpenTelemetry } from "@workit/core/otel";
+    import { buildReceipt, redactReceipt } from "@workit/core/replay";
     import { offload } from "@workit/core/worker";
 
     const result = await run.all([async () => "sdk", async () => "ok"]);
@@ -115,6 +116,21 @@ try {
     const embedded = await embedAll(["a"], { embed: async (text) => [text.length] }, { concurrency: 1 });
     const streamed = [];
     for await (const item of streamWithBackpressure(["x"], async (input) => input.toUpperCase())) streamed.push(item);
+    const receipt = buildReceipt([], {
+      id: "consumer-scope",
+      status: "closed",
+      startedAt: 1,
+      pendingCount: 0,
+      completedCount: 0,
+      failedCount: 0,
+      cancelledCount: 0,
+      tasks: [],
+      scopes: []
+    }, { receiptId: "consumer-receipt", clock: () => 1 });
+    const redacted = redactReceipt({
+      ...receipt,
+      events: [{ type: "task:progress", taskId: "consumer-task", at: 1, data: { token: "secret" } }]
+    });
     let exported = 0;
     const tracer = { startSpan: () => ({
       setAttribute() { return this; },
@@ -141,6 +157,8 @@ try {
     if (batch.results.join(":") !== "2:4") throw new Error("work import failed");
     if (embedded.results[0][0] !== 1) throw new Error("ai import failed");
     if (streamed.join(":") !== "X") throw new Error("ai stream helper failed");
+    if (receipt.terminal.outcome !== "completed") throw new Error("replay receipt import failed");
+    if (JSON.stringify(redacted).includes("secret")) throw new Error("replay redaction failed");
     if (exported !== 1) throw new Error("observability import failed");
     if (typeof attachOpenTelemetry !== "function") throw new Error("otel import failed");
     if (typeof offload !== "function") throw new Error("worker import failed");
@@ -153,12 +171,25 @@ try {
 
   await writeFile(join(temp, "cjs-smoke.cjs"), `
     const { run, work } = require("@workit/core");
+    const { buildReceipt } = require("@workit/core/replay");
 
     (async () => {
       const values = await run.all([async () => "cjs", async () => "ok"]);
       const output = await work([1, 2, 3]).inParallel(2).do(async (item) => item + 1);
+      const receipt = buildReceipt([], {
+        id: "consumer-cjs-scope",
+        status: "closed",
+        startedAt: 1,
+        pendingCount: 0,
+        completedCount: 0,
+        failedCount: 0,
+        cancelledCount: 0,
+        tasks: [],
+        scopes: []
+      });
       if (values.join(":") !== "cjs:ok") throw new Error("CommonJS root import failed");
       if (output.results.join(":") !== "2:3:4") throw new Error("CommonJS work import failed");
+      if (receipt.terminal.outcome !== "completed") throw new Error("CommonJS replay import failed");
     })().catch((err) => {
       console.error(err);
       process.exit(1);
@@ -199,6 +230,7 @@ try {
       type TaskContext,
     } from "@workit/core";
     import { embedAll, streamWithBackpressure } from "@workit/core/ai";
+    import { buildReceipt, type WorkItReceipt } from "@workit/core/replay";
 
     const RequestKey = createContextKey<{ requestId: string }>("request");
 
@@ -221,11 +253,16 @@ try {
         return [input.length] as const;
       },
     });
+    let receipt: WorkItReceipt | undefined;
+    await run.scope(async (scope) => {
+      receipt = buildReceipt([], scope.status(), { receiptId: "strict-receipt" });
+    });
     const streamed: string[] = [];
     for await (const item of streamWithBackpressure(["typed"], async (input) => input.toUpperCase())) streamed.push(item);
 
     if (tuple[0] !== 1 || tuple[1] !== "typed") throw new Error("tuple inference failed");
     if (value !== "strict") throw new Error("context inference failed");
+    if (receipt === undefined || receipt.version !== "workit.receipt.v1") throw new Error("receipt typing failed");
     if (embedded.mode !== "fail") throw new Error("unexpected embedAll mode");
     if (embedded.results[0]?.[0] !== 3) throw new Error("AI helper inference failed");
     if (streamed[0] !== "TYPED") throw new Error("AI stream helper inference failed");

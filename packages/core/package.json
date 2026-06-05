@@ -53,6 +53,11 @@
       "import": "./dist/otel/index.js",
       "require": "./dist-cjs/otel/index.cjs"
     },
+    "./replay": {
+      "types": "./dist/replay/index.d.ts",
+      "import": "./dist/replay/index.js",
+      "require": "./dist-cjs/replay/index.cjs"
+    },
     "./worker": {
       "types": "./dist/worker/index.d.ts",
       "node": {
