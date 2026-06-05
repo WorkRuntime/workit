@@ -19,6 +19,7 @@ const EXPECTED_EXPORT_MAP = [
   "./ai",
   "./channel",
   "./diagnostics",
+  "./ledger",
   "./observability",
   "./otel",
   "./replay",
@@ -63,6 +64,11 @@ const EXPECTED_RUNTIME_EXPORTS = {
   "./diagnostics": [
     "diagnoseSnapshot",
   ],
+  "./ledger": [
+    "ReceiptLedgerConflictError",
+    "createFileReceiptLedger",
+    "createMemoryReceiptLedger",
+  ],
   "./observability": [
     "attachScopeSummaryExporter",
     "attachTelemetryExporter",
@@ -86,6 +92,7 @@ const EXPECTED_EXPORT_CONDITIONS = {
   "./ai": ["default", "node", "types"],
   "./channel": ["import", "require", "types"],
   "./diagnostics": ["import", "require", "types"],
+  "./ledger": ["default", "node", "types"],
   "./observability": ["import", "require", "types"],
   "./otel": ["import", "require", "types"],
   "./replay": ["import", "require", "types"],
@@ -97,6 +104,7 @@ const MODULE_PATHS = {
   "./ai": "../dist/ai/index.js",
   "./channel": "../dist/channel/index.js",
   "./diagnostics": "../dist/diagnostics/index.js",
+  "./ledger": "../dist/ledger/index.js",
   "./observability": "../dist/observability/index.js",
   "./otel": "../dist/otel/index.js",
   "./replay": "../dist/replay/index.js",
@@ -108,6 +116,7 @@ const CJS_MODULE_PATHS = {
   "./ai": "../dist-cjs/ai/index.cjs",
   "./channel": "../dist-cjs/channel/index.cjs",
   "./diagnostics": "../dist-cjs/diagnostics/index.cjs",
+  "./ledger": "../dist-cjs/ledger/index.cjs",
   "./observability": "../dist-cjs/observability/index.cjs",
   "./replay": "../dist-cjs/replay/index.cjs",
 };

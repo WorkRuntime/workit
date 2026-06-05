@@ -158,6 +158,16 @@
       "limitations": "A dry-run gate cannot guarantee a future maintainer will sign a tag; it verifies that the repository policy gate exists."
     },
     {
+      "id": "REL-004",
+      "title": "file receipt ledger persists append-only receipt evidence",
+      "class": "release",
+      "status": "proven",
+      "proof": "tests/evidence/release/receipt-ledger.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "a receipt appended by one ledger instance is readable from a new ledger instance",
+      "limitations": "This proof covers WorkIt's file-backed receipt ledger, not database durability or distributed queue semantics."
+    },
+    {
       "id": "PERF-001",
       "title": "article benchmark suite has expected executable coverage",
       "class": "performance",

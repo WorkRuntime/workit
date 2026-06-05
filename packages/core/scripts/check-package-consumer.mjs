@@ -106,6 +106,7 @@ try {
   await writeFile(join(temp, "smoke.mjs"), `
     import { run, work, group } from "@workit/core";
     import { embedAll, streamWithBackpressure } from "@workit/core/ai";
+    import { createMemoryReceiptLedger } from "@workit/core/ledger";
     import { attachTelemetryExporter } from "@workit/core/observability";
     import { attachOpenTelemetry } from "@workit/core/otel";
     import { buildReceipt, redactReceipt } from "@workit/core/replay";
@@ -131,6 +132,8 @@ try {
       ...receipt,
       events: [{ type: "task:progress", taskId: "consumer-task", at: 1, data: { token: "secret" } }]
     });
+    const ledger = createMemoryReceiptLedger();
+    const ledgerRecord = await ledger.append(receipt);
     let exported = 0;
     const tracer = { startSpan: () => ({
       setAttribute() { return this; },
@@ -159,6 +162,7 @@ try {
     if (streamed.join(":") !== "X") throw new Error("ai stream helper failed");
     if (receipt.terminal.outcome !== "completed") throw new Error("replay receipt import failed");
     if (JSON.stringify(redacted).includes("secret")) throw new Error("replay redaction failed");
+    if (ledgerRecord.receiptId !== "consumer-receipt") throw new Error("ledger import failed");
     if (exported !== 1) throw new Error("observability import failed");
     if (typeof attachOpenTelemetry !== "function") throw new Error("otel import failed");
     if (typeof offload !== "function") throw new Error("worker import failed");
@@ -171,6 +175,7 @@ try {
 
   await writeFile(join(temp, "cjs-smoke.cjs"), `
     const { run, work } = require("@workit/core");
+    const { createMemoryReceiptLedger } = require("@workit/core/ledger");
     const { buildReceipt } = require("@workit/core/replay");
 
     (async () => {
@@ -187,9 +192,12 @@ try {
         tasks: [],
         scopes: []
       });
+      const ledger = createMemoryReceiptLedger();
+      const record = await ledger.append(receipt);
       if (values.join(":") !== "cjs:ok") throw new Error("CommonJS root import failed");
       if (output.results.join(":") !== "2:3:4") throw new Error("CommonJS work import failed");
       if (receipt.terminal.outcome !== "completed") throw new Error("CommonJS replay import failed");
+      if (record.receiptId !== receipt.receiptId) throw new Error("CommonJS ledger import failed");
     })().catch((err) => {
       console.error(err);
       process.exit(1);
@@ -230,6 +238,7 @@ try {
       type TaskContext,
     } from "@workit/core";
     import { embedAll, streamWithBackpressure } from "@workit/core/ai";
+    import { createMemoryReceiptLedger, type ReceiptLedger } from "@workit/core/ledger";
     import { buildReceipt, type WorkItReceipt } from "@workit/core/replay";
 
     const RequestKey = createContextKey<{ requestId: string }>("request");
@@ -257,12 +266,15 @@ try {
     await run.scope(async (scope) => {
       receipt = buildReceipt([], scope.status(), { receiptId: "strict-receipt" });
     });
+    if (receipt === undefined || receipt.version !== "workit.receipt.v1") throw new Error("receipt typing failed");
+    const ledger: ReceiptLedger = createMemoryReceiptLedger();
+    const ledgerRecord = await ledger.append(receipt);
     const streamed: string[] = [];
     for await (const item of streamWithBackpressure(["typed"], async (input) => input.toUpperCase())) streamed.push(item);
 
     if (tuple[0] !== 1 || tuple[1] !== "typed") throw new Error("tuple inference failed");
     if (value !== "strict") throw new Error("context inference failed");
-    if (receipt === undefined || receipt.version !== "workit.receipt.v1") throw new Error("receipt typing failed");
+    if (ledgerRecord.receiptId !== receipt.receiptId) throw new Error("ledger typing failed");
     if (embedded.mode !== "fail") throw new Error("unexpected embedAll mode");
     if (embedded.results[0]?.[0] !== 3) throw new Error("AI helper inference failed");
     if (streamed[0] !== "TYPED") throw new Error("AI stream helper inference failed");

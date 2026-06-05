@@ -48,6 +48,14 @@
       "import": "./dist/diagnostics/index.js",
       "require": "./dist-cjs/diagnostics/index.cjs"
     },
+    "./ledger": {
+      "types": "./dist/ledger/index.d.ts",
+      "node": {
+        "import": "./dist/ledger/index.js",
+        "require": "./dist-cjs/ledger/index.cjs"
+      },
+      "default": "./dist/runtime/unsupported.js"
+    },
     "./otel": {
       "types": "./dist/otel/index.d.ts",
       "import": "./dist/otel/index.js",

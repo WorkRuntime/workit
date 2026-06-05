@@ -16,6 +16,7 @@ const files = [
   "correctness/runtime-contracts.mjs",
   "security/worker-boundary.mjs",
   "release/release-integrity.mjs",
+  "release/receipt-ledger.mjs",
   "performance/benchmark-contracts.mjs",
 ];
 
