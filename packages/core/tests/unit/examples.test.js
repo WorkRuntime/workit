@@ -1,5 +1,5 @@
 /**
- * Executable adoption examples for WorkIt.
+ * Executable runtime examples for WorkIt.
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0
@@ -117,7 +117,7 @@ test("example: budget-capped RAG query composes all helpers without network clie
     const [rewritten, queryVector] = await run.all([
       async (ctx) => {
         ctx.consumeCost(1);
-        return "structured concurrency adoption";
+        return "structured concurrency runtime";
       },
       async (ctx) => {
         ctx.consumeCost(2);
@@ -154,8 +154,8 @@ test("example: budget-capped RAG query composes all helpers without network clie
     context,
   });
 
-  assert.equal(answer, "answer:keyword:structured concurrency adoption");
-  assert.deepEqual(audits, [{ rewritten: "structured concurrency adoption", count: 2 }]);
+  assert.equal(answer, "answer:keyword:structured concurrency runtime");
+  assert.deepEqual(audits, [{ rewritten: "structured concurrency runtime", count: 2 }]);
   assert.equal(context.get(CostBudget).spent, 8);
 });
 

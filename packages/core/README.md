@@ -232,6 +232,19 @@ Rules:
 | OpenTelemetry bridge | `@workit/core/otel` |
 | Agent helper contracts | `@workit/core/ai` |
 
+## Evidence And Ownership Subpaths
+
+The root import remains focused on the runtime primitives. Evidence and
+ownership helpers live behind explicit subpaths.
+
+| Need | Subpath | Boundary |
+|---|---|---|
+| Build lifecycle receipts from scope events and snapshots | `@workit/core/replay` | audit evidence, not deterministic scheduler replay |
+| Persist receipts in caller-owned stores | `@workit/core/ledger` | memory and file receipt ledgers, not a database framework |
+| Verify receipts and caller-provided protocol specs | `@workit/core/analysis` | bounded verification over supplied evidence, not whole-program analysis |
+| Record explicit terminal activity boundaries | `@workit/core/activity` | completed activity replay, not in-flight workflow recovery |
+| Compose lazy, shared, and scope-owned resources | `@workit/core/resources` | cleanup ownership through WorkIt scopes, not automatic resource detection |
+
 ## Common Use Cases
 
 These are short entry points. The full narrative and benchmark discussion live
@@ -379,8 +392,9 @@ thresholds, not exact milliseconds.
 
 | Evidence | Current result |
 |---|---:|
-| Unit tests | 221 passing |
+| Unit tests | 299 passing |
 | Coverage gate | 100% statements, branches, functions, lines |
+| Evidence proof files | 14 passing |
 | Runtime dependencies | 0 |
 | Article benchmark suite | 19/19 passing |
 | Core group import | 14,175 B minified / 4,835 B gzip |

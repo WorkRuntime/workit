@@ -91,11 +91,16 @@ Stable consumer paths for this release line:
 
 ```txt
 @workit/core
+@workit/core/activity
 @workit/core/ai
+@workit/core/analysis
 @workit/core/channel
 @workit/core/diagnostics
+@workit/core/ledger
 @workit/core/observability
 @workit/core/otel
+@workit/core/replay
+@workit/core/resources
 @workit/core/worker
 ```
 

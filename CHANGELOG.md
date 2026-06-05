@@ -5,6 +5,24 @@ SPDX-License-Identifier: Apache-2.0
 
 # Changelog
 
+## Unreleased
+
+Add the core ownership and evidence foundation as explicit `@workit/core`
+subpaths. The root import remains unchanged.
+
+- Add `@workit/core/replay` for lifecycle receipt recording and redaction.
+- Add `@workit/core/ledger` for memory and file receipt ledgers.
+- Add `@workit/core/analysis` for receipt and caller-provided protocol
+  verification.
+- Add `@workit/core/activity` for explicit terminal activity boundaries.
+- Add `@workit/core/resources` for lazy, shared, and scope-owned resource
+  helpers.
+- Add package-consumer coverage for the new subpaths across ESM, CommonJS, and
+  strict TypeScript fixtures.
+- Add executable evidence for receipts, ledgers, analysis, activity terminal
+  replay, and resource ownership.
+- Keep the root `@workit/core` bundle size unchanged.
+
 ## 0.1.5
 
 Move `@workit/core` to `packages/core` monorepo layout. No public API changes.
