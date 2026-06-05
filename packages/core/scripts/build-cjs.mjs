@@ -23,6 +23,7 @@ const ENTRIES = [
   { entry: "dist/observability/index.js", outfile: "dist-cjs/observability/index.cjs" },
   { entry: "dist/otel/index.js", outfile: "dist-cjs/otel/index.cjs" },
   { entry: "dist/replay/index.js", outfile: "dist-cjs/replay/index.cjs" },
+  { entry: "dist/resources/index.js", outfile: "dist-cjs/resources/index.cjs" },
 ];
 
 await rm("dist-cjs", { recursive: true, force: true });

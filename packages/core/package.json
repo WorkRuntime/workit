@@ -79,6 +79,11 @@
       "import": "./dist/replay/index.js",
       "require": "./dist-cjs/replay/index.cjs"
     },
+    "./resources": {
+      "types": "./dist/resources/index.d.ts",
+      "import": "./dist/resources/index.js",
+      "require": "./dist-cjs/resources/index.cjs"
+    },
     "./worker": {
       "types": "./dist/worker/index.d.ts",
       "node": {

@@ -112,6 +112,7 @@ try {
     import { attachTelemetryExporter } from "@workit/core/observability";
     import { attachOpenTelemetry } from "@workit/core/otel";
     import { buildReceipt, redactReceipt } from "@workit/core/replay";
+    import { bracketLazy } from "@workit/core/resources";
     import { offload } from "@workit/core/worker";
 
     const result = await run.all([async () => "sdk", async () => "ok"]);
@@ -155,6 +156,14 @@ try {
         return "unexpected";
       }
     )));
+    let resourceReleased = 0;
+    const resourceValue = await group(async (task) => task(bracketLazy(
+      async () => ({ id: "consumer-resource" }),
+      async (resource) => (await resource.get()).id,
+      async () => {
+        resourceReleased++;
+      }
+    )));
     let exported = 0;
     const tracer = { startSpan: () => ({
       setAttribute() { return this; },
@@ -186,6 +195,7 @@ try {
     if (ledgerRecord.receiptId !== "consumer-receipt") throw new Error("ledger import failed");
     if (analysis.status !== "pass") throw new Error("analysis import failed");
     if (activityFirst !== "activity-ok" || activitySecond !== "activity-ok" || activityRuns !== 1) throw new Error("activity import failed");
+    if (resourceValue !== "consumer-resource" || resourceReleased !== 1) throw new Error("resources import failed");
     if (exported !== 1) throw new Error("observability import failed");
     if (typeof attachOpenTelemetry !== "function") throw new Error("otel import failed");
     if (typeof offload !== "function") throw new Error("worker import failed");
@@ -202,6 +212,7 @@ try {
     const { verifyReceipt } = require("@workit/core/analysis");
     const { createMemoryReceiptLedger } = require("@workit/core/ledger");
     const { buildReceipt } = require("@workit/core/replay");
+    const { bracketShared } = require("@workit/core/resources");
 
     (async () => {
       const values = await run.all([async () => "cjs", async () => "ok"]);
@@ -226,12 +237,22 @@ try {
         { activityId: "consumer-cjs-activity", input: { requestId: "cjs" } },
         async () => "activity-cjs-ok"
       )({ signal: new AbortController().signal });
+      let released = 0;
+      const shared = bracketShared(
+        async () => ({ id: "resource-cjs-ok" }),
+        async (resource) => resource.id,
+        async () => {
+          released++;
+        }
+      );
+      const resource = await run.scope(async (scope) => await scope.spawn(shared));
       if (values.join(":") !== "cjs:ok") throw new Error("CommonJS root import failed");
       if (output.results.join(":") !== "2:3:4") throw new Error("CommonJS work import failed");
       if (receipt.terminal.outcome !== "completed") throw new Error("CommonJS replay import failed");
       if (record.receiptId !== receipt.receiptId) throw new Error("CommonJS ledger import failed");
       if (analysis.status !== "pass") throw new Error("CommonJS analysis import failed");
       if (activity !== "activity-cjs-ok") throw new Error("CommonJS activity import failed");
+      if (resource !== "resource-cjs-ok" || released !== 1) throw new Error("CommonJS resources import failed");
     })().catch((err) => {
       console.error(err);
       process.exit(1);
@@ -276,6 +297,7 @@ try {
     import { embedAll, streamWithBackpressure } from "@workit/core/ai";
     import { createMemoryReceiptLedger, type ReceiptLedger } from "@workit/core/ledger";
     import { buildReceipt, type WorkItReceipt } from "@workit/core/replay";
+    import { bracketShared, scopeAcquire, type ResourceRelease } from "@workit/core/resources";
 
     const RequestKey = createContextKey<{ requestId: string }>("request");
 
@@ -312,6 +334,19 @@ try {
       { activityId: "strict-activity", input: { requestId: "strict" } },
       async () => "strict-activity-ok",
     )));
+    let strictResourceReleased = 0;
+    const releaseStrict: ResourceRelease<{ id: string }> = async (resource) => {
+      if (resource.id !== "strict-resource") throw new Error("resource release typing failed");
+      strictResourceReleased++;
+    };
+    const strictResource = await run.scope(async (scope) => {
+      scopeAcquire(scope, { id: "strict-scope-resource" }, async () => undefined);
+      return await scope.spawn(bracketShared(
+        async () => ({ id: "strict-resource" }),
+        async (resource) => resource.id,
+        releaseStrict,
+      ));
+    });
     const streamed: string[] = [];
     for await (const item of streamWithBackpressure(["typed"], async (input) => input.toUpperCase())) streamed.push(item);
 
@@ -320,6 +355,7 @@ try {
     if (ledgerRecord.receiptId !== receipt.receiptId) throw new Error("ledger typing failed");
     if (analysis.status !== "pass") throw new Error("analysis typing failed");
     if (activityValue !== "strict-activity-ok") throw new Error("activity typing failed");
+    if (strictResource !== "strict-resource" || strictResourceReleased !== 1) throw new Error("resource typing failed");
     if (embedded.mode !== "fail") throw new Error("unexpected embedAll mode");
     if (embedded.results[0]?.[0] !== 3) throw new Error("AI helper inference failed");
     if (streamed[0] !== "TYPED") throw new Error("AI stream helper inference failed");

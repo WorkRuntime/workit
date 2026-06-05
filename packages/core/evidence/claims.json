@@ -68,6 +68,16 @@
       "limitations": "The reason is evidence captured from WorkIt-owned cancellation; external systems still need their own abort support."
     },
     {
+      "id": "LIFE-006",
+      "title": "shared scope resource acquires and releases once",
+      "class": "lifecycle",
+      "status": "proven",
+      "proof": "tests/evidence/lifecycle/resource-ownership.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "parallel tasks using one shared helper observe one acquisition and one scope-owned release",
+      "limitations": "This proves WorkIt helper ownership and cleanup registration; external resource semantics remain application responsibility."
+    },
+    {
       "id": "LIFE-008",
       "title": "file activity store replays completed activity after restart",
       "class": "lifecycle",
@@ -76,6 +86,16 @@
       "command": "npm run test:evidence",
       "expectedInvariant": "a fresh file activity store returns the persisted terminal result without rerunning the activity body",
       "limitations": "This is terminal activity replay for explicit activity ids; it is not arbitrary in-flight crash recovery or workflow replay."
+    },
+    {
+      "id": "LIFE-011",
+      "title": "resource ownership can be audited across cleanup paths",
+      "class": "lifecycle",
+      "status": "proven",
+      "proof": "tests/evidence/lifecycle/resource-audit.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "explicit resource audit instrumentation records acquired/released/pending resources while WorkIt emits cleanup timeout and failure events",
+      "limitations": "Resource audit entries are explicit caller instrumentation; WorkIt supplies cleanup failure and timeout events through the scope event surface."
     },
     {
       "id": "CORR-001",
@@ -146,6 +166,16 @@
       "command": "npm run test:evidence",
       "expectedInvariant": "a closed receipt with terminal and cleanup evidence verifies no orphaned owned tasks while preserving cleanup timeout warning evidence",
       "limitations": "Verification is bounded to the receipt and snapshot supplied by the caller."
+    },
+    {
+      "id": "CORR-015",
+      "title": "bounded resource model preserves cleanup balance invariant",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/resource-ownership-model.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "for linear, lazy, and shared resources, every terminal modeled scope releases exactly the resources it acquired",
+      "limitations": "This is a bounded model for WorkIt resource helper contracts, not a proof over arbitrary JavaScript programs or external resources."
     },
     {
       "id": "CORR-017",

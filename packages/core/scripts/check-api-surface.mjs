@@ -25,6 +25,7 @@ const EXPECTED_EXPORT_MAP = [
   "./observability",
   "./otel",
   "./replay",
+  "./resources",
   "./worker",
 ];
 
@@ -98,6 +99,11 @@ const EXPECTED_RUNTIME_EXPORTS = {
     "createReceiptRecorder",
     "redactReceipt",
   ],
+  "./resources": [
+    "bracketLazy",
+    "bracketShared",
+    "scopeAcquire",
+  ],
   "./worker": [
     "offload",
   ],
@@ -114,6 +120,7 @@ const EXPECTED_EXPORT_CONDITIONS = {
   "./observability": ["import", "require", "types"],
   "./otel": ["import", "require", "types"],
   "./replay": ["import", "require", "types"],
+  "./resources": ["import", "require", "types"],
   "./worker": ["default", "node", "types"],
 };
 
@@ -128,6 +135,7 @@ const MODULE_PATHS = {
   "./observability": "../dist/observability/index.js",
   "./otel": "../dist/otel/index.js",
   "./replay": "../dist/replay/index.js",
+  "./resources": "../dist/resources/index.js",
   "./worker": "../dist/worker/index.js",
 };
 
@@ -141,6 +149,7 @@ const CJS_MODULE_PATHS = {
   "./ledger": "../dist-cjs/ledger/index.cjs",
   "./observability": "../dist-cjs/observability/index.cjs",
   "./replay": "../dist-cjs/replay/index.cjs",
+  "./resources": "../dist-cjs/resources/index.cjs",
 };
 
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
