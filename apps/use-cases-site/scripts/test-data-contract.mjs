@@ -90,6 +90,7 @@ const deniedDisplayedStrings = [
 
 await assertUseCasesMatchExecutableSamples();
 await assertLiveRunnersMatchUseCaseContracts();
+await assertRuntimeApiUsesStaticFallbackOnPublicPages();
 process.stdout.write("site-data-contract: passed\n");
 
 async function assertUseCasesMatchExecutableSamples() {
@@ -135,6 +136,46 @@ async function assertLiveRunnersMatchUseCaseContracts() {
 
     assertNoDeniedLines(result.events, `${contract.id} events`);
     assertNoDeniedLines(result.receipt, `${contract.id} receipt`);
+  }
+}
+
+async function assertRuntimeApiUsesStaticFallbackOnPublicPages() {
+  const { runLiveExample, shouldUseLocalRuntime } = await importRuntimeApi();
+
+  assert.equal(shouldUseLocalRuntime({ hostname: "workruntime.github.io" }, true), false);
+  assert.equal(shouldUseLocalRuntime({ hostname: "localhost" }, true), true);
+  assert.equal(shouldUseLocalRuntime({ hostname: "127.0.0.1" }, true), true);
+  assert.equal(shouldUseLocalRuntime({ hostname: "::1" }, true), true);
+  assert.equal(shouldUseLocalRuntime({ hostname: "localhost" }, false), false);
+
+  const originalFetch = globalThis.fetch;
+  const hadLocation = Object.hasOwn(globalThis, "location");
+  const originalLocation = globalThis.location;
+  let fetchCalled = false;
+
+  Object.defineProperty(globalThis, "location", {
+    configurable: true,
+    value: { hostname: "workruntime.github.io" },
+  });
+
+  globalThis.fetch = async () => {
+    fetchCalled = true;
+    throw new Error("Static Pages fallback must not call the local runtime API.");
+  };
+
+  try {
+    assert.equal(await runLiveExample("vibe-coding-agent"), null);
+    assert.equal(fetchCalled, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (hadLocation) {
+      Object.defineProperty(globalThis, "location", {
+        configurable: true,
+        value: originalLocation,
+      });
+    } else {
+      delete globalThis.location;
+    }
   }
 }
 
@@ -210,12 +251,20 @@ function runSample(samplePath) {
 }
 
 async function importUseCases() {
+  return importBundledTypeScript("src/data/useCases.ts", "useCases.mjs");
+}
+
+async function importRuntimeApi() {
+  return importBundledTypeScript("src/runtimeApi.ts", "runtimeApi.mjs");
+}
+
+async function importBundledTypeScript(relativePath, outputName) {
   const tempDir = mkdtempSync(join(tmpdir(), "workit-use-cases-"));
-  const outputPath = join(tempDir, "useCases.mjs");
+  const outputPath = join(tempDir, outputName);
 
   try {
     await build({
-      entryPoints: [resolve(siteRoot, "src", "data", "useCases.ts")],
+      entryPoints: [resolve(siteRoot, relativePath)],
       bundle: true,
       format: "esm",
       platform: "node",
