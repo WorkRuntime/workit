@@ -39,13 +39,21 @@ Changelog: <https://github.com/WorkRuntime/workit/blob/main/CHANGELOG.md>
 ```ts
 import { work } from "@workit/core";
 
-const doubled = await work([1, 2, 3])
+const output = await work([1, 2, 3])
   .inParallel(2)
   .do(async (value, _ctx) => value * 2);
+
+const doubled = output.results;
 ```
 
 The context parameter is available when the task needs cancellation, progress,
 budgets, or scoped resources. It can be ignored for plain transformations.
+
+> [!IMPORTANT]
+> `work().do()` defaults to fail-fast mode. If any item fails, the call throws
+> and cancels sibling work. On success it returns `{ mode: "fail", results }`,
+> not a bare array. Use `.onError("continue")` or `.onError("collect")` when
+> callers need per-item failures in the returned value.
 
 ## Why Ownership Matters
 
@@ -232,6 +240,42 @@ Rules:
 | OpenTelemetry bridge | `@workit/core/otel` |
 | Agent helper contracts | `@workit/core/ai` |
 
+### Task Functions And Invocation
+
+The resilience helpers `run.timeout()`, `run.retry()`, `run.fallback()`,
+`run.deadline()`, `run.hedge()`, `run.bracket()`, `run.circuitBreaker()`, and
+`run.uncancellable()` return a `TaskFn<T>`. A `TaskFn` is a description of owned
+work; run it through `group()`/`task(...)` or `scope.spawn(...)`.
+
+```ts
+import { group, run } from "@workit/core";
+
+const chargeWithRetry = run.retry(
+  run.timeout(
+    (ctx) => chargeCustomer(invoice, { signal: ctx.signal }),
+    "5s"
+  ),
+  { times: 3 }
+);
+
+const receipt = await group(async (task) => task(chargeWithRetry));
+```
+
+`renderTree()` takes a scope snapshot, not a live scope. Use
+`renderTree(scope.status())`.
+
+```ts
+import { renderTree, run } from "@workit/core";
+
+await run.scope(async (scope) => {
+  const handle = scope.spawn((ctx) => fetchProfile({ signal: ctx.signal }));
+
+  console.log(renderTree(scope.status()));
+
+  return handle;
+});
+```
+
 ## Evidence And Ownership Subpaths
 
 The root import remains focused on the runtime primitives. Evidence and
@@ -288,19 +332,17 @@ The first success wins. Losing branches receive `CancelReason { kind:
 ### Retry With Timeout
 
 ```ts
-import { run } from "@workit/core";
+import { group, run } from "@workit/core";
 
-const receipt = await run.retry(
-  (ctx) =>
-    run.timeout(
-      (timeoutCtx) =>
-        chargeCustomer(invoice, {
-          signal: AbortSignal.any([ctx.signal, timeoutCtx.signal]),
-        }),
-      "5s"
-    ),
-  { retries: 3 }
+const chargeWithRetry = run.retry(
+  run.timeout(
+    (ctx) => chargeCustomer(invoice, { signal: ctx.signal }),
+    "5s"
+  ),
+  { times: 3 }
 );
+
+const receipt = await group(async (task) => task(chargeWithRetry));
 ```
 
 The retry policy, timeout, and caller cancellation share one owned execution
