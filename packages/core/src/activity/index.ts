@@ -137,12 +137,12 @@ export class ActivityNotRunnableError extends Error {
   }
 }
 
-/** Error thrown when an activity input cannot be converted to stable JSON. */
+/** Error thrown when an activity payload cannot be converted to stable JSON. */
 export class ActivitySerializationError extends Error {
   readonly activityId: string;
 
   constructor(activityId: string, message: string) {
-    super(`Activity "${activityId}" input is not serializable: ${message}`);
+    super(`Activity "${activityId}" payload is not serializable: ${message}`);
     this.name = "ActivitySerializationError";
     this.activityId = activityId;
   }
@@ -236,7 +236,7 @@ export function runActivity<TInput, TOutput>(
     if (claim.status === "existing") return replayExisting<TOutput>(claim.record);
 
     try {
-      const result = await task(ctx);
+      const result = normalizeActivityPayload<TOutput>(normalized.activityId, await task(ctx));
       const completedAt = clock();
       await store.finish({
         ...started,
@@ -317,6 +317,10 @@ function hashInput(activityId: string, value: unknown): string {
 function normalizeError(error: unknown): ActivityErrorEvidence {
   if (error instanceof Error) return { name: error.name, message: error.message };
   return { name: typeof error, message: String(error) };
+}
+
+function normalizeActivityPayload<T>(activityId: string, value: T): T {
+  return JSON.parse(stableStringify(activityId, value)) as T;
 }
 
 function cloneRecord<T>(record: ActivityRecord<T>): ActivityRecord<T> {

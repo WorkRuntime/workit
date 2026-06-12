@@ -303,6 +303,52 @@ test("Given Date activity input, boundary canonicalizes the JSON value for repla
   assert.equal(runs, 1);
 });
 
+test("Given Date activity result, first execution and replay return the same JSON value", async () => {
+  const store = createMemoryActivityStore();
+  let runs = 0;
+
+  const first = await group(async (task) => task(runActivity(
+    store,
+    { activityId: "activity-date-result", input: "x" },
+    async () => {
+      runs++;
+      return { at: new Date("2026-01-01T00:00:00.000Z") };
+    },
+  )));
+  const second = await group(async (task) => task(runActivity(
+    store,
+    { activityId: "activity-date-result", input: "x" },
+    async () => {
+      runs++;
+      return { at: "unexpected" };
+    },
+  )));
+  const record = await store.get("activity-date-result");
+
+  assert.deepEqual(first, { at: "2026-01-01T00:00:00.000Z" });
+  assert.deepEqual(second, first);
+  assert.equal(runs, 1);
+  assert.equal(record.status, "completed");
+  assert.deepEqual(record.result, first);
+});
+
+test("Given non-serializable activity result, boundary records failure without storing the result", async () => {
+  const store = createMemoryActivityStore();
+
+  await assert.rejects(
+    group(async (task) => task(runActivity(
+      store,
+      { activityId: "activity-bad-result", input: "x" },
+      async () => ({ value: 1n }),
+    ))),
+    ActivitySerializationError,
+  );
+  const record = await store.get("activity-bad-result");
+
+  assert.equal(record.status, "failed");
+  assert.equal(record.error.name, "ActivitySerializationError");
+});
+
 test("Given array activity input, boundary canonicalizes nested JSON values", async () => {
   const store = createMemoryActivityStore();
   let runs = 0;
