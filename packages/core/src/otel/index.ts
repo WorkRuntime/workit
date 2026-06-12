@@ -73,7 +73,7 @@ export function attachOpenTelemetry(
   opts: OpenTelemetryOptions = {}
 ): OpenTelemetryAttachment {
   const instrumentationName = opts.instrumentationName ?? "workit";
-  const instrumentationVersion = opts.instrumentationVersion ?? "0.1.1";
+  const instrumentationVersion = opts.instrumentationVersion ?? readPackageVersion();
   const { tracer, meter } = resolveOpenTelemetryHandles(opts, instrumentationName, instrumentationVersion);
   const taskCounter = meter.createCounter("workit.task.total", { unit: "1" });
   const taskDuration = meter.createHistogram("workit.task.duration", { unit: "ms" });
@@ -128,7 +128,7 @@ export function attachOpenTelemetry(
 function resolveOpenTelemetryHandles(
   opts: OpenTelemetryOptions,
   instrumentationName: string,
-  instrumentationVersion: string
+  instrumentationVersion: string | undefined
 ): { tracer: Tracer; meter: Meter } {
   if (opts.tracer !== undefined && opts.meter !== undefined) {
     return { tracer: opts.tracer, meter: opts.meter };
@@ -139,6 +139,15 @@ function resolveOpenTelemetryHandles(
     tracer: opts.tracer ?? api.trace.getTracer(instrumentationName, instrumentationVersion),
     meter: opts.meter ?? api.metrics.getMeter(instrumentationName, instrumentationVersion),
   };
+}
+
+function readPackageVersion(): string | undefined {
+  try {
+    const packageJson = requirePeer("../../package.json") as { version?: unknown };
+    return typeof packageJson.version === "string" ? packageJson.version : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function loadOpenTelemetryApi(): OpenTelemetryApi {

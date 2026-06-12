@@ -8,6 +8,7 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import moduleBuiltin from "node:module";
 import { promisify } from "node:util";
 import { attachOpenTelemetry } from "../../dist/otel/index.js";
@@ -254,6 +255,130 @@ test("OpenTelemetry adapter explains the missing optional peer dependency", () =
   } finally {
     moduleBuiltin._load = originalLoad;
   }
+});
+
+test("OpenTelemetry adapter defaults instrumentation version from package metadata", async () => {
+  const scope = createScopeHarness();
+  const fake = createFakeOtel();
+  const originalLoad = moduleBuiltin._load;
+  const packageJson = JSON.parse(await readFile(new URL("../../package.json", import.meta.url), "utf8"));
+  const calls = [];
+
+  moduleBuiltin._load = function load(request, parent, isMain) {
+    if (request === "@opentelemetry/api") {
+      return {
+        trace: {
+          getTracer(name, version) {
+            calls.push({ kind: "tracer", name, version });
+            return fake.tracer;
+          },
+        },
+        metrics: {
+          getMeter(name, version) {
+            calls.push({ kind: "meter", name, version });
+            return fake.meter;
+          },
+        },
+      };
+    }
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  try {
+    const attachment = attachOpenTelemetry(scope);
+    attachment.unsubscribe();
+  } finally {
+    moduleBuiltin._load = originalLoad;
+  }
+
+  assert.deepEqual(calls, [
+    { kind: "tracer", name: "workit", version: packageJson.version },
+    { kind: "meter", name: "workit", version: packageJson.version },
+  ]);
+});
+
+test("OpenTelemetry adapter tolerates missing package metadata version", () => {
+  const scope = createScopeHarness();
+  const fake = createFakeOtel();
+  const originalLoad = moduleBuiltin._load;
+  const calls = [];
+
+  moduleBuiltin._load = function load(request, parent, isMain) {
+    if (request === "../../package.json") {
+      const err = new Error("Cannot find module '../../package.json'");
+      err.code = "MODULE_NOT_FOUND";
+      throw err;
+    }
+    if (request === "@opentelemetry/api") {
+      return {
+        trace: {
+          getTracer(name, version) {
+            calls.push({ kind: "tracer", name, version });
+            return fake.tracer;
+          },
+        },
+        metrics: {
+          getMeter(name, version) {
+            calls.push({ kind: "meter", name, version });
+            return fake.meter;
+          },
+        },
+      };
+    }
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  try {
+    const attachment = attachOpenTelemetry(scope);
+    attachment.unsubscribe();
+  } finally {
+    moduleBuiltin._load = originalLoad;
+  }
+
+  assert.deepEqual(calls, [
+    { kind: "tracer", name: "workit", version: undefined },
+    { kind: "meter", name: "workit", version: undefined },
+  ]);
+});
+
+test("OpenTelemetry adapter ignores invalid package metadata version", () => {
+  const scope = createScopeHarness();
+  const fake = createFakeOtel();
+  const originalLoad = moduleBuiltin._load;
+  const calls = [];
+
+  moduleBuiltin._load = function load(request, parent, isMain) {
+    if (request === "../../package.json") return { version: 42 };
+    if (request === "@opentelemetry/api") {
+      return {
+        trace: {
+          getTracer(name, version) {
+            calls.push({ kind: "tracer", name, version });
+            return fake.tracer;
+          },
+        },
+        metrics: {
+          getMeter(name, version) {
+            calls.push({ kind: "meter", name, version });
+            return fake.meter;
+          },
+        },
+      };
+    }
+    return originalLoad.call(this, request, parent, isMain);
+  };
+
+  try {
+    const attachment = attachOpenTelemetry(scope);
+    attachment.unsubscribe();
+  } finally {
+    moduleBuiltin._load = originalLoad;
+  }
+
+  assert.deepEqual(calls, [
+    { kind: "tracer", name: "workit", version: undefined },
+    { kind: "meter", name: "workit", version: undefined },
+  ]);
 });
 
 test("OpenTelemetry adapter can be imported from node eval", async () => {
