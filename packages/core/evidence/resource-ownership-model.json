@@ -1,0 +1,35 @@
+{
+  "author": "Admilson B. F. Cossa",
+  "spdxLicense": "Apache-2.0",
+  "artifact": "workit-bounded-resource-ownership-model",
+  "version": 1,
+  "model": {
+    "entities": ["scope", "resource", "cleanup", "resource_user"],
+    "patterns": ["linear", "lazy", "shared"],
+    "terminalCauses": ["completed", "failed", "cancelled"],
+    "transitions": [
+      "linear_acquires_before_body",
+      "lazy_acquires_on_first_get",
+      "shared_acquires_on_first_scope_user",
+      "terminal_scope_runs_registered_cleanup",
+      "unused_lazy_resource_has_no_cleanup",
+      "unused_shared_resource_has_no_cleanup"
+    ],
+    "invariants": [
+      "terminal_scope_has_no_open_modeled_resource",
+      "release_count_never_exceeds_acquire_count",
+      "linear_resource_releases_exactly_once",
+      "lazy_resource_releases_iff_acquired",
+      "shared_resource_acquires_and_releases_once_per_scope_when_used"
+    ]
+  },
+  "bounds": {
+    "maxSharedUsers": 3,
+    "maxExploredStatesPerPattern": 1000
+  },
+  "limitations": [
+    "This is a bounded model for WorkIt resource helper contracts, not a proof over arbitrary JavaScript.",
+    "Process crashes, external resource semantics, database transactions, finalizers, and operating-system cleanup are outside this model.",
+    "The model checks finite traces for linear, lazy, and shared helper patterns only."
+  ]
+}

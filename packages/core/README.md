@@ -39,13 +39,23 @@ Changelog: <https://github.com/WorkRuntime/workit/blob/main/CHANGELOG.md>
 ```ts
 import { work } from "@workit/core";
 
-const doubled = await work([1, 2, 3])
+const output = await work([1, 2, 3])
   .inParallel(2)
   .do(async (value, _ctx) => value * 2);
+
+const doubled = output.results;
 ```
 
 The context parameter is available when the task needs cancellation, progress,
 budgets, or scoped resources. It can be ignored for plain transformations.
+
+> [!IMPORTANT]
+> `work().do()` defaults to fail-fast mode. If any item fails, the call throws
+> and cancels sibling work. On success it returns `{ mode: "fail", results }`,
+> not a bare array. Use `.onError("continue")` or `.onError("collect")` when
+> callers need per-item failures in the returned value. `work().do()` buffers
+> the source before execution; use `.stream()` for unbounded or very large
+> async iterables.
 
 ## Why Ownership Matters
 
@@ -232,6 +242,55 @@ Rules:
 | OpenTelemetry bridge | `@workit/core/otel` |
 | Agent helper contracts | `@workit/core/ai` |
 
+### Task Functions And Invocation
+
+The resilience helpers `run.timeout()`, `run.retry()`, `run.fallback()`,
+`run.deadline()`, `run.hedge()`, `run.bracket()`, `run.circuitBreaker()`, and
+`run.uncancellable()` return a `TaskFn<T>`. A `TaskFn` is a description of owned
+work; run it through `group()`/`task(...)` or `scope.spawn(...)`.
+
+```ts
+import { group, run } from "@workit/core";
+
+const chargeWithRetry = run.retry(
+  run.timeout(
+    (ctx) => chargeCustomer(invoice, { signal: ctx.signal }),
+    "5s"
+  ),
+  { times: 3 }
+);
+
+const receipt = await group(async (task) => task(chargeWithRetry));
+```
+
+`renderTree()` takes a scope snapshot, not a live scope. Use
+`renderTree(scope.status())`.
+
+```ts
+import { renderTree, run } from "@workit/core";
+
+await run.scope(async (scope) => {
+  const handle = scope.spawn((ctx) => fetchProfile({ signal: ctx.signal }));
+
+  console.log(renderTree(scope.status()));
+
+  return handle;
+});
+```
+
+## Evidence And Ownership Subpaths
+
+The root import remains focused on the runtime primitives. Evidence and
+ownership helpers live behind explicit subpaths.
+
+| Need | Subpath | Boundary |
+|---|---|---|
+| Build lifecycle receipts from scope events and snapshots | `@workit/core/replay` | audit evidence, not deterministic scheduler replay |
+| Persist receipts in caller-owned stores | `@workit/core/ledger` | memory and file receipt ledgers, not a database framework |
+| Verify receipts and caller-provided protocol specs | `@workit/core/analysis` | bounded verification over supplied evidence, not whole-program analysis |
+| Record explicit terminal activity boundaries | `@workit/core/activity` | completed activity replay, not in-flight workflow recovery |
+| Compose lazy, shared, and scope-owned resources | `@workit/core/resources` | cleanup ownership through WorkIt scopes, not automatic resource detection |
+
 ## Common Use Cases
 
 These are short entry points. The full narrative and benchmark discussion live
@@ -275,23 +334,40 @@ The first success wins. Losing branches receive `CancelReason { kind:
 ### Retry With Timeout
 
 ```ts
-import { run } from "@workit/core";
+import { group, run } from "@workit/core";
 
-const receipt = await run.retry(
-  (ctx) =>
-    run.timeout(
-      (timeoutCtx) =>
-        chargeCustomer(invoice, {
-          signal: AbortSignal.any([ctx.signal, timeoutCtx.signal]),
-        }),
-      "5s"
-    ),
-  { retries: 3 }
+const chargeWithRetry = run.retry(
+  run.timeout(
+    (ctx) => chargeCustomer(invoice, { signal: ctx.signal }),
+    "5s"
+  ),
+  { times: 3 }
 );
+
+const receipt = await group(async (task) => task(chargeWithRetry));
 ```
 
 The retry policy, timeout, and caller cancellation share one owned execution
 path instead of living in separate helper layers.
+
+### Hedged Work
+
+`run.hedge(task, policy)` starts delayed duplicate attempts and returns the
+first successful attempt. Non-winning attempts receive an aborted `ctx.signal`.
+Task bodies and any resources they acquire must observe that signal or install
+their own bounded cleanup; JavaScript cannot preempt non-cooperative work that
+ignores cancellation.
+
+```ts
+import { group, run } from "@workit/core";
+
+const rerank = run.hedge(
+  (ctx) => reranker.score(candidates, { signal: ctx.signal }),
+  { after: "75ms", max: 2 }
+);
+
+const scores = await group(async (task) => task(rerank));
+```
 
 ### Backpressured Stream
 
@@ -379,8 +455,9 @@ thresholds, not exact milliseconds.
 
 | Evidence | Current result |
 |---|---:|
-| Unit tests | 221 passing |
+| Unit tests | 299 passing |
 | Coverage gate | 100% statements, branches, functions, lines |
+| Evidence proof files | 14 passing |
 | Runtime dependencies | 0 |
 | Article benchmark suite | 19/19 passing |
 | Core group import | 14,175 B minified / 4,835 B gzip |
@@ -559,7 +636,7 @@ cite the software release you used:
   title = {WorkIt: A TypeScript Structured Concurrency Runtime for Node.js Server Runtimes},
   year = {2026},
   url = {https://github.com/WorkRuntime/workit},
-  version = {0.1.5},
+  version = {0.2.0},
   license = {Apache-2.0}
 }
 ```

@@ -48,6 +48,56 @@
       "limitations": "The timeout bounds WorkIt cleanup waiting; external systems still need their own timeout and idempotency policies."
     },
     {
+      "id": "LIFE-004",
+      "title": "replay receipts record completed scope closure",
+      "class": "lifecycle",
+      "status": "proven",
+      "proof": "tests/evidence/lifecycle/replay-receipts.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "a closed successful scope has completed terminal outcome and no leaked tasks",
+      "limitations": "Receipts are audit evidence over observed WorkIt events and snapshots; they are not deterministic scheduler replay."
+    },
+    {
+      "id": "LIFE-005",
+      "title": "replay receipts preserve typed cancellation reason",
+      "class": "lifecycle",
+      "status": "proven",
+      "proof": "tests/evidence/lifecycle/replay-receipts.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "a manually cancelled scope records the cancellation reason observed by owned work",
+      "limitations": "The reason is evidence captured from WorkIt-owned cancellation; external systems still need their own abort support."
+    },
+    {
+      "id": "LIFE-006",
+      "title": "shared scope resource acquires and releases once",
+      "class": "lifecycle",
+      "status": "proven",
+      "proof": "tests/evidence/lifecycle/resource-ownership.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "parallel tasks using one shared helper observe one acquisition and one scope-owned release",
+      "limitations": "This proves WorkIt helper ownership and cleanup registration; external resource semantics remain application responsibility."
+    },
+    {
+      "id": "LIFE-008",
+      "title": "file activity store replays completed activity after restart",
+      "class": "lifecycle",
+      "status": "proven",
+      "proof": "tests/evidence/lifecycle/activity-restart.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "a fresh file activity store returns the persisted terminal result without rerunning the activity body",
+      "limitations": "This is terminal activity replay for explicit activity ids; it is not arbitrary in-flight crash recovery or workflow replay."
+    },
+    {
+      "id": "LIFE-011",
+      "title": "resource ownership can be audited across cleanup paths",
+      "class": "lifecycle",
+      "status": "proven",
+      "proof": "tests/evidence/lifecycle/resource-audit.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "explicit resource audit instrumentation records acquired/released/pending resources while WorkIt emits cleanup timeout and failure events",
+      "limitations": "Resource audit entries are explicit caller instrumentation; WorkIt supplies cleanup failure and timeout events through the scope event surface."
+    },
+    {
       "id": "CORR-001",
       "title": "budget inputs are immutable boundary values",
       "class": "correctness",
@@ -86,6 +136,56 @@
       "command": "npm run test:evidence",
       "expectedInvariant": "unbounded retry counts are rejected at the policy boundary",
       "limitations": "The cap prevents accidental huge retry policies; application-level retry budgets may be stricter."
+    },
+    {
+      "id": "CORR-007",
+      "title": "receipt analysis detects leaked owned work",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/analysis-verifiers.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "a non-terminal receipt with pending tasks fails analysis with leaked_tasks",
+      "limitations": "The verifier analyzes receipt evidence supplied to it; it does not observe work that was never captured."
+    },
+    {
+      "id": "CORR-012",
+      "title": "explicit activity boundary preserves terminal evidence",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/activity-boundary.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "completed activity returns the stored result on repeat and changed input conflicts before rerun",
+      "limitations": "The boundary records explicit terminal activity evidence; callers remain responsible for idempotent external side effects."
+    },
+    {
+      "id": "CORR-013",
+      "title": "receipt verifier proves declared lifecycle evidence",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/analysis-verifiers.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "a closed receipt with terminal and cleanup evidence verifies no orphaned owned tasks while preserving cleanup timeout warning evidence",
+      "limitations": "Verification is bounded to the receipt and snapshot supplied by the caller."
+    },
+    {
+      "id": "CORR-015",
+      "title": "bounded resource model preserves cleanup balance invariant",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/resource-ownership-model.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "for linear, lazy, and shared resources, every terminal modeled scope releases exactly the resources it acquired",
+      "limitations": "This is a bounded model for WorkIt resource helper contracts, not a proof over arbitrary JavaScript programs or external resources."
+    },
+    {
+      "id": "CORR-017",
+      "title": "source protocol analysis detects missing ownership edges",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/source-protocol-analysis.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "bounded source protocol specs pass when WorkIt ownership edges are present and fail with stable findings when ownership edges are missing",
+      "limitations": "This verifies caller-provided protocol specifications, not arbitrary TypeScript or JavaScript source."
     },
     {
       "id": "SEC-001",
@@ -136,6 +236,16 @@
       "command": "npm run test:evidence",
       "expectedInvariant": "release-provenance script contains signed-tag verification logic",
       "limitations": "A dry-run gate cannot guarantee a future maintainer will sign a tag; it verifies that the repository policy gate exists."
+    },
+    {
+      "id": "REL-004",
+      "title": "file receipt ledger persists append-only receipt evidence",
+      "class": "release",
+      "status": "proven",
+      "proof": "tests/evidence/release/receipt-ledger.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "a receipt appended by one ledger instance is readable from a new ledger instance",
+      "limitations": "This proof covers WorkIt's file-backed receipt ledger, not database durability or distributed queue semantics."
     },
     {
       "id": "PERF-001",

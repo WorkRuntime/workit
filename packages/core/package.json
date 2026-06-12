@@ -1,7 +1,38 @@
 {
   "name": "@workit/core",
-  "version": "0.1.5",
-  "description": "Structured concurrency runtime for TypeScript.",
+  "version": "0.2.0",
+  "description": "Structured concurrency runtime for TypeScript: owned async work, cancellation, budgets, retries, timeouts, worker offload, scopes.",
+  "keywords": [
+    "structured-concurrency",
+    "concurrency",
+    "async",
+    "asynchronous",
+    "scope",
+    "scopes",
+    "task",
+    "tasks",
+    "cancellation",
+    "cancel",
+    "abort",
+    "timeout",
+    "retry",
+    "backoff",
+    "budget",
+    "rate-limit",
+    "worker-threads",
+    "worker",
+    "promise",
+    "typescript",
+    "runtime",
+    "ai",
+    "llm",
+    "embedding",
+    "agent",
+    "rag",
+    "batch",
+    "stream",
+    "fan-out"
+  ],
   "type": "module",
   "private": false,
   "license": "Apache-2.0",
@@ -33,6 +64,19 @@
       },
       "default": "./dist/runtime/unsupported.js"
     },
+    "./activity": {
+      "types": "./dist/activity/index.d.ts",
+      "node": {
+        "import": "./dist/activity/index.js",
+        "require": "./dist-cjs/activity/index.cjs"
+      },
+      "default": "./dist/runtime/unsupported.js"
+    },
+    "./analysis": {
+      "types": "./dist/analysis/index.d.ts",
+      "import": "./dist/analysis/index.js",
+      "require": "./dist-cjs/analysis/index.cjs"
+    },
     "./channel": {
       "types": "./dist/channel/index.d.ts",
       "import": "./dist/channel/index.js",
@@ -48,10 +92,28 @@
       "import": "./dist/diagnostics/index.js",
       "require": "./dist-cjs/diagnostics/index.cjs"
     },
+    "./ledger": {
+      "types": "./dist/ledger/index.d.ts",
+      "node": {
+        "import": "./dist/ledger/index.js",
+        "require": "./dist-cjs/ledger/index.cjs"
+      },
+      "default": "./dist/runtime/unsupported.js"
+    },
     "./otel": {
       "types": "./dist/otel/index.d.ts",
       "import": "./dist/otel/index.js",
       "require": "./dist-cjs/otel/index.cjs"
+    },
+    "./replay": {
+      "types": "./dist/replay/index.d.ts",
+      "import": "./dist/replay/index.js",
+      "require": "./dist-cjs/replay/index.cjs"
+    },
+    "./resources": {
+      "types": "./dist/resources/index.d.ts",
+      "import": "./dist/resources/index.js",
+      "require": "./dist-cjs/resources/index.cjs"
     },
     "./worker": {
       "types": "./dist/worker/index.d.ts",
@@ -70,6 +132,7 @@
     "CONTRIBUTING.md",
     "dist",
     "dist-cjs",
+    "README.md",
     "SECURITY.md"
   ],
   "scripts": {

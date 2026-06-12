@@ -67,7 +67,7 @@ cite the software release you used:
   title = {WorkIt: A TypeScript Structured Concurrency Runtime for Node.js Server Runtimes},
   year = {2026},
   url = {https://github.com/WorkRuntime/workit},
-  version = {0.1.5},
+  version = {0.2.0},
   license = {Apache-2.0}
 }
 ```
@@ -91,11 +91,16 @@ Stable consumer paths for this release line:
 
 ```txt
 @workit/core
+@workit/core/activity
 @workit/core/ai
+@workit/core/analysis
 @workit/core/channel
 @workit/core/diagnostics
+@workit/core/ledger
 @workit/core/observability
 @workit/core/otel
+@workit/core/replay
+@workit/core/resources
 @workit/core/worker
 ```
 

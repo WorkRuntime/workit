@@ -16,11 +16,16 @@ const require = createRequire(import.meta.url);
 
 const EXPECTED_EXPORT_MAP = [
   ".",
+  "./activity",
   "./ai",
+  "./analysis",
   "./channel",
   "./diagnostics",
+  "./ledger",
   "./observability",
   "./otel",
+  "./replay",
+  "./resources",
   "./worker",
 ];
 
@@ -43,6 +48,14 @@ const EXPECTED_RUNTIME_EXPORTS = {
     "run",
     "work",
   ],
+  "./activity": [
+    "ActivityConflictError",
+    "ActivityNotRunnableError",
+    "ActivitySerializationError",
+    "createFileActivityStore",
+    "createMemoryActivityStore",
+    "runActivity",
+  ],
   "./ai": [
     "AgentToolCalls",
     "BadBatchError",
@@ -55,12 +68,23 @@ const EXPECTED_RUNTIME_EXPORTS = {
     "transcribeStream",
     "wrapAI",
   ],
+  "./analysis": [
+    "analyzeReceipt",
+    "verifyReceipt",
+    "verifyScopeProtocol",
+    "verifySourceProtocol",
+  ],
   "./channel": [
     "ChannelClosedError",
     "createChannel",
   ],
   "./diagnostics": [
     "diagnoseSnapshot",
+  ],
+  "./ledger": [
+    "ReceiptLedgerConflictError",
+    "createFileReceiptLedger",
+    "createMemoryReceiptLedger",
   ],
   "./observability": [
     "attachScopeSummaryExporter",
@@ -70,6 +94,16 @@ const EXPECTED_RUNTIME_EXPORTS = {
   "./otel": [
     "attachOpenTelemetry",
   ],
+  "./replay": [
+    "buildReceipt",
+    "createReceiptRecorder",
+    "redactReceipt",
+  ],
+  "./resources": [
+    "bracketLazy",
+    "bracketShared",
+    "scopeAcquire",
+  ],
   "./worker": [
     "offload",
   ],
@@ -77,30 +111,45 @@ const EXPECTED_RUNTIME_EXPORTS = {
 
 const EXPECTED_EXPORT_CONDITIONS = {
   ".": ["default", "node", "types"],
+  "./activity": ["default", "node", "types"],
   "./ai": ["default", "node", "types"],
+  "./analysis": ["import", "require", "types"],
   "./channel": ["import", "require", "types"],
   "./diagnostics": ["import", "require", "types"],
+  "./ledger": ["default", "node", "types"],
   "./observability": ["import", "require", "types"],
   "./otel": ["import", "require", "types"],
+  "./replay": ["import", "require", "types"],
+  "./resources": ["import", "require", "types"],
   "./worker": ["default", "node", "types"],
 };
 
 const MODULE_PATHS = {
   ".": "../dist/index.js",
+  "./activity": "../dist/activity/index.js",
   "./ai": "../dist/ai/index.js",
+  "./analysis": "../dist/analysis/index.js",
   "./channel": "../dist/channel/index.js",
   "./diagnostics": "../dist/diagnostics/index.js",
+  "./ledger": "../dist/ledger/index.js",
   "./observability": "../dist/observability/index.js",
   "./otel": "../dist/otel/index.js",
+  "./replay": "../dist/replay/index.js",
+  "./resources": "../dist/resources/index.js",
   "./worker": "../dist/worker/index.js",
 };
 
 const CJS_MODULE_PATHS = {
   ".": "../dist-cjs/index.cjs",
+  "./activity": "../dist-cjs/activity/index.cjs",
   "./ai": "../dist-cjs/ai/index.cjs",
+  "./analysis": "../dist-cjs/analysis/index.cjs",
   "./channel": "../dist-cjs/channel/index.cjs",
   "./diagnostics": "../dist-cjs/diagnostics/index.cjs",
+  "./ledger": "../dist-cjs/ledger/index.cjs",
   "./observability": "../dist-cjs/observability/index.cjs",
+  "./replay": "../dist-cjs/replay/index.cjs",
+  "./resources": "../dist-cjs/resources/index.cjs",
 };
 
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
