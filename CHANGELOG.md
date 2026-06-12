@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 
 ## Unreleased
 
+## 0.2.0
+
 Add the core ownership and evidence foundation as explicit `@workit/core`
 subpaths. The root import remains unchanged.
 
@@ -22,6 +24,15 @@ subpaths. The root import remains unchanged.
 - Add executable evidence for receipts, ledgers, analysis, activity terminal
   replay, and resource ownership.
 - Keep the root `@workit/core` bundle size unchanged.
+- Improve npm package discoverability with targeted package keywords and a more
+  specific package description.
+- Clarify npm README examples for retry policies, `TaskFn` invocation,
+  `renderTree(scope.status())`, and `work().do()` fail-fast output.
+- Normalize activity results before persistence so first execution and replay
+  return the same JSON value.
+- Derive the OpenTelemetry instrumentation version from package metadata.
+- Document the buffered `work().do()` contract and cooperative cancellation
+  boundary for hedged work.
 
 ## 0.1.5
 
