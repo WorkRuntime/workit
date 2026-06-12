@@ -53,7 +53,9 @@ budgets, or scoped resources. It can be ignored for plain transformations.
 > `work().do()` defaults to fail-fast mode. If any item fails, the call throws
 > and cancels sibling work. On success it returns `{ mode: "fail", results }`,
 > not a bare array. Use `.onError("continue")` or `.onError("collect")` when
-> callers need per-item failures in the returned value.
+> callers need per-item failures in the returned value. `work().do()` buffers
+> the source before execution; use `.stream()` for unbounded or very large
+> async iterables.
 
 ## Why Ownership Matters
 
@@ -347,6 +349,25 @@ const receipt = await group(async (task) => task(chargeWithRetry));
 
 The retry policy, timeout, and caller cancellation share one owned execution
 path instead of living in separate helper layers.
+
+### Hedged Work
+
+`run.hedge(task, policy)` starts delayed duplicate attempts and returns the
+first successful attempt. Non-winning attempts receive an aborted `ctx.signal`.
+Task bodies and any resources they acquire must observe that signal or install
+their own bounded cleanup; JavaScript cannot preempt non-cooperative work that
+ignores cancellation.
+
+```ts
+import { group, run } from "@workit/core";
+
+const rerank = run.hedge(
+  (ctx) => reranker.score(candidates, { signal: ctx.signal }),
+  { after: "75ms", max: 2 }
+);
+
+const scores = await group(async (task) => task(rerank));
+```
 
 ### Backpressured Stream
 
