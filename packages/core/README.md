@@ -290,6 +290,36 @@ ownership helpers live behind explicit subpaths.
 | Verify receipts and caller-provided protocol specs | `@workit/core/analysis` | bounded verification over supplied evidence, not whole-program analysis |
 | Record explicit terminal activity boundaries | `@workit/core/activity` | completed activity replay, not in-flight workflow recovery |
 | Compose lazy, shared, and scope-owned resources | `@workit/core/resources` | cleanup ownership through WorkIt scopes, not automatic resource detection |
+| Plan declared retry, hedge, timeout, deadline, series, and parallel time bounds | `@workit/core/time-policy` | conservative planning over declared policies, not wall-clock execution proof |
+
+### Time Policy Planning
+
+`@workit/core/time-policy` lets callers inspect declared time policies before
+running task bodies. It is useful for admission checks, review tools, and
+receipt analysis that need a conservative bound for composed retry, hedge,
+timeout, and deadline policies.
+
+```ts
+import { planTimePolicy } from "@workit/core/time-policy";
+
+const plan = planTimePolicy({
+  type: "timeout",
+  timeout: "250ms",
+  policy: {
+    type: "retry",
+    attempt: { type: "attempt", duration: "100ms" },
+    retry: { times: 4, initialDelay: "50ms", backoff: "fixed", jitter: false },
+  },
+});
+
+if (plan.warnings.some((warning) => warning.code === "retry_exceeds_timeout")) {
+  reviewTimeBudget(plan);
+}
+```
+
+The planner does not execute JavaScript, inspect provider latency, or guarantee
+operating-system timer precision. Runtime cancellation still depends on task
+bodies and providers observing `ctx.signal`.
 
 ## Common Use Cases
 
@@ -455,9 +485,9 @@ thresholds, not exact milliseconds.
 
 | Evidence | Current result |
 |---|---:|
-| Unit tests | 299 passing |
+| Unit tests | 319 passing |
 | Coverage gate | 100% statements, branches, functions, lines |
-| Evidence proof files | 14 passing |
+| Evidence proof files | 17 passing |
 | Runtime dependencies | 0 |
 | Article benchmark suite | 19/19 passing |
 | Core group import | 14,175 B minified / 4,835 B gzip |
@@ -636,7 +666,7 @@ cite the software release you used:
   title = {WorkIt: A TypeScript Structured Concurrency Runtime for Node.js Server Runtimes},
   year = {2026},
   url = {https://github.com/WorkRuntime/workit},
-  version = {0.2.0},
+  version = {0.3.0},
   license = {Apache-2.0}
 }
 ```

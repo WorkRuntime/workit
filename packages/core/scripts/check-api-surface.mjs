@@ -26,6 +26,7 @@ const EXPECTED_EXPORT_MAP = [
   "./otel",
   "./replay",
   "./resources",
+  "./time-policy",
   "./worker",
 ];
 
@@ -104,6 +105,11 @@ const EXPECTED_RUNTIME_EXPORTS = {
     "bracketShared",
     "scopeAcquire",
   ],
+  "./time-policy": [
+    "estimateHedge",
+    "estimateRetry",
+    "planTimePolicy",
+  ],
   "./worker": [
     "offload",
   ],
@@ -121,6 +127,7 @@ const EXPECTED_EXPORT_CONDITIONS = {
   "./otel": ["import", "require", "types"],
   "./replay": ["import", "require", "types"],
   "./resources": ["import", "require", "types"],
+  "./time-policy": ["import", "require", "types"],
   "./worker": ["default", "node", "types"],
 };
 
@@ -136,6 +143,7 @@ const MODULE_PATHS = {
   "./otel": "../dist/otel/index.js",
   "./replay": "../dist/replay/index.js",
   "./resources": "../dist/resources/index.js",
+  "./time-policy": "../dist/time-policy/index.js",
   "./worker": "../dist/worker/index.js",
 };
 
@@ -150,6 +158,7 @@ const CJS_MODULE_PATHS = {
   "./observability": "../dist-cjs/observability/index.cjs",
   "./replay": "../dist-cjs/replay/index.cjs",
   "./resources": "../dist-cjs/resources/index.cjs",
+  "./time-policy": "../dist-cjs/time-policy/index.cjs",
 };
 
 const packageJson = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));

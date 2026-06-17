@@ -1,0 +1,40 @@
+{
+  "author": "Admilson B. F. Cossa",
+  "spdxLicense": "Apache-2.0",
+  "artifact": "workit-bounded-time-policy-model",
+  "version": 1,
+  "model": {
+    "entities": ["time_policy", "attempt", "retry", "hedge", "timeout", "deadline", "composition"],
+    "policyForms": ["attempt", "series", "parallel", "retry", "hedge", "timeout", "deadline"],
+    "costSemantics": [
+      "attempt_contributes_declared_duration",
+      "series_sums_child_critical_paths",
+      "parallel_uses_max_child_critical_path_and_sums_parallel_work",
+      "retry_repeats_attempt_and_adds_delays_between_failed_attempts",
+      "hedge_counts_staggered_duplicate_attempts",
+      "timeout_truncates_critical_path_to_limit",
+      "deadline_marks_policy_invalid_when_inner_cost_exceeds_remaining_time"
+    ],
+    "invariants": [
+      "planner_upper_bound_dominates_modeled_cost",
+      "planner_attempt_count_matches_modeled_attempts",
+      "planner_parallel_work_matches_modeled_work",
+      "timeout_and_deadline_costs_do_not_exceed_declared_limits",
+      "infeasible_deadline_reports_typed_warning"
+    ]
+  },
+  "bounds": {
+    "maxDepth": 3,
+    "maxGeneratedPolicies": 640,
+    "durationsMs": [0, 1, 5, 10, 25],
+    "retryTimes": [1, 2, 3],
+    "delaysMs": [0, 1, 5],
+    "hedgeMax": [1, 2, 3],
+    "limitsMs": [1, 10, 30]
+  },
+  "limitations": [
+    "This is a bounded executable model for WorkIt time-policy planning, not a proof over arbitrary JavaScript or wall-clock scheduling.",
+    "The model checks fixed retry backoff without jitter or dynamic backoff functions.",
+    "Timer precision, event-loop stalls, provider behavior, and operating-system scheduling are outside this model."
+  ]
+}
