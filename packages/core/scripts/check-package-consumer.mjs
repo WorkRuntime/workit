@@ -113,6 +113,7 @@ try {
     import { attachOpenTelemetry } from "@workit/core/otel";
     import { buildReceipt, redactReceipt } from "@workit/core/replay";
     import { bracketLazy } from "@workit/core/resources";
+    import { planTimePolicy } from "@workit/core/time-policy";
     import { offload } from "@workit/core/worker";
 
     const result = await run.all([async () => "sdk", async () => "ok"]);
@@ -134,6 +135,15 @@ try {
     const redacted = redactReceipt({
       ...receipt,
       events: [{ type: "task:progress", taskId: "consumer-task", at: 1, data: { token: "secret" } }]
+    });
+    const timePlan = planTimePolicy({
+      type: "timeout",
+      timeout: 250,
+      policy: {
+        type: "retry",
+        attempt: { type: "attempt", duration: 100 },
+        retry: { times: 4, initialDelay: 50, backoff: "fixed", jitter: false },
+      },
     });
     const ledger = createMemoryReceiptLedger();
     const ledgerRecord = await ledger.append(receipt);
@@ -192,6 +202,7 @@ try {
     if (streamed.join(":") !== "X") throw new Error("ai stream helper failed");
     if (receipt.terminal.outcome !== "completed") throw new Error("replay receipt import failed");
     if (JSON.stringify(redacted).includes("secret")) throw new Error("replay redaction failed");
+    if (timePlan.upperBoundMs !== 250 || !timePlan.warnings.some((warning) => warning.code === "retry_exceeds_timeout")) throw new Error("time-policy import failed");
     if (ledgerRecord.receiptId !== "consumer-receipt") throw new Error("ledger import failed");
     if (analysis.status !== "pass") throw new Error("analysis import failed");
     if (activityFirst !== "activity-ok" || activitySecond !== "activity-ok" || activityRuns !== 1) throw new Error("activity import failed");
@@ -213,6 +224,7 @@ try {
     const { createMemoryReceiptLedger } = require("@workit/core/ledger");
     const { buildReceipt } = require("@workit/core/replay");
     const { bracketShared } = require("@workit/core/resources");
+    const { estimateRetry } = require("@workit/core/time-policy");
 
     (async () => {
       const values = await run.all([async () => "cjs", async () => "ok"]);
@@ -231,6 +243,10 @@ try {
       const ledger = createMemoryReceiptLedger();
       const record = await ledger.append(receipt);
       const analysis = verifyReceipt(receipt);
+      const retryPlan = estimateRetry({
+        attempt: { type: "attempt", duration: 100 },
+        retry: { times: 3, initialDelay: 50, backoff: "fixed", jitter: false },
+      });
       const activityStore = createMemoryActivityStore();
       const activity = await runActivity(
         activityStore,
@@ -251,6 +267,7 @@ try {
       if (receipt.terminal.outcome !== "completed") throw new Error("CommonJS replay import failed");
       if (record.receiptId !== receipt.receiptId) throw new Error("CommonJS ledger import failed");
       if (analysis.status !== "pass") throw new Error("CommonJS analysis import failed");
+      if (retryPlan.upperBoundMs !== 400) throw new Error("CommonJS time-policy import failed");
       if (activity !== "activity-cjs-ok") throw new Error("CommonJS activity import failed");
       if (resource !== "resource-cjs-ok" || released !== 1) throw new Error("CommonJS resources import failed");
     })().catch((err) => {
@@ -298,6 +315,7 @@ try {
     import { createMemoryReceiptLedger, type ReceiptLedger } from "@workit/core/ledger";
     import { buildReceipt, type WorkItReceipt } from "@workit/core/replay";
     import { bracketShared, scopeAcquire, type ResourceRelease } from "@workit/core/resources";
+    import { planTimePolicy, type TimePlan, type TimePolicy } from "@workit/core/time-policy";
 
     const RequestKey = createContextKey<{ requestId: string }>("request");
 
@@ -328,6 +346,13 @@ try {
     const ledger: ReceiptLedger = createMemoryReceiptLedger();
     const ledgerRecord = await ledger.append(receipt);
     const analysis: AnalysisReport = verifyReceipt(receipt);
+    const declaredPolicy: TimePolicy = {
+      type: "deadline",
+      now: 1_000,
+      deadlineAt: 1_050,
+      policy: { type: "attempt", duration: 100 },
+    };
+    const timePlan: TimePlan = planTimePolicy(declaredPolicy);
     const activityStore: ActivityStore = createMemoryActivityStore();
     const activityValue: string = await group(async (task) => task(runActivity(
       activityStore,
@@ -354,6 +379,7 @@ try {
     if (value !== "strict") throw new Error("context inference failed");
     if (ledgerRecord.receiptId !== receipt.receiptId) throw new Error("ledger typing failed");
     if (analysis.status !== "pass") throw new Error("analysis typing failed");
+    if (timePlan.valid !== false || timePlan.upperBoundMs !== 50) throw new Error("time-policy typing failed");
     if (activityValue !== "strict-activity-ok") throw new Error("activity typing failed");
     if (strictResource !== "strict-resource" || strictResourceReleased !== 1) throw new Error("resource typing failed");
     if (embedded.mode !== "fail") throw new Error("unexpected embedAll mode");

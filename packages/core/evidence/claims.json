@@ -138,6 +138,26 @@
       "limitations": "The cap prevents accidental huge retry policies; application-level retry budgets may be stricter."
     },
     {
+      "id": "CORR-009",
+      "title": "time-policy planner computes retry upper bounds",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/time-policy-planner.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "retry upper bound includes attempt duration and delays between failed attempts only",
+      "limitations": "The planner computes declared policy bounds before execution; it does not run user task bodies."
+    },
+    {
+      "id": "CORR-010",
+      "title": "time-policy planner reports infeasible deadline",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/time-policy-planner.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "deadline planning returns invalid before runtime execution when policy cannot fit",
+      "limitations": "Deadline feasibility is computed from the supplied clock and policy; applications remain responsible for accurate external deadlines."
+    },
+    {
       "id": "CORR-007",
       "title": "receipt analysis detects leaked owned work",
       "class": "correctness",
@@ -178,6 +198,16 @@
       "limitations": "This is a bounded model for WorkIt resource helper contracts, not a proof over arbitrary JavaScript programs or external resources."
     },
     {
+      "id": "CORR-016",
+      "title": "bounded time-policy model preserves cost upper-bound invariant",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/formal-time-policy-model.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "for generated bounded policies, planTimePolicy returns an upper bound that dominates the modeled critical path cost",
+      "limitations": "This is a bounded executable model for WorkIt time-policy planning, not a proof over arbitrary JavaScript, wall-clock scheduling, timer precision, event-loop stalls, provider behavior, jitter, or dynamic backoff functions."
+    },
+    {
       "id": "CORR-017",
       "title": "source protocol analysis detects missing ownership edges",
       "class": "correctness",
@@ -186,6 +216,16 @@
       "command": "npm run test:evidence",
       "expectedInvariant": "bounded source protocol specs pass when WorkIt ownership edges are present and fail with stable findings when ownership edges are missing",
       "limitations": "This verifies caller-provided protocol specifications, not arbitrary TypeScript or JavaScript source."
+    },
+    {
+      "id": "CORR-021",
+      "title": "nested time-policy planner preserves recursive composition bounds",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/nested-time-policy-composition.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "generated nested policies match the recursive model for upper bounds, attempts, parallel work, truncation limits, and typed timeout/deadline warnings",
+      "limitations": "This is a bounded executable proof over generated nested policy trees. It is not a theorem over arbitrary TypeScript programs, wall-clock scheduling, provider latency, or completed mechanized proof."
     },
     {
       "id": "SEC-001",

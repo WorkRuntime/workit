@@ -7,6 +7,22 @@ SPDX-License-Identifier: Apache-2.0
 
 ## Unreleased
 
+## 0.3.0
+
+Add the `@workit/core/time-policy` planning subpath for declared async time
+policy analysis. The root import remains unchanged.
+
+- Add `planTimePolicy()` for conservative upper-bound planning across attempt,
+  series, parallel, retry, hedge, timeout, and deadline policy trees.
+- Add `estimateRetry()` and `estimateHedge()` helper planners aligned with the
+  runtime retry delay and hedge stagger contracts.
+- Add bounded correctness evidence for retry/deadline planning, the finite
+  time-policy cost model, and nested composition rules.
+- Add package-consumer coverage for the new subpath across ESM, CommonJS, and
+  strict TypeScript fixtures.
+- Document that the planner analyzes declared policy bounds before execution; it
+  does not run task bodies or prove wall-clock scheduler behavior.
+
 ## 0.2.0
 
 Add the core ownership and evidence foundation as explicit `@workit/core`
