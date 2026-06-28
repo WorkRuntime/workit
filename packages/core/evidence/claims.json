@@ -89,13 +89,13 @@
     },
     {
       "id": "LIFE-011",
-      "title": "resource ownership can be audited across cleanup paths",
+      "title": "resource cleanup audit records success, failure, and timeout paths",
       "class": "lifecycle",
       "status": "proven",
       "proof": "tests/evidence/lifecycle/resource-audit.mjs",
       "command": "npm run test:evidence",
-      "expectedInvariant": "explicit resource audit instrumentation records acquired/released/pending resources while WorkIt emits cleanup timeout and failure events",
-      "limitations": "Resource audit entries are explicit caller instrumentation; WorkIt supplies cleanup failure and timeout events through the scope event surface."
+      "expectedInvariant": "resource audit instrumentation records acquired/released/pending resources while WorkIt emits cleanup timeout and failure events",
+      "limitations": "Successful resource acquisition and release entries are explicit audit instrumentation in the evidence harness. WorkIt's current first-class event surface exposes cleanup failures and timeouts, not every successful cleanup start/completion."
     },
     {
       "id": "CORR-001",
@@ -138,6 +138,26 @@
       "limitations": "The cap prevents accidental huge retry policies; application-level retry budgets may be stricter."
     },
     {
+      "id": "CORR-006",
+      "title": "agent authority denies undeclared capability before tool execution",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/agent-authority.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "denied declared tool capability emits agent:tool_denied and the tool body is never called",
+      "limitations": "This is declared tool policy inside runAgent, not operating-system, filesystem, network, or CPU sandboxing."
+    },
+    {
+      "id": "CORR-007",
+      "title": "receipt analysis detects leaked owned work",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/analysis-verifiers.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "a non-terminal receipt with pending tasks fails analysis with leaked_tasks",
+      "limitations": "The verifier analyzes receipt evidence supplied to it; it does not observe work that was never captured."
+    },
+    {
       "id": "CORR-009",
       "title": "time-policy planner computes retry upper bounds",
       "class": "correctness",
@@ -158,14 +178,14 @@
       "limitations": "Deadline feasibility is computed from the supplied clock and policy; applications remain responsible for accurate external deadlines."
     },
     {
-      "id": "CORR-007",
-      "title": "receipt analysis detects leaked owned work",
+      "id": "CORR-011",
+      "title": "fault injection harness records lifecycle evidence through real scopes",
       "class": "correctness",
       "status": "proven",
-      "proof": "tests/evidence/correctness/analysis-verifiers.mjs",
+      "proof": "tests/evidence/correctness/fault-injection.mjs",
       "command": "npm run test:evidence",
-      "expectedInvariant": "a non-terminal receipt with pending tasks fails analysis with leaked_tasks",
-      "limitations": "The verifier analyzes receipt evidence supplied to it; it does not observe work that was never captured."
+      "expectedInvariant": "bounded cancellation, cleanup timeout, provider timeout, and retry exhaustion scenarios return passing reports with WorkIt receipts",
+      "limitations": "This is bounded in-process fault injection through explicit scenarios; it is not deterministic replay, SIGKILL recovery, or an operating-system fault injector."
     },
     {
       "id": "CORR-012",
@@ -228,6 +248,16 @@
       "limitations": "This is a bounded executable proof over generated nested policy trees. It is not a theorem over arbitrary TypeScript programs, wall-clock scheduling, provider latency, or completed mechanized proof."
     },
     {
+      "id": "CORR-023",
+      "title": "typed cancellation contracts reject undeclared task composition",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/typed-cancellation-contracts.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "tsc accepts declared cancellable/shielded composition and rejects plain or misrouted tasks",
+      "limitations": "This proves an optional compile-time intent contract at the contracts subpath. It does not prove that arbitrary task bodies observe ctx.signal or change the root WorkIt API."
+    },
+    {
       "id": "SEC-001",
       "title": "worker offload rejects remote and executable URL schemes",
       "class": "security",
@@ -286,6 +316,26 @@
       "command": "npm run test:evidence",
       "expectedInvariant": "a receipt appended by one ledger instance is readable from a new ledger instance",
       "limitations": "This proof covers WorkIt's file-backed receipt ledger, not database durability or distributed queue semantics."
+    },
+    {
+      "id": "REL-006",
+      "title": "SQL receipt ledger adapters preserve idempotency and conflict detection",
+      "class": "release",
+      "status": "proven",
+      "proof": "tests/evidence/release/sql-receipt-ledger.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "SQLite and Postgres ledger ports return the same record for identical appends and reject conflicting receipt content",
+      "limitations": "The adapters use caller-owned database clients and validate their SQL identifier input; deployment-level durability, replication, backup, and transaction policy remain database responsibilities."
+    },
+    {
+      "id": "REL-007",
+      "title": "SQLite receipt ledger persists through a real file-backed database",
+      "class": "release",
+      "status": "proven",
+      "proof": "tests/evidence/release/sql-ledger-integration.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "a receipt appended through node:sqlite is readable after database close and reopen, while conflicting content is rejected",
+      "limitations": "This proof uses node:sqlite when the active Node runtime provides it. Postgres remains an environment-gated integration path because WorkIt does not take a runtime pg dependency."
     },
     {
       "id": "PERF-001",

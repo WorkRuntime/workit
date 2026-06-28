@@ -7,6 +7,29 @@ SPDX-License-Identifier: Apache-2.0
 
 ## Unreleased
 
+## 0.4.0
+
+Add runtime contract and evidence hardening behind explicit subpaths. The root
+import remains unchanged.
+
+- Add `@workit/core/contracts` for declared cancellable and shielded task
+  composition. This is a compile-time intent contract; it does not prove that
+  arbitrary task bodies observe `ctx.signal`.
+- Add `@workit/core/fault` for bounded in-process lifecycle fault scenarios
+  over the real WorkIt scope engine. This is not OS fault injection, process
+  crash recovery, network chaos testing, or deterministic scheduler replay.
+- Add declared agent tool capability checks to `@workit/core/ai`, including a
+  typed `AgentCapabilityError` and denial events before denied tool bodies run.
+- Extend `@workit/core/ledger` with caller-owned SQLite and Postgres receipt
+  ledger adapters. These adapters define a receipt storage contract; they do
+  not make WorkIt a database framework.
+- Add executable evidence for typed cancellation contracts, bounded fault
+  scenarios, agent authority, SQL receipt ledgers, and resource audit visibility.
+- Extend package-consumer coverage for the new subpaths across ESM, CommonJS,
+  strict TypeScript, framework fixtures, and browser/worker unsupported-runtime
+  checks.
+- Keep the root `@workit/core` import and bundle budget unchanged.
+
 ## 0.3.0
 
 Add the `@workit/core/time-policy` planning subpath for declared async time

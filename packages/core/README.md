@@ -240,7 +240,7 @@ Rules:
 | Worker-thread hard boundary | `@workit/core/worker` |
 | Diagnostics and snapshots | `@workit/core/diagnostics` |
 | OpenTelemetry bridge | `@workit/core/otel` |
-| Agent helper contracts | `@workit/core/ai` |
+| Agent helper and declared tool authority contracts | `@workit/core/ai` |
 
 ### Task Functions And Invocation
 
@@ -286,11 +286,13 @@ ownership helpers live behind explicit subpaths.
 | Need | Subpath | Boundary |
 |---|---|---|
 | Build lifecycle receipts from scope events and snapshots | `@workit/core/replay` | audit evidence, not deterministic scheduler replay |
-| Persist receipts in caller-owned stores | `@workit/core/ledger` | memory and file receipt ledgers, not a database framework |
+| Persist receipts in caller-owned stores | `@workit/core/ledger` | memory, file, and caller-owned SQL receipt ledgers, not a database framework |
 | Verify receipts and caller-provided protocol specs | `@workit/core/analysis` | bounded verification over supplied evidence, not whole-program analysis |
 | Record explicit terminal activity boundaries | `@workit/core/activity` | completed activity replay, not in-flight workflow recovery |
 | Compose lazy, shared, and scope-owned resources | `@workit/core/resources` | cleanup ownership through WorkIt scopes, not automatic resource detection |
 | Plan declared retry, hedge, timeout, deadline, series, and parallel time bounds | `@workit/core/time-policy` | conservative planning over declared policies, not wall-clock execution proof |
+| Declare cancellable and shielded task intent | `@workit/core/contracts` | compile-time composition contract, not proof of task-body cooperation |
+| Run bounded lifecycle fault scenarios | `@workit/core/fault` | in-process evidence harness, not OS/process/network fault injection |
 
 ### Time Policy Planning
 
@@ -320,6 +322,48 @@ if (plan.warnings.some((warning) => warning.code === "retry_exceeds_timeout")) {
 The planner does not execute JavaScript, inspect provider latency, or guarantee
 operating-system timer precision. Runtime cancellation still depends on task
 bodies and providers observing `ctx.signal`.
+
+### Typed Cancellation Contracts
+
+`@workit/core/contracts` adds typed composition boundaries for codebases that
+want task cancellation intent to be explicit at review time.
+
+```ts
+import { cancellable, shielded, typedGroup } from "@workit/core/contracts";
+
+const value = await typedGroup(async (task) => {
+  const child = task(cancellable(async (ctx) => {
+    ctx.signal.throwIfAborted();
+    return "value";
+  }));
+  const flush = task.shielded(shielded(async () => undefined, { timeout: "250ms" }));
+  await flush;
+  return await child;
+});
+```
+
+This is a TypeScript contract over declared task intent. It does not prove that
+an arbitrary task body checks `ctx.signal` or that a provider stops after the
+signal is aborted.
+
+### Bounded Fault Evidence
+
+`@workit/core/fault` runs explicit lifecycle scenarios through the real WorkIt
+scope engine and returns receipts plus verifier output.
+
+```ts
+import { cleanupHang, runFaultScenario } from "@workit/core/fault";
+
+const report = await runFaultScenario(cleanupHang({ cleanupTimeout: "10ms" }));
+
+if (report.status !== "pass") {
+  throw new Error(JSON.stringify(report.findings));
+}
+```
+
+The harness is for in-process lifecycle evidence such as cancellation storms,
+cleanup timeouts, provider timeouts, and retry exhaustion. It is not an OS
+chaos tool, process supervisor, distributed fault injector, or security sandbox.
 
 ## Common Use Cases
 
@@ -485,9 +529,9 @@ thresholds, not exact milliseconds.
 
 | Evidence | Current result |
 |---|---:|
-| Unit tests | 319 passing |
+| Unit tests | 354 passing |
 | Coverage gate | 100% statements, branches, functions, lines |
-| Evidence proof files | 17 passing |
+| Evidence proof files | 22 passing |
 | Runtime dependencies | 0 |
 | Article benchmark suite | 19/19 passing |
 | Core group import | 14,175 B minified / 4,835 B gzip |
@@ -666,7 +710,7 @@ cite the software release you used:
   title = {WorkIt: A TypeScript Structured Concurrency Runtime for Node.js Server Runtimes},
   year = {2026},
   url = {https://github.com/WorkRuntime/workit},
-  version = {0.3.0},
+  version = {0.4.0},
   license = {Apache-2.0}
 }
 ```
