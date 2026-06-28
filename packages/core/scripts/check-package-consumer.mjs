@@ -10,22 +10,26 @@
 
 import { execFile } from "node:child_process";
 import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { homedir, tmpdir } from "node:os";
-import { delimiter, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { build } from "esbuild";
 
 const execFileAsync = promisify(execFile);
-const PACKAGE_ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
-const REPO_ROOT = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const tscCli = join(REPO_ROOT, "node_modules", "typescript", "bin", "tsc");
+const require = createRequire(import.meta.url);
+const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
+const tscCli = require.resolve("typescript/bin/tsc");
+const wranglerJsCli = require.resolve("wrangler/bin/wrangler.js");
 const bunCli = await findExecutable(["bun.exe", "bun"], [join(homedir(), ".bun", "bin", "bun.exe")]);
 const denoCli = await findExecutable(["deno.exe", "deno"], [join(homedir(), ".deno", "bin", "deno.exe")]);
 const wranglerCli = await findExecutable(
   ["wrangler.cmd", "wrangler"],
   [
-    join(REPO_ROOT, "node_modules", ".bin", "wrangler.cmd"),
+    wranglerJsCli,
+    join(ROOT, "node_modules", "wrangler", "bin", "wrangler.js"),
+    join(ROOT, "node_modules", ".bin", "wrangler.cmd"),
     join(homedir(), "node_modules", ".bin", "wrangler.cmd"),
   ]
 );
@@ -38,7 +42,7 @@ const temp = await mkdtemp(join(tmpdir(), "workit-consumer-"));
 
 try {
   const { stdout } = await runNpm(["pack", "--json", "--pack-destination", temp], {
-    cwd: PACKAGE_ROOT,
+    cwd: ROOT,
     timeout: 120_000,
   });
   const [pack] = JSON.parse(stdout);
@@ -105,13 +109,15 @@ try {
 
   await writeFile(join(temp, "smoke.mjs"), `
     import { run, work, group } from "@workit/core";
-    import { createMemoryActivityStore, runActivity } from "@workit/core/activity";
-    import { analyzeReceipt } from "@workit/core/analysis";
-    import { embedAll, streamWithBackpressure } from "@workit/core/ai";
-    import { createMemoryReceiptLedger } from "@workit/core/ledger";
+    import { ActivitySerializationError, createFileActivityStore, createMemoryActivityStore, runActivity } from "@workit/core/activity";
+    import { analyzeReceipt, verifyReceipt, verifySourceProtocol } from "@workit/core/analysis";
+    import { AgentCapabilityError, embedAll, runAgent, streamWithBackpressure } from "@workit/core/ai";
+    import { cancellable, getTaskContract, shielded, typedGroup } from "@workit/core/contracts";
+    import { cleanupHang, runFaultScenario } from "@workit/core/fault";
+    import { createMemoryReceiptLedger, createPostgresReceiptLedger, createSqliteReceiptLedger } from "@workit/core/ledger";
     import { attachTelemetryExporter } from "@workit/core/observability";
     import { attachOpenTelemetry } from "@workit/core/otel";
-    import { buildReceipt, redactReceipt } from "@workit/core/replay";
+    import { buildReceipt } from "@workit/core/replay";
     import { bracketLazy } from "@workit/core/resources";
     import { planTimePolicy } from "@workit/core/time-policy";
     import { offload } from "@workit/core/worker";
@@ -119,62 +125,20 @@ try {
     const result = await run.all([async () => "sdk", async () => "ok"]);
     const batch = await work([1, 2]).inParallel(2).do(async (item) => item * 2);
     const embedded = await embedAll(["a"], { embed: async (text) => [text.length] }, { concurrency: 1 });
+    let denied = false;
+    await runAgent(async (agent) => {
+      try {
+        await agent.tool("write", undefined, async () => "unexpected", { capability: "repo:write" });
+      } catch (err) {
+        denied = err instanceof AgentCapabilityError;
+      }
+    }, { authority: { allowedCapabilities: ["repo:read"] } });
     const streamed = [];
     for await (const item of streamWithBackpressure(["x"], async (input) => input.toUpperCase())) streamed.push(item);
-    const receipt = buildReceipt([], {
-      id: "consumer-scope",
-      status: "closed",
-      startedAt: 1,
-      pendingCount: 0,
-      completedCount: 0,
-      failedCount: 0,
-      cancelledCount: 0,
-      tasks: [],
-      scopes: []
-    }, { receiptId: "consumer-receipt", clock: () => 1 });
-    const redacted = redactReceipt({
-      ...receipt,
-      events: [{ type: "task:progress", taskId: "consumer-task", at: 1, data: { token: "secret" } }]
-    });
-    const timePlan = planTimePolicy({
-      type: "timeout",
-      timeout: 250,
-      policy: {
-        type: "retry",
-        attempt: { type: "attempt", duration: 100 },
-        retry: { times: 4, initialDelay: 50, backoff: "fixed", jitter: false },
-      },
-    });
-    const ledger = createMemoryReceiptLedger();
-    const ledgerRecord = await ledger.append(receipt);
-    const analysis = analyzeReceipt(receipt);
-    const activityStore = createMemoryActivityStore();
-    let activityRuns = 0;
-    const activityFirst = await group(async (task) => task(runActivity(
-      activityStore,
-      { activityId: "consumer-activity", input: { requestId: "a" } },
-      async () => {
-        activityRuns++;
-        return "activity-ok";
-      }
-    )));
-    const activitySecond = await group(async (task) => task(runActivity(
-      activityStore,
-      { activityId: "consumer-activity", input: { requestId: "a" } },
-      async () => {
-        activityRuns++;
-        return "unexpected";
-      }
-    )));
-    let resourceReleased = 0;
-    const resourceValue = await group(async (task) => task(bracketLazy(
-      async () => ({ id: "consumer-resource" }),
-      async (resource) => (await resource.get()).id,
-      async () => {
-        resourceReleased++;
-      }
-    )));
     let exported = 0;
+    let lazyAcquired = 0;
+    const typedValue = await typedGroup(async (spawn) => await spawn(cancellable(async () => "contracts")));
+    const typedShield = shielded(async () => "shield", { timeout: 100 });
     const tracer = { startSpan: () => ({
       setAttribute() { return this; },
       addEvent() { return this; },
@@ -194,22 +158,105 @@ try {
         otel.unsubscribe();
         attachment.unsubscribe();
       });
+      await task(bracketLazy(
+        async () => {
+          lazyAcquired++;
+          return "resource";
+        },
+        async (resource) => await resource.get(),
+        async () => undefined,
+      ));
     });
 
     if (result.join(":") !== "sdk:ok") throw new Error("root import failed");
     if (batch.results.join(":") !== "2:4") throw new Error("work import failed");
     if (embedded.results[0][0] !== 1) throw new Error("ai import failed");
+    if (!denied) throw new Error("AI authority import failed");
     if (streamed.join(":") !== "X") throw new Error("ai stream helper failed");
-    if (receipt.terminal.outcome !== "completed") throw new Error("replay receipt import failed");
-    if (JSON.stringify(redacted).includes("secret")) throw new Error("replay redaction failed");
-    if (timePlan.upperBoundMs !== 250 || !timePlan.warnings.some((warning) => warning.code === "retry_exceeds_timeout")) throw new Error("time-policy import failed");
-    if (ledgerRecord.receiptId !== "consumer-receipt") throw new Error("ledger import failed");
-    if (analysis.status !== "pass") throw new Error("analysis import failed");
-    if (activityFirst !== "activity-ok" || activitySecond !== "activity-ok" || activityRuns !== 1) throw new Error("activity import failed");
-    if (resourceValue !== "consumer-resource" || resourceReleased !== 1) throw new Error("resources import failed");
     if (exported !== 1) throw new Error("observability import failed");
     if (typeof attachOpenTelemetry !== "function") throw new Error("otel import failed");
+    if (typedValue !== "contracts") throw new Error("contracts import failed");
+    if (getTaskContract(typedShield).kind !== "shielded") throw new Error("contracts metadata failed");
+    const activityStore = createMemoryActivityStore();
+    const activity = await group(async (task) => task(runActivity(
+      activityStore,
+      { activityId: "consumer-activity", input: { requestId: "r1" } },
+      async () => "activity-ok",
+    )));
+    if (activity !== "activity-ok") throw new Error("activity import failed");
+    if (typeof createFileActivityStore !== "function") throw new Error("file activity store import failed");
+    if (typeof ActivitySerializationError !== "function") throw new Error("activity error import failed");
+    let receiptScope;
+    await run.scope(async (scope) => {
+      receiptScope = scope;
+    });
+    const receipt = buildReceipt([], receiptScope.status());
+    if (receipt.terminal.outcome !== "completed") throw new Error("replay import failed");
+    if (analyzeReceipt(receipt).status !== "pass") throw new Error("analysis import failed");
+    if (verifyReceipt(receipt).checks.length === 0) throw new Error("receipt verifier import failed");
+    if (verifySourceProtocol({ modules: [] }).status !== "pass") throw new Error("source protocol verifier import failed");
+    const ledger = createMemoryReceiptLedger();
+    if ((await ledger.append(receipt)).receiptId !== receipt.receiptId) throw new Error("ledger import failed");
+    const sqliteLedger = createSqliteReceiptLedger({ db: createSqliteConsumerDb() });
+    if ((await sqliteLedger.append(receipt)).receiptId !== receipt.receiptId) throw new Error("sqlite ledger import failed");
+    const postgresLedger = createPostgresReceiptLedger({ db: createPostgresConsumerDb() });
+    if ((await postgresLedger.append(receipt)).receiptId !== receipt.receiptId) throw new Error("postgres ledger import failed");
+    const faultReport = await runFaultScenario(cleanupHang({ cleanupTimeout: 1 }), { receiptId: "consumer-fault" });
+    if (faultReport.status !== "pass") throw new Error("fault import failed");
+    if (lazyAcquired !== 1) throw new Error("resources import failed");
+    if (planTimePolicy({ type: "attempt", duration: 1 }).upperBoundMs !== 1) throw new Error("time import failed");
     if (typeof offload !== "function") throw new Error("worker import failed");
+
+    function createSqliteConsumerDb() {
+      const rows = new Map();
+      return {
+        async exec() {},
+        async run(sql, params = []) {
+          if (!sql.includes("INSERT OR IGNORE")) return;
+          const [receiptId, checksum, createdAt, storedAt, receiptJson] = params;
+          if (!rows.has(receiptId)) {
+            rows.set(receiptId, {
+              receipt_id: receiptId,
+              checksum,
+              created_at: createdAt,
+              stored_at: storedAt,
+              receipt_json: receiptJson,
+            });
+          }
+        },
+        async get(_sql, params = []) {
+          return rows.get(params[0]);
+        },
+        async all() {
+          return [...rows.values()];
+        },
+      };
+    }
+
+    function createPostgresConsumerDb() {
+      const rows = new Map();
+      return {
+        async query(sql, params = []) {
+          if (sql.includes("INSERT INTO")) {
+            const [receiptId, checksum, createdAt, storedAt, receiptJson] = params;
+            if (!rows.has(receiptId)) {
+              const row = {
+                receipt_id: receiptId,
+                checksum,
+                created_at: createdAt,
+                stored_at: storedAt,
+                receipt_json: JSON.parse(receiptJson),
+              };
+              rows.set(receiptId, row);
+              return { rows: [row] };
+            }
+            return { rows: [] };
+          }
+          if (sql.includes("WHERE receipt_id")) return { rows: [rows.get(params[0])].filter(Boolean) };
+          return { rows: [...rows.values()] };
+        },
+      };
+    }
   `, "utf8");
 
   await execFileAsync(process.execPath, ["smoke.mjs"], {
@@ -219,57 +266,15 @@ try {
 
   await writeFile(join(temp, "cjs-smoke.cjs"), `
     const { run, work } = require("@workit/core");
-    const { createMemoryActivityStore, runActivity } = require("@workit/core/activity");
-    const { verifyReceipt } = require("@workit/core/analysis");
-    const { createMemoryReceiptLedger } = require("@workit/core/ledger");
-    const { buildReceipt } = require("@workit/core/replay");
-    const { bracketShared } = require("@workit/core/resources");
-    const { estimateRetry } = require("@workit/core/time-policy");
+    const { cancellable, typedGroup } = require("@workit/core/contracts");
 
     (async () => {
       const values = await run.all([async () => "cjs", async () => "ok"]);
       const output = await work([1, 2, 3]).inParallel(2).do(async (item) => item + 1);
-      const receipt = buildReceipt([], {
-        id: "consumer-cjs-scope",
-        status: "closed",
-        startedAt: 1,
-        pendingCount: 0,
-        completedCount: 0,
-        failedCount: 0,
-        cancelledCount: 0,
-        tasks: [],
-        scopes: []
-      });
-      const ledger = createMemoryReceiptLedger();
-      const record = await ledger.append(receipt);
-      const analysis = verifyReceipt(receipt);
-      const retryPlan = estimateRetry({
-        attempt: { type: "attempt", duration: 100 },
-        retry: { times: 3, initialDelay: 50, backoff: "fixed", jitter: false },
-      });
-      const activityStore = createMemoryActivityStore();
-      const activity = await runActivity(
-        activityStore,
-        { activityId: "consumer-cjs-activity", input: { requestId: "cjs" } },
-        async () => "activity-cjs-ok"
-      )({ signal: new AbortController().signal });
-      let released = 0;
-      const shared = bracketShared(
-        async () => ({ id: "resource-cjs-ok" }),
-        async (resource) => resource.id,
-        async () => {
-          released++;
-        }
-      );
-      const resource = await run.scope(async (scope) => await scope.spawn(shared));
+      const typed = await typedGroup(async (spawn) => await spawn(cancellable(async () => "contracts")));
       if (values.join(":") !== "cjs:ok") throw new Error("CommonJS root import failed");
       if (output.results.join(":") !== "2:3:4") throw new Error("CommonJS work import failed");
-      if (receipt.terminal.outcome !== "completed") throw new Error("CommonJS replay import failed");
-      if (record.receiptId !== receipt.receiptId) throw new Error("CommonJS ledger import failed");
-      if (analysis.status !== "pass") throw new Error("CommonJS analysis import failed");
-      if (retryPlan.upperBoundMs !== 400) throw new Error("CommonJS time-policy import failed");
-      if (activity !== "activity-cjs-ok") throw new Error("CommonJS activity import failed");
-      if (resource !== "resource-cjs-ok" || released !== 1) throw new Error("CommonJS resources import failed");
+      if (typed !== "contracts") throw new Error("CommonJS contracts import failed");
     })().catch((err) => {
       console.error(err);
       process.exit(1);
@@ -307,15 +312,48 @@ try {
       type CancelledItem,
       type ItemError,
       type Settled,
+      type Scope,
+      type ScopeSnapshot,
       type TaskContext,
     } from "@workit/core";
-    import { createMemoryActivityStore, runActivity, type ActivityStore } from "@workit/core/activity";
-    import { verifyReceipt, type AnalysisReport } from "@workit/core/analysis";
-    import { embedAll, streamWithBackpressure } from "@workit/core/ai";
-    import { createMemoryReceiptLedger, type ReceiptLedger } from "@workit/core/ledger";
+    import {
+      ActivitySerializationError,
+      createFileActivityStore,
+      createMemoryActivityStore,
+      runActivity,
+      type ActivityRecord,
+      type ActivityStore,
+    } from "@workit/core/activity";
+    import {
+      analyzeReceipt,
+      verifyReceipt,
+      verifySourceProtocol,
+      type AnalysisReport,
+      type ReceiptVerificationReport,
+      type SourceProtocolAnalysisReport,
+    } from "@workit/core/analysis";
+    import { AgentCapabilityError, embedAll, runAgent, streamWithBackpressure } from "@workit/core/ai";
+    import {
+      cancellable,
+      discardCancellation,
+      getTaskContract,
+      shielded,
+      typedGroup,
+      type CancellableTask,
+      type ShieldedTask,
+    } from "@workit/core/contracts";
+    import { cleanupHang, runFaultScenario, type FaultReport } from "@workit/core/fault";
+    import {
+      createMemoryReceiptLedger,
+      createPostgresReceiptLedger,
+      createSqliteReceiptLedger,
+      type PostgresReceiptLedgerClient,
+      type ReceiptLedgerRecord,
+      type SqliteReceiptLedgerClient,
+    } from "@workit/core/ledger";
     import { buildReceipt, type WorkItReceipt } from "@workit/core/replay";
-    import { bracketShared, scopeAcquire, type ResourceRelease } from "@workit/core/resources";
-    import { planTimePolicy, type TimePlan, type TimePolicy } from "@workit/core/time-policy";
+    import { bracketLazy, type LazyResource } from "@workit/core/resources";
+    import { planTimePolicy, type TimePlan } from "@workit/core/time-policy";
 
     const RequestKey = createContextKey<{ requestId: string }>("request");
 
@@ -338,53 +376,183 @@ try {
         return [input.length] as const;
       },
     });
-    let receipt: WorkItReceipt | undefined;
-    await run.scope(async (scope) => {
-      receipt = buildReceipt([], scope.status(), { receiptId: "strict-receipt" });
-    });
-    if (receipt === undefined || receipt.version !== "workit.receipt.v1") throw new Error("receipt typing failed");
-    const ledger: ReceiptLedger = createMemoryReceiptLedger();
-    const ledgerRecord = await ledger.append(receipt);
-    const analysis: AnalysisReport = verifyReceipt(receipt);
-    const declaredPolicy: TimePolicy = {
-      type: "deadline",
-      now: 1_000,
-      deadlineAt: 1_050,
-      policy: { type: "attempt", duration: 100 },
-    };
-    const timePlan: TimePlan = planTimePolicy(declaredPolicy);
-    const activityStore: ActivityStore = createMemoryActivityStore();
-    const activityValue: string = await group(async (task) => task(runActivity(
-      activityStore,
-      { activityId: "strict-activity", input: { requestId: "strict" } },
-      async () => "strict-activity-ok",
-    )));
-    let strictResourceReleased = 0;
-    const releaseStrict: ResourceRelease<{ id: string }> = async (resource) => {
-      if (resource.id !== "strict-resource") throw new Error("resource release typing failed");
-      strictResourceReleased++;
-    };
-    const strictResource = await run.scope(async (scope) => {
-      scopeAcquire(scope, { id: "strict-scope-resource" }, async () => undefined);
-      return await scope.spawn(bracketShared(
-        async () => ({ id: "strict-resource" }),
-        async (resource) => resource.id,
-        releaseStrict,
-      ));
-    });
     const streamed: string[] = [];
     for await (const item of streamWithBackpressure(["typed"], async (input) => input.toUpperCase())) streamed.push(item);
 
     if (tuple[0] !== 1 || tuple[1] !== "typed") throw new Error("tuple inference failed");
     if (value !== "strict") throw new Error("context inference failed");
-    if (ledgerRecord.receiptId !== receipt.receiptId) throw new Error("ledger typing failed");
-    if (analysis.status !== "pass") throw new Error("analysis typing failed");
-    if (timePlan.valid !== false || timePlan.upperBoundMs !== 50) throw new Error("time-policy typing failed");
-    if (activityValue !== "strict-activity-ok") throw new Error("activity typing failed");
-    if (strictResource !== "strict-resource" || strictResourceReleased !== 1) throw new Error("resource typing failed");
     if (embedded.mode !== "fail") throw new Error("unexpected embedAll mode");
     if (embedded.results[0]?.[0] !== 3) throw new Error("AI helper inference failed");
     if (streamed[0] !== "TYPED") throw new Error("AI stream helper inference failed");
+
+    let receiptScope: Scope | undefined;
+    await run.scope(async (scope) => {
+      receiptScope = scope;
+    });
+    if (receiptScope === undefined) throw new Error("receipt scope missing");
+    const receiptSnapshot: ScopeSnapshot = receiptScope.status();
+    const receipt: WorkItReceipt = buildReceipt([], receiptSnapshot);
+    if (receipt.version !== "workit.receipt.v1") throw new Error("receipt inference failed");
+
+    const activityStore: ActivityStore = createMemoryActivityStore();
+    const activityValue: string = await group(async (task) => await task(runActivity(
+      activityStore,
+      { activityId: "types-activity", input: { requestId: "r1" } },
+      async () => "typed-activity",
+    )));
+    const activityRecord = await activityStore.get("types-activity") as ActivityRecord<string> | undefined;
+    if (activityValue !== "typed-activity") throw new Error("activity inference failed");
+    if (activityRecord?.status !== "completed" || activityRecord.result !== "typed-activity") {
+      throw new Error("activity record inference failed");
+    }
+    const fileActivityStore: ActivityStore = createFileActivityStore({ dir: "." });
+    void fileActivityStore;
+    void ActivitySerializationError;
+
+    const timePlan: TimePlan = planTimePolicy({ type: "attempt", duration: "1s" });
+    if (timePlan.upperBoundMs !== 1_000) throw new Error("time-policy planner inference failed");
+
+    const plainTask = async () => "plain";
+    const typedTask: CancellableTask<string> = cancellable(async () => "typed-contract");
+    const typedShieldedTask: ShieldedTask<string> = shielded(async () => "shielded-contract", { timeout: 100 });
+    const discardedTask: ShieldedTask<string> = discardCancellation(typedTask, "types_flush", { timeout: 100 });
+    const typedTaskValue: string = await typedGroup(async (spawn) => {
+      const first = await spawn(typedTask);
+      const second = await spawn.shielded(typedShieldedTask);
+      const third = await spawn.shielded(discardedTask);
+      return first + ":" + second + ":" + third;
+    });
+    if (!typedTaskValue.includes("typed-contract")) throw new Error("contracts inference failed");
+    if (getTaskContract(discardedTask)?.kind !== "shielded") throw new Error("contracts metadata inference failed");
+    // @ts-expect-error plain tasks must be declared cancellable before typed spawn.
+    await typedGroup(async (spawn) => await spawn(plainTask));
+    // @ts-expect-error shielded tasks must use the explicit shielded boundary.
+    await typedGroup(async (spawn) => await spawn(typedShieldedTask));
+    // @ts-expect-error cancellable tasks are not accepted by the shielded boundary.
+    await typedGroup(async (spawn) => await spawn.shielded(typedTask));
+    // @ts-expect-error discardCancellation requires declared cancellable work.
+    discardCancellation(plainTask, "bad", { timeout: 100 });
+
+    const analysisReport: AnalysisReport = analyzeReceipt(receipt);
+    if (analysisReport.status !== "pass") throw new Error("analysis inference failed");
+    const verificationReport: ReceiptVerificationReport = verifyReceipt(receipt);
+    if (verificationReport.receiptId !== receipt.receiptId) throw new Error("receipt verifier inference failed");
+    const sourceReport: SourceProtocolAnalysisReport = verifySourceProtocol({
+      modules: [
+        {
+          moduleId: "consumer",
+          functions: [
+            {
+              functionId: "handler",
+              uses: [
+                { operation: "resource.acquire" },
+                { operation: "ctx.defer" },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    if (sourceReport.status !== "pass") throw new Error("source protocol verifier inference failed");
+    const ledger = createMemoryReceiptLedger();
+    const ledgerRecord: ReceiptLedgerRecord = await ledger.append(receipt);
+    if (ledgerRecord.receiptId !== receipt.receiptId) throw new Error("ledger inference failed");
+    const sqliteRows = new Map<string, {
+      receipt_id: string;
+      checksum: string;
+      created_at: number;
+      stored_at: number;
+      receipt_json: string;
+    }>();
+    const sqliteClient: SqliteReceiptLedgerClient = {
+      async exec() {},
+      async run(sql: string, params: readonly unknown[] = []) {
+        if (!sql.includes("INSERT OR IGNORE")) return;
+        const [receiptId, checksum, createdAt, storedAt, receiptJson] = params;
+        if (
+          typeof receiptId === "string"
+          && typeof checksum === "string"
+          && typeof createdAt === "number"
+          && typeof storedAt === "number"
+          && typeof receiptJson === "string"
+          && !sqliteRows.has(receiptId)
+        ) {
+          sqliteRows.set(receiptId, {
+            receipt_id: receiptId,
+            checksum,
+            created_at: createdAt,
+            stored_at: storedAt,
+            receipt_json: receiptJson,
+          });
+        }
+      },
+      async get<T = unknown>(_sql: string, params: readonly unknown[] = []) {
+        return sqliteRows.get(String(params[0])) as T | undefined;
+      },
+      async all<T = unknown>() {
+        return [...sqliteRows.values()] as T[];
+      },
+    };
+    const sqliteRecord: ReceiptLedgerRecord = await createSqliteReceiptLedger({ db: sqliteClient }).append(receipt);
+    if (sqliteRecord.receiptId !== receipt.receiptId) throw new Error("sqlite ledger inference failed");
+
+    const postgresRows = new Map<string, {
+      receipt_id: string;
+      checksum: string;
+      created_at: number;
+      stored_at: number;
+      receipt_json: WorkItReceipt;
+    }>();
+    const postgresClient: PostgresReceiptLedgerClient = {
+      async query<T = unknown>(sql: string, params: readonly unknown[] = []) {
+        if (sql.includes("INSERT INTO")) {
+          const [receiptId, checksum, createdAt, storedAt, receiptJson] = params;
+          if (
+            typeof receiptId === "string"
+            && typeof checksum === "string"
+            && typeof createdAt === "number"
+            && typeof storedAt === "number"
+            && typeof receiptJson === "string"
+            && !postgresRows.has(receiptId)
+          ) {
+            postgresRows.set(receiptId, {
+              receipt_id: receiptId,
+              checksum,
+              created_at: createdAt,
+              stored_at: storedAt,
+              receipt_json: JSON.parse(receiptJson) as WorkItReceipt,
+            });
+            return { rows: [postgresRows.get(receiptId)] as T[] };
+          }
+          return { rows: [] as T[] };
+        }
+        if (sql.includes("WHERE receipt_id")) {
+          return { rows: [postgresRows.get(String(params[0]))].filter(Boolean) as T[] };
+        }
+        return { rows: [...postgresRows.values()] as T[] };
+      },
+    };
+    const postgresRecord: ReceiptLedgerRecord = await createPostgresReceiptLedger({ db: postgresClient }).append(receipt);
+    if (postgresRecord.receiptId !== receipt.receiptId) throw new Error("postgres ledger inference failed");
+    const faultReport: FaultReport = await runFaultScenario(cleanupHang({ cleanupTimeout: 1 }), {
+      receiptId: "types-fault",
+    });
+    if (faultReport.status !== "pass") throw new Error("fault inference failed");
+
+    await runAgent(async (agent) => {
+      await agent.tool("read", undefined, async () => "ok", { capability: "repo:read" });
+      // @ts-expect-error capability must be a string when supplied.
+      await agent.tool("bad", undefined, async () => "bad", { capability: 1 });
+    }, { authority: { allowedCapabilities: ["repo:read"] } });
+    void AgentCapabilityError;
+
+    const lazyTask = bracketLazy(
+      async () => "resource",
+      async (resource: LazyResource<string>) => await resource.get(),
+      async () => undefined,
+    );
+    const lazyValue: string = await group(async (task) => await task(lazyTask));
+    if (lazyValue !== "resource") throw new Error("resource helper inference failed");
 
     const inferredVoid: void = await group(async () => {});
     void inferredVoid;
@@ -498,6 +666,7 @@ try {
     import { run } from "@workit/core";
 
     let disconnectCancelled = false;
+    let disconnectTaskStarted = false;
     const app = express();
     app.use(express.json());
     app.post("/items", async (request, response, next) => {
@@ -518,6 +687,7 @@ try {
       try {
         await run.group(async (task) => {
           await task(async (ctx) => {
+            disconnectTaskStarted = true;
             const signal = AbortSignal.any([ctx.signal, disconnect.signal]);
             await new Promise((resolve, reject) => {
               const timer = setTimeout(resolve, 5_000);
@@ -559,7 +729,12 @@ try {
         });
         req.on("error", () => resolve());
         req.end();
-        setTimeout(() => req.destroy(), 20);
+        void (async () => {
+          for (let attempt = 0; attempt < 100 && !disconnectTaskStarted; attempt++) {
+            await new Promise((innerResolve) => setTimeout(innerResolve, 5));
+          }
+          req.destroy();
+        })();
       });
 
       for (let attempt = 0; attempt < 100 && !disconnectCancelled; attempt++) {
@@ -768,8 +943,12 @@ async function findExecutable(names, fallbacks) {
 }
 
 async function execCli(executable, args, opts) {
+  if (executable.toLowerCase().endsWith(".js")) {
+    return await execFileAsync(process.execPath, [executable, ...args], opts);
+  }
   if (process.platform === "win32" && executable.toLowerCase().endsWith(".cmd")) {
-    return await execFileAsync(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", executable, ...args], opts);
+    const command = `call ${[executable, ...args].map(quoteCmdArg).join(" ")}`;
+    return await execFileAsync(process.env.ComSpec ?? "cmd.exe", ["/d", "/c", command], opts);
   }
   return await execFileAsync(executable, args, opts);
 }
@@ -779,9 +958,18 @@ async function runNpm(args, opts) {
     return await execFileAsync(process.execPath, [process.env.npm_execpath, ...args], opts);
   }
 
+  const bundledNpmCli = join(dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
+  if (await exists(bundledNpmCli)) {
+    return await execFileAsync(process.execPath, [bundledNpmCli, ...args], opts);
+  }
+
   const npmCli = await findExecutable(["npm.cmd", "npm"], []);
   if (npmCli === null) throw new Error("npm executable not found on PATH.");
   return await execCli(npmCli, args, opts);
+}
+
+function quoteCmdArg(value) {
+  return `"${String(value).replaceAll("\"", "\"\"")}"`;
 }
 
 async function exists(path) {

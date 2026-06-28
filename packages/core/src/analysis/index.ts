@@ -1,5 +1,5 @@
 /**
- * Analysis helpers for WorkIt receipts and declared event protocols.
+ * Analysis helpers for WorkIt receipts, time policies, and event protocols.
  *
  * @author Admilson B. F. Cossa
  * SPDX-License-Identifier: Apache-2.0
@@ -10,6 +10,8 @@
  */
 
 import type { ScopeSnapshot, TaskEvent, TaskSnapshot } from "../types/index.js";
+import type { TimePlan, TimePolicy } from "../time-policy/index.js";
+import { planTimePolicy } from "../time-policy/index.js";
 import type { WorkItReceipt, WorkItReceiptEvent } from "../replay/index.js";
 
 /** Analysis result status. */
@@ -19,6 +21,7 @@ export type AnalysisStatus = "pass" | "warn" | "fail";
 export type AnalysisFindingCode =
   | "cleanup_evidence_missing"
   | "cleanup_timeout"
+  | "deadline_infeasible"
   | "leaked_tasks"
   | "receipt_not_terminal"
   | "receipt_truncated"
@@ -31,7 +34,9 @@ export type AnalysisFindingCode =
   | "task_event_after_terminal"
   | "terminal_cause_missing"
   | "terminal_event_missing"
-  | "terminal_failed";
+  | "terminal_failed"
+  | "time_budget_exceeded"
+  | "time_policy_warning";
 
 /** Severity assigned to one analysis finding. */
 export type AnalysisSeverity = "info" | "warn" | "error";
@@ -48,12 +53,19 @@ export interface AnalysisFinding {
   readonly operation?: string;
   readonly count?: number;
   readonly limit?: number;
+  readonly estimatedMs?: number;
+  readonly limitMs?: number;
 }
 
 /** Analysis report returned by verifier helpers. */
 export interface AnalysisReport {
   readonly status: AnalysisStatus;
   readonly findings: readonly AnalysisFinding[];
+}
+
+/** Time-policy analysis report with the underlying plan attached. */
+export interface TimePolicyAnalysisReport extends AnalysisReport {
+  readonly plan: TimePlan;
 }
 
 /** Stable receipt verification checks. */
@@ -84,6 +96,11 @@ export interface ReceiptVerificationOptions {
 export interface ReceiptVerificationReport extends AnalysisReport {
   readonly receiptId: string;
   readonly checks: readonly ReceiptVerificationCheck[];
+}
+
+/** Options for time-policy verification. */
+export interface TimePolicyAnalysisOptions {
+  readonly maxUpperBoundMs?: number;
 }
 
 /** Bounded source protocol operation understood by `verifySourceProtocol`. */
@@ -308,6 +325,37 @@ export function verifyReceipt(
     receiptId: receipt.receiptId,
     checks,
   };
+}
+
+/** Verifies a declared time policy against planner warnings and optional SLA. */
+export function verifyTimePolicy(
+  policy: TimePolicy,
+  opts: TimePolicyAnalysisOptions = {},
+): TimePolicyAnalysisReport {
+  const plan = planTimePolicy(policy);
+  const findings: AnalysisFinding[] = [];
+
+  for (const warning of plan.warnings) {
+    findings.push({
+      code: warning.code === "deadline_infeasible" ? "deadline_infeasible" : "time_policy_warning",
+      severity: warning.code === "deadline_infeasible" ? "error" : "warn",
+      message: warning.message,
+      ...(warning.estimatedMs !== undefined ? { estimatedMs: warning.estimatedMs } : {}),
+      ...(warning.limitMs !== undefined ? { limitMs: warning.limitMs } : {}),
+    });
+  }
+
+  if (opts.maxUpperBoundMs !== undefined && plan.upperBoundMs > opts.maxUpperBoundMs) {
+    findings.push({
+      code: "time_budget_exceeded",
+      severity: "error",
+      message: "time policy upper bound exceeds configured maximum",
+      estimatedMs: plan.upperBoundMs,
+      limitMs: opts.maxUpperBoundMs,
+    });
+  }
+
+  return { ...report(findings), plan };
 }
 
 /** Verifies a caller-provided source protocol contract for ownership gaps. */

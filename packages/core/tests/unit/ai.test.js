@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { CancellationError, ContextBagImpl, group } from "../../dist/index.js";
 import {
   AgentToolCalls,
+  AgentCapabilityError,
   BadBatchError,
   OpenAITokens,
   embedAll,
@@ -573,6 +574,81 @@ test("runAgent composes tool retry timeout and cancellation events", async () =>
   });
 
   assert.equal(cancelRun.events.some((event) => event.type === "agent:tool_cancelled"), true);
+});
+
+test("runAgent enforces declared tool capabilities before execution", async () => {
+  let called = false;
+
+  const allowedRun = await runAgent(async (agent) => {
+    return await agent.tool("search", { q: "workit" }, async (input) => {
+      called = true;
+      return input.q;
+    }, { capability: "repo:read" });
+  }, {
+    authority: { allowedCapabilities: ["repo:read"] },
+  });
+
+  assert.equal(allowedRun.result, "workit");
+  assert.equal(called, true);
+  assert.equal(allowedRun.events.some((event) => event.type === "agent:tool_succeeded"), true);
+
+  let deniedCalled = false;
+  const deniedRun = await runAgent(async (agent) => {
+    await assert.rejects(
+      agent.tool("write", { q: "workit" }, async () => {
+        deniedCalled = true;
+        return "unexpected";
+      }, { capability: "repo:write" }),
+      AgentCapabilityError,
+    );
+    return "denied";
+  }, {
+    authority: { allowedCapabilities: ["repo:read"] },
+  });
+
+  assert.equal(deniedRun.result, "denied");
+  assert.equal(deniedCalled, false);
+  assert.deepEqual(deniedRun.events.map((event) => event.type), [
+    "agent:started",
+    "agent:tool_denied",
+    "agent:completed",
+  ]);
+  assert.equal(deniedRun.events[1].capability, "repo:write");
+  assert.equal(deniedRun.events[1].reason, "capability_not_allowed");
+});
+
+test("runAgent authority denial happens before retry and timeout wrappers", async () => {
+  let attempts = 0;
+  const deniedRun = await runAgent(async (agent) => {
+    await assert.rejects(
+      agent.tool("write", undefined, async () => {
+        attempts++;
+        return "unexpected";
+      }, {
+        capability: "repo:write",
+        retry: { times: 3, initialDelay: 1, maxDelay: 1, jitter: false },
+        timeout: 100,
+      }),
+      AgentCapabilityError,
+    );
+    return "checked";
+  }, {
+    authority: { deniedCapabilities: ["repo:write"] },
+  });
+
+  assert.equal(deniedRun.result, "checked");
+  assert.equal(attempts, 0);
+  assert.equal(deniedRun.events.some((event) => event.type === "agent:tool_started"), false);
+  assert.equal(deniedRun.events.some((event) => event.type === "agent:tool_denied"), true);
+});
+
+test("runAgent rejects malformed declared tool capability labels", async () => {
+  await runAgent(async (agent) => {
+    await assert.rejects(
+      agent.tool("empty", undefined, async () => "unexpected", { capability: "" }),
+      /agent capability/,
+    );
+  });
 });
 
 test("runAgent surfaces body failures", async () => {

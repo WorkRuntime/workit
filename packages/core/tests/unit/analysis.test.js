@@ -12,6 +12,7 @@ import {
   verifyReceipt,
   verifyScopeProtocol,
   verifySourceProtocol,
+  verifyTimePolicy,
 } from "../../dist/analysis/index.js";
 import { buildReceipt } from "../../dist/replay/index.js";
 
@@ -416,6 +417,61 @@ test("Given ordered task events and scope events, verifyScopeProtocol passes", (
 
   assert.equal(report.status, "pass");
   assert.deepEqual(report.findings, []);
+});
+
+test("Given declared time policy within budget, verifyTimePolicy passes", () => {
+  const report = verifyTimePolicy(
+    { type: "attempt", duration: 20 },
+    { maxUpperBoundMs: 25 },
+  );
+
+  assert.equal(report.status, "pass");
+  assert.equal(report.plan.upperBoundMs, 20);
+  assert.deepEqual(report.findings, []);
+});
+
+test("Given timeout truncation, verifyTimePolicy reports a warning finding", () => {
+  const report = verifyTimePolicy({
+    type: "timeout",
+    timeout: 250,
+    policy: {
+      type: "retry",
+      attempt: { type: "attempt", duration: 100 },
+      retry: { times: 4, initialDelay: 50, backoff: "fixed", jitter: false },
+    },
+  });
+  const finding = report.findings.find((item) => item.code === "time_policy_warning");
+
+  assert.equal(report.status, "warn");
+  assert.equal(finding?.severity, "warn");
+  assert.equal(finding?.estimatedMs, 550);
+  assert.equal(finding?.limitMs, 250);
+});
+
+test("Given structural time-policy warning without bounds, verifyTimePolicy keeps optional fields absent", () => {
+  const report = verifyTimePolicy({ type: "series", policies: [] });
+  const finding = report.findings.find((item) => item.code === "time_policy_warning");
+
+  assert.equal(report.status, "warn");
+  assert.equal(finding?.estimatedMs, undefined);
+  assert.equal(finding?.limitMs, undefined);
+});
+
+test("Given infeasible deadline and max bound, verifyTimePolicy reports errors", () => {
+  const report = verifyTimePolicy({
+    type: "deadline",
+    now: 1_000,
+    deadlineAt: 1_050,
+    policy: { type: "attempt", duration: 100 },
+  }, {
+    maxUpperBoundMs: 40,
+  });
+  const codes = report.findings.map((finding) => finding.code).sort();
+
+  assert.equal(report.status, "fail");
+  assert.deepEqual(codes, ["deadline_infeasible", "time_budget_exceeded"]);
+  assert.equal(report.findings.find((finding) => finding.code === "deadline_infeasible")?.severity, "error");
+  assert.equal(report.findings.find((finding) => finding.code === "time_budget_exceeded")?.estimatedMs, 50);
 });
 
 test("Given owned source protocol, verifySourceProtocol passes with checked counts", () => {

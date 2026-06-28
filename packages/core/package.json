@@ -1,6 +1,6 @@
 {
   "name": "@workit/core",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Structured concurrency runtime for TypeScript: owned async work, cancellation, budgets, retries, timeouts, worker offload, scopes.",
   "keywords": [
     "structured-concurrency",
@@ -82,6 +82,11 @@
       "import": "./dist/channel/index.js",
       "require": "./dist-cjs/channel/index.cjs"
     },
+    "./contracts": {
+      "types": "./dist/contracts/index.d.ts",
+      "import": "./dist/contracts/index.js",
+      "require": "./dist-cjs/contracts/index.cjs"
+    },
     "./observability": {
       "types": "./dist/observability/index.d.ts",
       "import": "./dist/observability/index.js",
@@ -91,6 +96,14 @@
       "types": "./dist/diagnostics/index.d.ts",
       "import": "./dist/diagnostics/index.js",
       "require": "./dist-cjs/diagnostics/index.cjs"
+    },
+    "./fault": {
+      "types": "./dist/fault/index.d.ts",
+      "node": {
+        "import": "./dist/fault/index.js",
+        "require": "./dist-cjs/fault/index.cjs"
+      },
+      "default": "./dist/runtime/unsupported.js"
     },
     "./ledger": {
       "types": "./dist/ledger/index.d.ts",

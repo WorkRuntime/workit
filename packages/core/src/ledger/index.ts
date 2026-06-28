@@ -14,6 +14,8 @@ import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { WorkItReceipt } from "../replay/index.js";
 
+type MaybePromise<T> = T | Promise<T>;
+
 /** Stored receipt metadata returned by ledger appends and listings. */
 export interface ReceiptLedgerRecord {
   readonly receiptId: string;
@@ -41,12 +43,51 @@ export interface FileReceiptLedgerOptions {
   readonly clock?: () => number;
 }
 
+/** Minimal SQLite client port used by the receipt ledger adapter. */
+export interface SqliteReceiptLedgerClient {
+  exec(sql: string): MaybePromise<unknown>;
+  run(sql: string, params?: readonly unknown[]): MaybePromise<unknown>;
+  get<T = unknown>(sql: string, params?: readonly unknown[]): MaybePromise<T | undefined>;
+  all<T = unknown>(sql: string, params?: readonly unknown[]): MaybePromise<readonly T[]>;
+}
+
+/** Options for SQLite-backed receipt ledgers. */
+export interface SqliteReceiptLedgerOptions {
+  readonly db: SqliteReceiptLedgerClient;
+  readonly tableName?: string;
+  readonly clock?: () => number;
+}
+
+/** Minimal Postgres client port used by the receipt ledger adapter. */
+export interface PostgresReceiptLedgerClient {
+  query<T = unknown>(
+    sql: string,
+    params?: readonly unknown[],
+  ): MaybePromise<{ readonly rows: readonly T[] }>;
+}
+
+/** Options for Postgres-backed receipt ledgers. */
+export interface PostgresReceiptLedgerOptions {
+  readonly db: PostgresReceiptLedgerClient;
+  readonly tableName?: string;
+  readonly clock?: () => number;
+}
+
 interface StoredReceipt {
   readonly record: ReceiptLedgerRecord;
   readonly receipt: WorkItReceipt;
 }
 
-const DEFAULT_MAX_MEMORY_RECEIPTS = 10_000;
+interface SqlReceiptRow {
+  readonly receipt_id: unknown;
+  readonly checksum: unknown;
+  readonly created_at: unknown;
+  readonly stored_at: unknown;
+  readonly receipt_json: unknown;
+}
+
+const DEFAULT_SQL_LEDGER_TABLE = "workit_receipts";
+const SQL_IDENTIFIER_RE = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 
 /** Error thrown when the same receipt id is appended with different content. */
 export class ReceiptLedgerConflictError extends Error {
@@ -61,7 +102,7 @@ export class ReceiptLedgerConflictError extends Error {
 
 /** Creates a bounded in-memory receipt ledger for tests and short-lived processes. */
 export function createMemoryReceiptLedger(opts: MemoryReceiptLedgerOptions = {}): ReceiptLedger {
-  const maxReceipts = opts.maxReceipts ?? DEFAULT_MAX_MEMORY_RECEIPTS;
+  const maxReceipts = opts.maxReceipts ?? 10_000;
   if (!Number.isInteger(maxReceipts) || maxReceipts < 1) {
     throw new RangeError("maxReceipts must be a positive integer");
   }
@@ -95,6 +136,128 @@ export function createMemoryReceiptLedger(opts: MemoryReceiptLedgerOptions = {})
       return [...entries.values()]
         .map((entry) => entry.record)
         .sort(compareRecords);
+    },
+  };
+}
+
+/** Creates a SQLite-backed append-only receipt ledger through a caller-owned database client. */
+export function createSqliteReceiptLedger(opts: SqliteReceiptLedgerOptions): ReceiptLedger {
+  const table = quoteSqlIdentifierPath(opts.tableName ?? DEFAULT_SQL_LEDGER_TABLE);
+  const clock = opts.clock ?? Date.now;
+  let initialized = false;
+
+  const ensureInitialized = async (): Promise<void> => {
+    if (initialized) return;
+    await opts.db.exec([
+      `CREATE TABLE IF NOT EXISTS ${table} (`,
+      "receipt_id TEXT PRIMARY KEY,",
+      "checksum TEXT NOT NULL,",
+      "created_at INTEGER NOT NULL,",
+      "stored_at INTEGER NOT NULL,",
+      "receipt_json TEXT NOT NULL",
+      ")",
+    ].join(" "));
+    initialized = true;
+  };
+
+  const readStored = async (receiptId: string): Promise<StoredReceipt | undefined> => {
+    const row = await opts.db.get<SqlReceiptRow>(
+      `SELECT receipt_id, checksum, created_at, stored_at, receipt_json FROM ${table} WHERE receipt_id = ?`,
+      [receiptId],
+    );
+    return row === undefined ? undefined : sqlRowToStoredReceipt(row);
+  };
+
+  return {
+    async append(receipt) {
+      await ensureInitialized();
+      const checksum = checksumReceipt(receipt);
+      const storedAt = clock();
+      await opts.db.run(
+        [
+          `INSERT OR IGNORE INTO ${table}`,
+          "(receipt_id, checksum, created_at, stored_at, receipt_json)",
+          "VALUES (?, ?, ?, ?, ?)",
+        ].join(" "),
+        [receipt.receiptId, checksum, receipt.createdAt, storedAt, JSON.stringify(receipt)],
+      );
+
+      const stored = await readStored(receipt.receiptId);
+      return finalizeStoredReceipt(receipt.receiptId, checksum, stored);
+    },
+    async get(receiptId) {
+      await ensureInitialized();
+      return (await readStored(receiptId))?.receipt;
+    },
+    async list() {
+      await ensureInitialized();
+      const rows = await opts.db.all<SqlReceiptRow>(
+        `SELECT receipt_id, checksum, created_at, stored_at, receipt_json FROM ${table} ORDER BY created_at ASC, receipt_id ASC`,
+      );
+      return rows.map(sqlRowToStoredReceipt).map((stored) => stored.record);
+    },
+  };
+}
+
+/** Creates a Postgres-backed append-only receipt ledger through a caller-owned database client. */
+export function createPostgresReceiptLedger(opts: PostgresReceiptLedgerOptions): ReceiptLedger {
+  const table = quoteSqlIdentifierPath(opts.tableName ?? DEFAULT_SQL_LEDGER_TABLE);
+  const clock = opts.clock ?? Date.now;
+  let initialized = false;
+
+  const ensureInitialized = async (): Promise<void> => {
+    if (initialized) return;
+    await opts.db.query([
+      `CREATE TABLE IF NOT EXISTS ${table} (`,
+      "receipt_id TEXT PRIMARY KEY,",
+      "checksum TEXT NOT NULL,",
+      "created_at BIGINT NOT NULL,",
+      "stored_at BIGINT NOT NULL,",
+      "receipt_json JSONB NOT NULL",
+      ")",
+    ].join(" "));
+    initialized = true;
+  };
+
+  const readStored = async (receiptId: string): Promise<StoredReceipt | undefined> => {
+    const result = await opts.db.query<SqlReceiptRow>(
+      `SELECT receipt_id, checksum, created_at, stored_at, receipt_json FROM ${table} WHERE receipt_id = $1`,
+      [receiptId],
+    );
+    return result.rows[0] === undefined ? undefined : sqlRowToStoredReceipt(result.rows[0]);
+  };
+
+  return {
+    async append(receipt) {
+      await ensureInitialized();
+      const checksum = checksumReceipt(receipt);
+      const storedAt = clock();
+      const result = await opts.db.query<SqlReceiptRow>(
+        [
+          `INSERT INTO ${table}`,
+          "(receipt_id, checksum, created_at, stored_at, receipt_json)",
+          "VALUES ($1, $2, $3, $4, $5::jsonb)",
+          "ON CONFLICT (receipt_id) DO NOTHING",
+          "RETURNING receipt_id, checksum, created_at, stored_at, receipt_json",
+        ].join(" "),
+        [receipt.receiptId, checksum, receipt.createdAt, storedAt, JSON.stringify(receipt)],
+      );
+      const stored = result.rows[0] === undefined
+        ? await readStored(receipt.receiptId)
+        : sqlRowToStoredReceipt(result.rows[0]);
+
+      return finalizeStoredReceipt(receipt.receiptId, checksum, stored);
+    },
+    async get(receiptId) {
+      await ensureInitialized();
+      return (await readStored(receiptId))?.receipt;
+    },
+    async list() {
+      await ensureInitialized();
+      const result = await opts.db.query<SqlReceiptRow>(
+        `SELECT receipt_id, checksum, created_at, stored_at, receipt_json FROM ${table} ORDER BY created_at ASC, receipt_id ASC`,
+      );
+      return result.rows.map(sqlRowToStoredReceipt).map((stored) => stored.record);
     },
   };
 }
@@ -153,6 +316,50 @@ function checksumReceipt(receipt: WorkItReceipt): string {
   return createHash("sha256").update(stableStringify(receipt)).digest("hex");
 }
 
+function finalizeStoredReceipt(
+  receiptId: string,
+  checksum: string,
+  stored: StoredReceipt | undefined,
+): ReceiptLedgerRecord {
+  if (stored === undefined) throw new Error(`Receipt ledger append did not store receipt id "${receiptId}"`);
+  if (stored.record.checksum !== checksum) throw new ReceiptLedgerConflictError(receiptId);
+  return stored.record;
+}
+
+function sqlRowToStoredReceipt(row: SqlReceiptRow): StoredReceipt {
+  const receiptId = readSqlString(row.receipt_id, "receipt_id");
+  const checksum = readSqlString(row.checksum, "checksum");
+  const createdAt = readSqlNumber(row.created_at, "created_at");
+  const storedAt = readSqlNumber(row.stored_at, "stored_at");
+  const receipt = readSqlReceipt(row.receipt_json);
+  return {
+    record: {
+      receiptId,
+      checksum,
+      createdAt,
+      storedAt,
+    },
+    receipt,
+  };
+}
+
+function readSqlString(value: unknown, field: string): string {
+  if (typeof value !== "string") throw new TypeError(`receipt ledger SQL field "${field}" must be a string`);
+  return value;
+}
+
+function readSqlNumber(value: unknown, field: string): number {
+  const parsed = typeof value === "number" ? value : typeof value === "bigint" ? Number(value) : Number(value);
+  if (!Number.isFinite(parsed)) throw new TypeError(`receipt ledger SQL field "${field}" must be numeric`);
+  return parsed;
+}
+
+function readSqlReceipt(value: unknown): WorkItReceipt {
+  if (typeof value === "string") return JSON.parse(value) as WorkItReceipt;
+  if (typeof value === "object" && value !== null) return value as WorkItReceipt;
+  throw new TypeError("receipt ledger SQL field \"receipt_json\" must be JSON");
+}
+
 async function readStoredReceipt(file: string): Promise<StoredReceipt | undefined> {
   try {
     return JSON.parse(await readFile(file, "utf8")) as StoredReceipt;
@@ -166,6 +373,17 @@ async function readStoredReceipt(file: string): Promise<StoredReceipt | undefine
 
 function receiptPath(dir: string, receiptId: string): string {
   return join(dir, `${Buffer.from(receiptId, "utf8").toString("base64url")}.json`);
+}
+
+function quoteSqlIdentifierPath(input: string): string {
+  const parts = input.split(".");
+
+  return parts.map((part) => {
+    if (!SQL_IDENTIFIER_RE.test(part)) {
+      throw new RangeError(`SQL identifier "${input}" contains an unsafe segment`);
+    }
+    return `"${part}"`;
+  }).join(".");
 }
 
 function compareRecords(a: ReceiptLedgerRecord, b: ReceiptLedgerRecord): number {

@@ -76,6 +76,15 @@ export interface StreamWithBackpressureOptions {
 export type AgentEvent =
   | { type: "agent:started"; seq: number; agentId: string; at: number }
   | { type: "agent:tool_started"; seq: number; agentId: string; tool: string; at: number }
+  | {
+    type: "agent:tool_denied";
+    seq: number;
+    agentId: string;
+    tool: string;
+    capability: string;
+    reason: AgentCapabilityDenialReason;
+    at: number;
+  }
   | { type: "agent:tool_succeeded"; seq: number; agentId: string; tool: string; at: number }
   | { type: "agent:tool_failed"; seq: number; agentId: string; tool: string; error: string; at: number }
   | { type: "agent:tool_cancelled"; seq: number; agentId: string; tool: string; reason: CancelReason; at: number }
@@ -85,11 +94,46 @@ export type AgentEvent =
 type AgentEventPayload =
   | { type: "agent:started" }
   | { type: "agent:tool_started"; tool: string }
+  | {
+    type: "agent:tool_denied";
+    tool: string;
+    capability: string;
+    reason: AgentCapabilityDenialReason;
+  }
   | { type: "agent:tool_succeeded"; tool: string }
   | { type: "agent:tool_failed"; tool: string; error: string }
   | { type: "agent:tool_cancelled"; tool: string; reason: CancelReason }
   | { type: "agent:completed" }
   | { type: "agent:failed"; error: string };
+
+/** Typed reason for declared agent tool capability denial. */
+export type AgentCapabilityDenialReason = "capability_denied" | "capability_not_allowed";
+
+/** Declared tool capability policy for `runAgent()`. This is not an OS sandbox. */
+export interface AgentAuthorityPolicy {
+  readonly allowedCapabilities?: readonly string[];
+  readonly deniedCapabilities?: readonly string[];
+}
+
+/** Options for an agent run. */
+export interface RunAgentOptions {
+  readonly authority?: AgentAuthorityPolicy;
+}
+
+/** Error thrown when an agent tool declares a capability denied by policy. */
+export class AgentCapabilityError extends Error {
+  readonly tool: string;
+  readonly capability: string;
+  readonly reason: AgentCapabilityDenialReason;
+
+  constructor(tool: string, capability: string, reason: AgentCapabilityDenialReason) {
+    super(`Agent tool "${tool}" denied capability "${capability}": ${reason}`);
+    this.name = "AgentCapabilityError";
+    this.tool = tool;
+    this.capability = capability;
+    this.reason = reason;
+  }
+}
 
 /** Budget charges and policies for one agent tool call. */
 export interface AgentToolOptions {
@@ -98,6 +142,7 @@ export interface AgentToolOptions {
   toolCalls?: number;
   retry?: number | RetryOpts;
   timeout?: Duration;
+  capability?: string;
 }
 
 /** Agent-scoped execution contract passed to `runAgent()`. */
@@ -164,7 +209,8 @@ export function wrapAI<T>(provider: string, task: TaskFn<T>): TaskFn<T> {
 
 /** Runs an agent body with replayable local events and explicit tool contracts. */
 export async function runAgent<R>(
-  body: (agent: AgentScope, ctx: TaskContext) => R | Promise<R>
+  body: (agent: AgentScope, ctx: TaskContext) => R | Promise<R>,
+  opts: RunAgentOptions = {},
 ): Promise<AgentRunResult<R>> {
   const events: AgentEvent[] = [];
   const agentId = makeAgentId();
@@ -175,7 +221,7 @@ export async function runAgent<R>(
 
   const result = await run.group(async (task) => {
     return await task(async (ctx) => {
-      const agent = new AgentScopeImpl(agentId, events, emit, ctx);
+      const agent = new AgentScopeImpl(agentId, events, emit, ctx, opts.authority);
       emit({ type: "agent:started" });
       try {
         const value = await body(agent, ctx);
@@ -345,7 +391,8 @@ class AgentScopeImpl implements AgentScope {
     readonly id: string,
     readonly events: readonly AgentEvent[],
     private readonly emit: (event: AgentEventPayload) => void,
-    private readonly ctx: TaskContext
+    private readonly ctx: TaskContext,
+    private readonly authority: AgentAuthorityPolicy | undefined,
   ) {}
 
   async tool<I, O>(
@@ -354,6 +401,19 @@ class AgentScopeImpl implements AgentScope {
     fn: (input: I, ctx: TaskContext) => O | Promise<O>,
     opts: AgentToolOptions = {}
   ): Promise<O> {
+    if (opts.capability !== undefined) {
+      const denied = evaluateCapability(this.authority, name, opts.capability);
+      if (denied !== undefined) {
+        this.emit({
+          type: "agent:tool_denied",
+          tool: name,
+          capability: opts.capability,
+          reason: denied,
+        });
+        throw new AgentCapabilityError(name, opts.capability, denied);
+      }
+    }
+
     this.emit({ type: "agent:tool_started", tool: name });
     try {
       const charge = (key: typeof OpenAITokens | typeof CostBudget | typeof AgentToolCalls, amount?: number): void => {
@@ -377,6 +437,29 @@ class AgentScopeImpl implements AgentScope {
       }
       throw err;
     }
+  }
+}
+
+const MAX_AGENT_CAPABILITY_LENGTH = 128;
+
+function evaluateCapability(
+  authority: AgentAuthorityPolicy | undefined,
+  tool: string,
+  capability: string,
+): AgentCapabilityDenialReason | undefined {
+  validateAgentLabel("agent tool", tool);
+  validateAgentLabel("agent capability", capability);
+
+  if (authority?.deniedCapabilities?.includes(capability)) return "capability_denied";
+  if (authority?.allowedCapabilities !== undefined && !authority.allowedCapabilities.includes(capability)) {
+    return "capability_not_allowed";
+  }
+  return undefined;
+}
+
+function validateAgentLabel(label: string, value: string): void {
+  if (value.length === 0 || value.length > MAX_AGENT_CAPABILITY_LENGTH) {
+    throw new RangeError(`${label} must be between 1 and ${MAX_AGENT_CAPABILITY_LENGTH} characters`);
   }
 }
 
