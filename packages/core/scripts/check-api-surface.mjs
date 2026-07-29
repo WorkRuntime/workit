@@ -120,6 +120,7 @@ const EXPECTED_RUNTIME_EXPORTS = {
   ],
   "./replay": [
     "buildReceipt",
+    "createAttemptRecorder",
     "createReceiptRecorder",
     "redactReceipt",
   ],

@@ -7,6 +7,37 @@ SPDX-License-Identifier: Apache-2.0
 
 ## Unreleased
 
+## 0.5.0
+
+Add runtime deadline introspection, shared retry admission limits, and bounded
+attempt evidence to the core execution contract.
+
+- Add `TaskContext.deadlineAt`, reporting the earliest effective absolute
+  deadline inherited through the owning scope tree and active timeout/deadline
+  wrappers. Task bodies must still cooperate through `ctx.signal`.
+- Add `RetryOpts.retryBudget`, charged through the existing atomic scope budget
+  mechanism before each additional retry is admitted. The initial attempt is
+  not charged.
+- Add the `task:attempt` lifecycle event and derive generic receipt attempt
+  evidence from the outer task retry boundary. Exhaustive `TaskEvent` consumers
+  must add a `case "task:attempt"` branch when upgrading from `0.4.x`.
+- Add `createAttemptRecorder()` to `@workit/core/replay` for bounded,
+  secret-redacted caller metadata and validated reason codes at explicit
+  provider or activity boundaries.
+- Extend `@workit/core/time-policy` with retry budget snapshots and conservative
+  aggregate demand checks for nested retry policies.
+- Isolate event-context and observer failures so telemetry cannot interrupt
+  cancellation, deadline timers, or scope close transitions.
+- Clarify that `TaskOpts.idempotencyKey` provides in-flight coalescing inside
+  one live scope, not durable idempotency or restart replay.
+- Expand ESM, CommonJS, strict TypeScript, framework, evidence, and lifecycle
+  coverage for the new contracts.
+- Require non-dry-run provenance publishing from a signed tag matching the
+  package version.
+- Update the release build/test toolchain to patched `esbuild` and `wrangler`
+  versions; the published package still has zero runtime dependencies.
+- Keep the root bundle below its ratcheted size limits.
+
 ## 0.4.0
 
 Add runtime contract and evidence hardening behind explicit subpaths. The root

@@ -43,7 +43,7 @@ export function parseDuration(d: Duration): number {
   }
   const m = PATTERN.exec(d);
   if (!m) {
-    throw new RangeError(`Invalid duration string: "${d}". Use e.g. "500ms", "3s", "5m", "2h".`);
+    throw new RangeError(`Invalid duration string: "${d}"; use 500ms or 3s`);
   }
   const n = Number(m[1]);
   const unit = m[2] as keyof typeof MULTIPLIERS;

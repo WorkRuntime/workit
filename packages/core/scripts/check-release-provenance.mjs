@@ -56,6 +56,19 @@ assert.match(workflow, /npm publish --workspace @workit\/core --provenance --acc
 assert.match(workflow, /npm run verify/u, "release workflow must run full verification before publish");
 assert.match(workflow, /npm run test:coverage/u, "release workflow must run coverage before publish");
 assert.match(workflow, /gpg\.ssh\.allowedSignersFile/u, "release workflow must configure SSH allowed signers before tag verification");
+assert.match(workflow, /fetch-depth:\s*0/u, "release workflow must fetch signed tag objects and release history");
+assert.ok(
+  workflow.includes('test "$GITHUB_REF_TYPE" = "tag"'),
+  "non-dry-run publishing must require a tag ref"
+);
+assert.ok(
+  workflow.includes('test "$GITHUB_REF_NAME" = "v$package_version"'),
+  "release tag must match the package version"
+);
+assert.ok(
+  workflow.includes('git tag -v "$GITHUB_REF_NAME"'),
+  "release workflow must verify the selected signed tag"
+);
 assert.match(workflow, /oven-sh\/setup-bun@[a-f0-9]{40}/u, "release workflow must provision Bun for package-consumer verification");
 assert.match(workflow, /denoland\/setup-deno@[a-f0-9]{40}/u, "release workflow must provision Deno for package-consumer verification");
 assert.match(workflow, /bun-version:\s*"1\.3\.13"/u, "release workflow must pin the Bun fixture version");

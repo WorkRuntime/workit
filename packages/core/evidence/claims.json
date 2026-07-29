@@ -98,6 +98,16 @@
       "limitations": "Successful resource acquisition and release entries are explicit audit instrumentation in the evidence harness. WorkIt's current first-class event surface exposes cleanup failures and timeouts, not every successful cleanup start/completion."
     },
     {
+      "id": "LIFE-012",
+      "title": "attempt evidence records admitted retry invocations",
+      "class": "lifecycle",
+      "status": "proven",
+      "proof": "tests/evidence/lifecycle/replay-receipts.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "each admitted invocation records its attempt number and outcome while bounded metadata applies default secret redaction",
+      "limitations": "Attempt recording wraps explicit task bodies. It does not infer provider policy, prove remote cancellation, or provide deterministic scheduler replay."
+    },
+    {
       "id": "CORR-001",
       "title": "budget inputs are immutable boundary values",
       "class": "correctness",
@@ -256,6 +266,46 @@
       "command": "npm run test:evidence",
       "expectedInvariant": "tsc accepts declared cancellable/shielded composition and rejects plain or misrouted tasks",
       "limitations": "This proves an optional compile-time intent contract at the contracts subpath. It does not prove that arbitrary task bodies observe ctx.signal or change the root WorkIt API."
+    },
+    {
+      "id": "CORR-024",
+      "title": "task context exposes the effective composed deadline",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/runtime-contracts.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "nested retry and fallback attempts observe the absolute deadline declared by the owning wrapper",
+      "limitations": "Deadline introspection reports runtime policy. Timer precision and task termination still depend on the event loop and cooperative AbortSignal handling."
+    },
+    {
+      "id": "CORR-025",
+      "title": "shared retry budget blocks excess attempts before execution",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/runtime-contracts.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "retry wrappers sharing one scope budget cannot execute a retry after the aggregate budget is exhausted",
+      "limitations": "The budget counts retries admitted by WorkIt wrappers. External provider attempts outside the wrapped task remain application responsibility."
+    },
+    {
+      "id": "CORR-026",
+      "title": "deadline retry fallback cancellation and receipt evidence compose",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/runtime-contracts.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "a cancelled retry/fallback composition preserves its effective deadline and records each admitted attempt in its terminal receipt",
+      "limitations": "The proof exercises cooperative in-process cancellation. It does not prove provider cancellation or wall-clock scheduler precision."
+    },
+    {
+      "id": "CORR-027",
+      "title": "time-policy planner aggregates shared retry budget demand",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/time-policy-planner.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "nested retry policies referencing one budget key are inadmissible when aggregate demand exceeds the supplied runtime budget snapshot",
+      "limitations": "Planning uses an explicit point-in-time budget snapshot. Concurrent runtime consumption after planning can reduce the remaining budget before execution."
     },
     {
       "id": "SEC-001",

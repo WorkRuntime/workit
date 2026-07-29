@@ -8,7 +8,12 @@
 import { test } from "vitest";
 import assert from "node:assert/strict";
 import { CancellationError, run } from "../../dist/index.js";
-import { buildReceipt, createReceiptRecorder, redactReceipt } from "../../dist/replay/index.js";
+import {
+  buildReceipt,
+  createAttemptRecorder,
+  createReceiptRecorder,
+  redactReceipt,
+} from "../../dist/replay/index.js";
 
 const sleep = (ms, signal) =>
   new Promise((resolve, reject) => {
@@ -444,10 +449,204 @@ test("Given direct Error values, redactReceipt normalizes safe error evidence", 
   assert.equal(redacted.events[0].data.message, "direct error");
 });
 
+test("Given retry execution, attempt recorder captures bounded redacted evidence", async () => {
+  let receiptRecorder;
+  let now = 10;
+  const attempts = createAttemptRecorder({
+    clock: () => now++,
+    maxAttempts: 2,
+  });
+  let calls = 0;
+
+  await run.scope(async (scope) => {
+    receiptRecorder = createReceiptRecorder(scope, { receiptId: "receipt-attempts" });
+    await scope.spawn(run.retry(attempts.wrap(async () => {
+      calls++;
+      if (calls === 1) throw new Error("provider unavailable");
+      return "ok";
+    }, {
+      metadata: { provider: "primary", token: "secret" },
+      reasonCode: () => "provider_unavailable",
+    }), { times: 2, initialDelay: 0 }), { name: "attempted-provider" });
+  });
+
+  const receipt = receiptRecorder.build(undefined, { attempts: attempts.attempts });
+  receiptRecorder.unsubscribe();
+
+  assert.deepEqual(receipt.attempts.map((attempt) => ({
+    attempt: attempt.attempt,
+    outcome: attempt.outcome,
+    reasonCode: attempt.reasonCode,
+    metadata: attempt.metadata,
+  })), [
+    {
+      attempt: 1,
+      outcome: "failed",
+      reasonCode: "provider_unavailable",
+      metadata: { provider: "primary", token: "[redacted]" },
+    },
+    {
+      attempt: 2,
+      outcome: "succeeded",
+      reasonCode: undefined,
+      metadata: { provider: "primary", token: "[redacted]" },
+    },
+  ]);
+  assert.equal(attempts.droppedAttempts, 0);
+});
+
+test("Given retry execution without an explicit attempt recorder, receipt derives generic attempt evidence", async () => {
+  let receiptRecorder;
+  let observedScope;
+  let calls = 0;
+
+  await run.scope(async (scope) => {
+    observedScope = scope;
+    receiptRecorder = createReceiptRecorder(scope, { receiptId: "receipt-runtime-attempts" });
+    await scope.spawn(run.retry(async () => {
+      calls++;
+      if (calls === 1) throw new Error("retry once");
+      return "ok";
+    }, { times: 2, initialDelay: 0 }), { name: "runtime-attempts" });
+  });
+
+  const receipt = receiptRecorder.build(observedScope.status());
+  receiptRecorder.unsubscribe();
+
+  assert.deepEqual(receipt.attempts.map((attempt) => ({
+    attempt: attempt.attempt,
+    outcome: attempt.outcome,
+  })), [
+    { attempt: 1, outcome: "failed" },
+    { attempt: 2, outcome: "succeeded" },
+  ]);
+  assert.equal(receipt.events.filter((event) => event.type === "task:attempt").length, 2);
+  assert.ok(receipt.attempts.every((attempt) =>
+    attempt.completedAt >= attempt.startedAt
+    && attempt.durationMs === attempt.completedAt - attempt.startedAt
+  ));
+});
+
+test("Given cancellation, attempt recorder records the typed terminal outcome", async () => {
+  const attempts = createAttemptRecorder({ maxAttempts: 2 });
+  let calls = 0;
+
+  await assert.rejects(
+    run.group(async (task) => task(run.retry(attempts.wrap(async () => {
+      calls++;
+      if (calls === 1) throw new Error("retry");
+      throw new CancellationError({ kind: "manual", tag: "stop" });
+    }, {
+      reasonCode: (error) => error instanceof CancellationError ? "manual_stop" : "retryable",
+    }), { times: 2, initialDelay: 0 }))),
+    CancellationError,
+  );
+
+  assert.equal(calls, 2);
+  assert.equal(attempts.attempts.length, 2);
+  assert.equal(attempts.attempts[0].outcome, "failed");
+  assert.equal(attempts.attempts[1].outcome, "cancelled");
+  assert.equal(attempts.attempts[1].reasonCode, "manual_stop");
+  assert.equal(attempts.droppedAttempts, 0);
+});
+
+test("Given a full attempt window, attempt recorder counts dropped evidence", async () => {
+  const attempts = createAttemptRecorder({ maxAttempts: 1 });
+  let calls = 0;
+
+  const result = await run.group(async (task) => task(run.retry(attempts.wrap(async () => {
+    calls++;
+    if (calls === 1) throw new Error("retry");
+    return "ok";
+  }), { times: 2, initialDelay: 0 })));
+
+  assert.equal(result, "ok");
+  assert.equal(attempts.attempts.length, 1);
+  assert.equal(attempts.droppedAttempts, 1);
+});
+
+test("Given a failing reason classifier, attempt recorder preserves the task failure", async () => {
+  const attempts = createAttemptRecorder();
+  const original = new Error("original failure");
+
+  await assert.rejects(
+    run.group(async (task) => task(attempts.wrap(async () => {
+      throw original;
+    }, {
+      reasonCode: () => {
+        throw new Error("classifier failure");
+      },
+    }))),
+    (error) => error === original,
+  );
+
+  assert.equal(attempts.attempts[0].outcome, "failed");
+  assert.equal(attempts.attempts[0].reasonCode, undefined);
+  assert.equal(attempts.attempts[0].error.message, "original failure");
+});
+
+test("Given invalid attempt evidence options, recorder rejects unsafe metadata and codes", async () => {
+  assert.throws(() => createAttemptRecorder({ maxAttempts: 0 }), /maxAttempts/);
+  assert.throws(() => createAttemptRecorder({ maxMetadataBytes: 0 }), /maxMetadataBytes/);
+
+  const circular = {};
+  circular.self = circular;
+  const recorder = createAttemptRecorder();
+  assert.throws(
+    () => recorder.wrap(async () => "never", { metadata: circular }),
+    /JSON serializable/,
+  );
+
+  const serialized = JSON.stringify({ value: "é" });
+  const utf8Bytes = new TextEncoder().encode(serialized).byteLength;
+  assert.ok(utf8Bytes > serialized.length);
+  assert.throws(
+    () => createAttemptRecorder({ maxMetadataBytes: serialized.length })
+      .wrap(async () => "never", { metadata: { value: "é" } }),
+    /maxMetadataBytes/,
+  );
+
+  const invalidCode = createAttemptRecorder();
+  await assert.rejects(
+    run.group(async (task) => task(invalidCode.wrap(async () => {
+      throw new Error("invalid code");
+    }, { reasonCode: () => "Not a stable code" }))),
+    /invalid code/,
+  );
+  assert.equal(invalidCode.attempts[0].reasonCode, undefined);
+});
+
+test("Given recorded metadata, returned attempt evidence cannot mutate recorder state", async () => {
+  const recorder = createAttemptRecorder();
+
+  await run.group(async (task) => task(recorder.wrap(
+    async () => "ok",
+    { metadata: { provider: { name: "primary" } } },
+  )));
+
+  const exposed = recorder.attempts;
+  exposed[0].metadata.provider.name = "mutated";
+
+  assert.equal(recorder.attempts[0].metadata.provider.name, "primary");
+  assert.throws(
+    () => recorder.wrap(async () => "never", {
+      metadata: { toJSON: () => undefined },
+    }),
+    /JSON object/,
+  );
+  assert.throws(
+    () => recorder.wrap(async () => "never", {
+      metadata: { toJSON: () => ["not", "an", "object"] },
+    }),
+    /JSON object/,
+  );
+});
+
 test("Given the root import, replay helpers are not exported from the root runtime", async () => {
   const root = await import("../../dist/index.js");
 
   assert.equal("buildReceipt" in root, false);
+  assert.equal("createAttemptRecorder" in root, false);
   assert.equal("createReceiptRecorder" in root, false);
   assert.equal("redactReceipt" in root, false);
 });

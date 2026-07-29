@@ -240,6 +240,14 @@ export interface TaskLogger {
 /** Typed event stream emitted by the engine at task and scope boundaries. */
 export type TaskEvent =
   | { type: "task:started"; taskId: TaskId; scopeId: ScopeId; name: string; kind: TaskKind; at: number }
+  | {
+      type: "task:attempt";
+      taskId: TaskId;
+      attempt: number;
+      durationMs: number;
+      outcome: "succeeded" | "failed" | "cancelled";
+      at: number;
+    }
   | { type: "task:retrying"; taskId: TaskId; attempt: number; error: unknown; nextDelayMs: number; at: number }
   | { type: "task:progress"; taskId: TaskId; pct?: number; message?: string; data?: unknown; at: number }
   | { type: "task:cleanup_failed"; taskId: TaskId; error: unknown; at: number }
@@ -306,6 +314,8 @@ export interface RetryOpts {
   maxDelay?: Duration;
   jitter?: boolean;
   retryIf?: (err: unknown, attempt: number) => boolean;
+  /** Shared scope budget charged once before each additional attempt is admitted. */
+  retryBudget?: ContextKey<BudgetState>;
 }
 
 /** Hedging policy that starts duplicate attempts after a delay. */
@@ -345,10 +355,13 @@ export interface TaskContext {
   /** Abort signal linked to the owning scope and this task handle. */
   readonly signal: AbortSignal;
 
+  /** Earliest absolute deadline currently inherited through the task's scope and wrappers. */
+  readonly deadlineAt?: number | undefined;
+
   /** Scope that owns the task. */
   readonly scope: Scope;
 
-  /** Current attempt number, one-indexed. The current engine sets this to 1. */
+  /** Current task-body attempt number, one-indexed. Retry wrappers increment it before invocation. */
   readonly attempt: number;
 
   /** Stable task identifier for snapshots and trace records. */
@@ -439,6 +452,12 @@ export interface TaskOpts {
   name?: string;
   kind?: TaskKind;
   meta?: Record<string, unknown>;
+  /**
+   * Coalesces concurrent tasks with the same key inside one scope.
+   *
+   * The key is removed when the shared task settles. Durable idempotency and
+   * restart replay require an explicit `@workit/core/activity` store.
+   */
   idempotencyKey?: string;
   cleanupTimeout?: Duration;
 }

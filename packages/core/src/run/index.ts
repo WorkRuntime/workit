@@ -37,6 +37,8 @@ import { ScopeImpl, getCurrentScope, group } from "../engine/scope.js";
 import { parseDuration } from "../engine/duration.js";
 import { computeBackoffDelay, computeRetryDelay, normalizeRetry, sleep } from "../engine/retry.js";
 
+type RetryContext = TaskContext & { __wr?: true };
+
 /** Runs all tasks concurrently and preserves input-order results. */
 async function all<T extends readonly TaskFn<unknown>[]>(tasks: T): Promise<TaskResults<T>> {
   return group(async (task) => {
@@ -168,9 +170,14 @@ async function pool<T>(concurrency: number, tasks: TaskFn<T>[]): Promise<T[]> {
 }
 
 /** Wraps a task with a timeout that rejects with `TimeoutError`. */
-function timeout<T>(task: TaskFn<T>, duration: Duration): TaskFn<T> {
-  const timeoutMs = parseDuration(duration);
+function timeout<T>(task: TaskFn<T>, duration: Duration, absoluteDeadline?: number): TaskFn<T> {
+  const configuredMs = parseDuration(duration);
   return async (ctx) => {
+    const startedAt = Date.now();
+    const deadlineAt = absoluteDeadline ?? startedAt + configuredMs;
+    const timeoutMs = absoluteDeadline === undefined
+      ? configuredMs
+      : Math.max(0, absoluteDeadline - startedAt);
     const ctrl = new AbortController();
     const signal = AbortSignal.any([ctx.signal, ctrl.signal]);
 
@@ -185,7 +192,13 @@ function timeout<T>(task: TaskFn<T>, duration: Duration): TaskFn<T> {
 
     try {
       return await Promise.race([
-        task({ ...ctx, signal }),
+        task({
+          ...ctx,
+          signal,
+          get deadlineAt() {
+            return ctx.deadlineAt === undefined ? deadlineAt : Math.min(ctx.deadlineAt, deadlineAt);
+          },
+        }),
         timeoutPromise,
       ]);
     } finally {
@@ -220,26 +233,43 @@ function uncancellable<T>(task: TaskFn<T>, opts?: { timeout?: Duration }): TaskF
 /** Wraps a task with a deadline timestamp. */
 function deadline<T>(task: TaskFn<T>, at: number | Date): TaskFn<T> {
   const deadlineAt = typeof at === "number" ? at : at.getTime();
-  return timeout(task, Math.max(0, deadlineAt - Date.now()));
+  return timeout(task, 0, deadlineAt);
 }
 
 /** Retries a task according to a cancel-aware retry policy. */
 function retry<T>(task: TaskFn<T>, opts: number | RetryOpts): TaskFn<T> {
   const policy = normalizeRetry(opts);
+  const retryBudget = typeof opts === "number" ? undefined : opts.retryBudget;
   return async (ctx) => {
     let lastErr: unknown;
+    const scope = ctx.scope instanceof ScopeImpl ? ctx.scope : undefined;
+    const ownsTaskLifecycle = !(ctx as RetryContext).__wr;
     for (let attempt = 1; attempt <= policy.times; attempt++) {
-      if (ctx.scope instanceof ScopeImpl) ctx.scope.updateTaskAttempt(ctx.id, attempt);
+      if (ownsTaskLifecycle) scope?.setAttempt(ctx.id, attempt);
+      const startedAt = Date.now();
       try {
-        return await task({ ...ctx, attempt });
+        const value = await task({ ...ctx, attempt, __wr: true } as RetryContext);
+        if (ownsTaskLifecycle) scope?.emitAttempt(ctx.id, attempt, startedAt, "succeeded");
+        return value;
       } catch (err) {
+        if (ownsTaskLifecycle) {
+          scope?.emitAttempt(
+            ctx.id,
+            attempt,
+            startedAt,
+            err instanceof CancellationError ? "cancelled" : "failed",
+          );
+        }
         lastErr = err;
         if (err instanceof CancellationError) throw err;
         if (attempt >= policy.times || !policy.retryIf(err, attempt)) throw err;
 
+        if (retryBudget !== undefined) ctx.consume(retryBudget, 1);
         const delayMs = computeRetryDelay(attempt, policy);
-        if (ctx.scope instanceof ScopeImpl) ctx.scope.emitTaskRetry(ctx.id, attempt + 1, err, delayMs);
-        else ctx.report({ data: { retrying: true, attempt: attempt + 1, delayMs } });
+        if (ownsTaskLifecycle) {
+          if (scope) scope.emitRetry(ctx.id, attempt + 1, err, delayMs);
+          else ctx.report({ data: { retrying: true, attempt: attempt + 1, delayMs } });
+        }
         await sleep(delayMs, ctx.signal);
       }
     }

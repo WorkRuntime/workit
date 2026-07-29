@@ -11,6 +11,7 @@
 
 import { test } from "vitest";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import {
   CancellationError,
   ContextBagImpl,
@@ -117,6 +118,41 @@ test("invariant: first cancellation reason remains authoritative", async () => {
   );
 
   assert.deepEqual(reasons, [{ kind: "manual", tag: "first" }]);
+});
+
+test("invariant: deadline cancellation isolates closing-event failures", () => {
+  const runtimeUrl = new URL("../../dist/index.js", import.meta.url).href;
+  const script = `
+    import { run } from ${JSON.stringify(runtimeUrl)};
+
+    const context = {
+      get() {
+        throw new Error("context read failed");
+      },
+      getOrThrow() {
+        throw new Error("context read failed");
+      },
+      with() {
+        return this;
+      },
+      has() {
+        return false;
+      },
+    };
+
+    await run.scope(async (scope) => {
+      const unsubscribe = scope.onEvent(() => undefined);
+      scope.deadline(1);
+      await new Promise((resolveTimer) => setTimeout(resolveTimer, 20));
+      unsubscribe();
+    }, { context, name: "deadline-event-isolation" });
+  `;
+
+  assert.doesNotThrow(() => {
+    execFileSync(process.execPath, ["--input-type=module", "--eval", script], {
+      stdio: "pipe",
+    });
+  });
 });
 
 test("invariant: concurrent budget charges are exact and failed charges do not mutate stored budget", async () => {

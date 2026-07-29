@@ -1,6 +1,6 @@
 {
   "name": "@workit/core",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Structured concurrency runtime for TypeScript: owned async work, cancellation, budgets, retries, timeouts, worker offload, scopes.",
   "keywords": [
     "structured-concurrency",
@@ -207,8 +207,8 @@
     "sample:otel": "npm run build && node samples/otel-adapter.sample.js",
     "sample:logging": "npm run build && node samples/logging-otel-bridge.sample.js",
     "soak:24h": "npm run build && node --expose-gc scripts/soak-24h.mjs",
-    "test": "npm run build && vitest run",
-    "test:coverage": "npm run build && vitest run --coverage",
+    "test": "npm run build && vitest run --maxWorkers=1",
+    "test:coverage": "npm run build && vitest run --coverage --maxWorkers=1",
     "verify": "npm run typecheck && npm run check:no-network && npm run check:headers && npm run check:tests && npm test && npm run check:security && npm run check:vulnerabilities && npm run check:sbom && npm run check:api && npm run check:size && npm run check:benchmark && npm run check:context-performance && npm run check:1b && npm run check:leak && npm run check:stream-memory && npm run check:soak && npm run check:exporter-stress && npm run check:package-consumer && npm run check:claims && npm run check:public-proof && npm run check:worker-contract && npm run check:release-policy && npm run pack:dry"
   },
   "engines": {
@@ -226,10 +226,10 @@
     "@opentelemetry/api": "1.9.1",
     "@types/node": "25.6.1",
     "@vitest/coverage-v8": "4.1.5",
-    "esbuild": "0.28.0",
+    "esbuild": "0.28.1",
     "fast-check": "4.7.0",
     "typescript": "6.0.3",
     "vitest": "4.1.5",
-    "wrangler": "4.89.1"
+    "wrangler": "4.114.0"
   }
 }

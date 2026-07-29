@@ -65,6 +65,9 @@ tmp-tests/
 *.tmp.*
 *.scratch.*
 
+# Local internal distribution inspection archives.
+/dist-cjs.zip
+
 # OS and editor files.
 .DS_Store
 Thumbs.db

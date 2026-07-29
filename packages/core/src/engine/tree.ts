@@ -11,60 +11,50 @@
 
 import type { ScopeSnapshot, TaskSnapshot, TreeOpts } from "../types/index.js";
 
-interface Glyphs {
-  branch: string;
-  last: string;
-  pipe: string;
-  space: string;
-  pending: string;
-  running: string;
-  succeeded: string;
-  failed: string;
-  cancelled: string;
+type Glyphs = readonly [string, string, string, string, string, string, string, string, string];
+
+const enum Glyph {
+  Branch,
+  Last,
+  Pipe,
+  Space,
+  Pending,
+  Running,
+  Succeeded,
+  Failed,
+  Cancelled,
 }
 
-const ASCII: Glyphs = {
-  branch: "+-- ",
-  last: "\\-- ",
-  pipe: "|   ",
-  space: "    ",
-  pending: "[ ]",
-  running: "[..]",
-  succeeded: "[OK]",
-  failed: "[X]",
-  cancelled: "[!]",
-};
+const STATUS_GLYPH = {
+  pending: Glyph.Pending,
+  running: Glyph.Running,
+  succeeded: Glyph.Succeeded,
+  failed: Glyph.Failed,
+  cancelled: Glyph.Cancelled,
+} as const;
 
-const UNICODE: Glyphs = {
-  branch: "├─ ",
-  last: "└─ ",
-  pipe: "│  ",
-  space: "   ",
-  pending: "⏸",
-  running: "⏳",
-  succeeded: "✓",
-  failed: "✗",
-  cancelled: "⊘",
-};
+const ASCII: Glyphs = [
+  "+-- ", "\\-- ", "|   ", "    ", "[ ]", "[..]", "[OK]", "[X]", "[!]",
+];
+
+const UNICODE: Glyphs = [
+  "├─ ", "└─ ", "│  ", "   ", "⏸", "⏳", "✓", "✗", "⊘",
+];
 
 /** Renders a scope snapshot as a status tree plus aggregate summary. */
 export function renderTree(snapshot: ScopeSnapshot, opts: TreeOpts = {}): string {
-  const ascii = opts.ascii ?? defaultAscii();
+  const process = (globalThis as typeof globalThis & {
+    process?: { env?: { NO_UNICODE?: string }; stdout?: { isTTY?: boolean } };
+  }).process;
+  const ascii = opts.ascii
+    ?? (process?.env?.NO_UNICODE === "1" || process?.stdout?.isTTY === false);
   const glyphs = ascii ? ASCII : UNICODE;
   const maxDepth = opts.maxDepth ?? Number.POSITIVE_INFINITY;
   const lines = [snapshot.name ?? snapshot.id];
 
   renderChildren(snapshot, "", glyphs, lines, opts, 0, maxDepth);
-  lines.push("");
-  lines.push(renderSummary(snapshot, ascii));
+  lines.push("", renderSummary(snapshot, glyphs, ascii));
   return lines.join("\n");
-}
-
-function defaultAscii(): boolean {
-  const runtime = globalThis as typeof globalThis & {
-    process?: { env?: { NO_UNICODE?: string }; stdout?: { isTTY?: boolean } };
-  };
-  return runtime.process?.env?.NO_UNICODE === "1" || runtime.process?.stdout?.isTTY === false;
 }
 
 function renderChildren(
@@ -77,77 +67,65 @@ function renderChildren(
   maxDepth: number
 ): void {
   if (depth >= maxDepth) return;
-  const children: Array<{ kind: "task"; value: TaskSnapshot } | { kind: "scope"; value: ScopeSnapshot }> = [
-    ...snapshot.tasks.map((value) => ({ kind: "task" as const, value })),
-    ...snapshot.scopes.map((value) => ({ kind: "scope" as const, value })),
-  ];
+  const children: Array<TaskSnapshot | ScopeSnapshot> = [...snapshot.tasks, ...snapshot.scopes];
 
   children.forEach((child, index) => {
     const isLast = index === children.length - 1;
-    const marker = isLast ? glyphs.last : glyphs.branch;
-    const nextPrefix = prefix + (isLast ? glyphs.space : glyphs.pipe);
-    if (child.kind === "task") {
-      lines.push(`${prefix}${marker}${renderTask(child.value, glyphs, opts)}`);
+    const marker = isLast ? glyphs[Glyph.Last] : glyphs[Glyph.Branch];
+    const nextPrefix = prefix + (isLast ? glyphs[Glyph.Space] : glyphs[Glyph.Pipe]);
+    if ("tasks" in child) {
+      lines.push(`${prefix}${marker}${child.name ?? child.id} (${child.status})`);
+      renderChildren(child, nextPrefix, glyphs, lines, opts, depth + 1, maxDepth);
     } else {
-      lines.push(`${prefix}${marker}${child.value.name ?? child.value.id} (${child.value.status})`);
-      renderChildren(child.value, nextPrefix, glyphs, lines, opts, depth + 1, maxDepth);
+      lines.push(`${prefix}${marker}${renderTask(child, glyphs, opts)}`);
     }
   });
 }
 
 function renderTask(task: TaskSnapshot, glyphs: Glyphs, opts: TreeOpts): string {
-  const icon = task.status === "succeeded"
-    ? glyphs.succeeded
-    : task.status === "failed"
-      ? glyphs.failed
-      : task.status === "cancelled"
-        ? glyphs.cancelled
-        : task.status === "running"
-          ? glyphs.running
-          : glyphs.pending;
-
   const details: string[] = [task.status];
-  if ((opts.showDurations ?? true) && task.durationMs !== undefined) {
+  if (opts.showDurations !== false && task.durationMs !== undefined) {
     details.push(`${task.durationMs}ms`);
   }
-  if ((opts.showProgress ?? true) && task.progress?.pct !== undefined) {
+  if (opts.showProgress !== false && task.progress?.pct !== undefined) {
     details.push(`${Math.round(task.progress.pct * 100)}%`);
   }
 
-  return `${icon} ${task.name} (${details.join(", ")})`;
+  return `${glyphs[STATUS_GLYPH[task.status]]} ${task.name} (${details.join(", ")})`;
 }
 
-function renderSummary(snapshot: ScopeSnapshot, ascii: boolean): string {
+function renderSummary(snapshot: ScopeSnapshot, glyphs: Glyphs, ascii: boolean): string {
   const totals = countSnapshot(snapshot);
-  if (ascii) {
-    return `${totals.total} tasks | ${totals.succeeded} [OK] | ${totals.failed} [X] | ${totals.cancelled} [!] | ${totals.pending} [..]`;
-  }
-  return `${totals.total} tasks · ${totals.succeeded} ✓ · ${totals.failed} ✗ · ${totals.cancelled} ⊘ · ${totals.pending} ⏳`;
+  const separator = ascii ? " | " : " · ";
+  return `${totals[TotalCount.All]} tasks${separator}${totals[TotalCount.Succeeded]} ${glyphs[Glyph.Succeeded]}`
+    + `${separator}${totals[TotalCount.Failed]} ${glyphs[Glyph.Failed]}`
+    + `${separator}${totals[TotalCount.Cancelled]} ${glyphs[Glyph.Cancelled]}`
+    + `${separator}${totals[TotalCount.Pending]} ${glyphs[Glyph.Running]}`;
 }
 
-function countSnapshot(snapshot: ScopeSnapshot): {
-  total: number;
-  succeeded: number;
-  failed: number;
-  cancelled: number;
-  pending: number;
-} {
-  const own = {
-    total: snapshot.tasks.length,
-    succeeded: snapshot.completedCount,
-    failed: snapshot.failedCount,
-    cancelled: snapshot.cancelledCount,
-    pending: snapshot.pendingCount,
-  };
+const enum TotalCount {
+  All,
+  Succeeded,
+  Failed,
+  Cancelled,
+  Pending,
+}
+
+type SnapshotTotals = [number, number, number, number, number];
+
+function countSnapshot(
+  snapshot: ScopeSnapshot,
+  totals: SnapshotTotals = [0, 0, 0, 0, 0]
+): SnapshotTotals {
+  totals[TotalCount.All] += snapshot.tasks.length;
+  totals[TotalCount.Succeeded] += snapshot.completedCount;
+  totals[TotalCount.Failed] += snapshot.failedCount;
+  totals[TotalCount.Cancelled] += snapshot.cancelledCount;
+  totals[TotalCount.Pending] += snapshot.pendingCount;
 
   for (const child of snapshot.scopes) {
-    const next = countSnapshot(child);
-    own.total += next.total;
-    own.succeeded += next.succeeded;
-    own.failed += next.failed;
-    own.cancelled += next.cancelled;
-    own.pending += next.pending;
+    countSnapshot(child, totals);
   }
 
-  return own;
+  return totals;
 }

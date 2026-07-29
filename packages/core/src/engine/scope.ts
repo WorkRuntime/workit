@@ -143,10 +143,7 @@ export class ScopeImpl implements Scope {
     if (parent) parent.childScopes.add(this);
     if (opts.deadline) this.deadline(opts.deadline);
 
-    this.bus.emit(
-      { type: "scope:opened", scopeId: this.id, parentId: parent?.id ?? null, at: Date.now() },
-      this.context
-    );
+    this.emit({ type: "scope:opened", scopeId: this.id, parentId: parent?.id ?? null, at: Date.now() });
   }
 
   // -- R6: spawn a scoped child task ------------------------------------
@@ -162,11 +159,10 @@ export class ScopeImpl implements Scope {
       throw new Error(`Cannot spawn on a ${this.state} scope`);
     }
     if (opts.name !== undefined) assertBoundedString("task name", opts.name, MAX_TASK_NAME_LENGTH);
-    if (opts.idempotencyKey !== undefined) {
-      assertBoundedString("idempotency key", opts.idempotencyKey, MAX_IDEMPOTENCY_KEY_LENGTH);
-    }
-    if (opts.idempotencyKey !== undefined) {
-      const existing = this.idempotencyHandles.get(opts.idempotencyKey);
+    const idempotencyKey = opts.idempotencyKey;
+    if (idempotencyKey !== undefined) {
+      assertBoundedString("idempotency key", idempotencyKey, MAX_IDEMPOTENCY_KEY_LENGTH);
+      const existing = this.idempotencyHandles.get(idempotencyKey);
       if (existing !== undefined) return existing as TaskHandle<T>;
     }
     assertNoTaskPolicyShortcuts(opts);
@@ -188,7 +184,7 @@ export class ScopeImpl implements Scope {
 
     const getTaskSignal = () => taskSignal ||= AbortSignal.any([this.signal, (taskAbort ||= new AbortController()).signal]);
 
-    const ctx = this.makeTaskContext(id, name, kind, getTaskSignal, defers, cleanupTimeoutMs);
+    const ctx = this.taskContext(id, name, kind, getTaskSignal, defers, cleanupTimeoutMs);
 
     const record: TaskRecord<T> = {
       id, name, kind,
@@ -205,10 +201,7 @@ export class ScopeImpl implements Scope {
     };
     this.tasks.set(id, record as TaskRecord);
 
-    this.bus.emit(
-      { type: "task:started", taskId: id, scopeId: this.id, name, kind, at: startedAt },
-      this.context
-    );
+    this.emit({ type: "task:started", taskId: id, scopeId: this.id, name, kind, at: startedAt });
 
     const promise = (async () => {
       record.status = "running";
@@ -222,20 +215,7 @@ export class ScopeImpl implements Scope {
         outcome = { ok: true, value };
       } catch (err) {
         record.endedAt = Date.now();
-        if (err instanceof TimeoutError) {
-          record.status = "failed";
-          if (!record.background && this.firstChildFailure === undefined) {
-            this.firstChildFailure = err;
-            this.cancel({ kind: "sibling_failed", siblingId: id, error: err });
-          }
-          terminalEvent = {
-            type: "task:failed",
-            taskId: id,
-            error: err,
-            durationMs: record.endedAt - startedAt,
-            at: record.endedAt,
-          };
-        } else if (err instanceof CancellationError) {
+        if (err instanceof CancellationError && !(err instanceof TimeoutError)) {
           record.status = "cancelled";
           terminalEvent = {
             type: "task:cancelled",
@@ -267,27 +247,18 @@ export class ScopeImpl implements Scope {
           const record = defers.pop()!;
           try {
             if (await runCleanup(record) === "timed_out") {
-              this.bus.emit(
-                { type: "task:cleanup_timeout", taskId: id, timeoutMs: record.timeoutMs, at: Date.now() },
-                this.context
-              );
+              this.emit({ type: "task:cleanup_timeout", taskId: id, timeoutMs: record.timeoutMs, at: Date.now() });
             }
           } catch (cleanupErr) {
-            this.bus.emit(
-              { type: "task:cleanup_failed", taskId: id, error: cleanupErr, at: Date.now() },
-              this.context
-            );
+            this.emit({ type: "task:cleanup_failed", taskId: id, error: cleanupErr, at: Date.now() });
           }
         }
       } finally {
-        if (opts.idempotencyKey !== undefined) this.idempotencyHandles.delete(opts.idempotencyKey);
+        if (idempotencyKey !== undefined) this.idempotencyHandles.delete(idempotencyKey);
       }
 
-      /* v8 ignore next -- each task execution path assigns a terminal event. */
-      if (terminalEvent !== undefined) this.bus.emit(terminalEvent, this.context);
-      /* v8 ignore next -- each task execution path assigns an outcome. */
-      if (outcome === undefined) throw new Error("Task outcome missing");
-      if (outcome.ok) return outcome.value;
+      this.emit(terminalEvent!);
+      if (outcome!.ok) return outcome.value;
       throw outcome.error;
     })();
 
@@ -307,7 +278,7 @@ export class ScopeImpl implements Scope {
       },
     });
 
-    if (opts.idempotencyKey !== undefined) this.idempotencyHandles.set(opts.idempotencyKey, handle);
+    if (idempotencyKey !== undefined) this.idempotencyHandles.set(idempotencyKey, handle);
 
     return handle;
   }
@@ -326,18 +297,20 @@ export class ScopeImpl implements Scope {
     if (typeof reason === "string") assertBoundedString("manual cancel tag", reason, MAX_TASK_NAME_LENGTH);
     const r: CancelReason = typeof reason === "string" ? { kind: "manual", tag: reason } : reason;
     this.state = "cancelling";
-    if (this.deadlineTimer) clearTimeout(this.deadlineTimer);
     try { this.ownAbort.abort(new CancellationError(r)); } catch { /* already aborted */ }
     for (const handler of this.cancelHandlers) {
       try { handler(r); } catch { /* cancel handler errors must not propagate */ }
     }
-    this.emitClosing(classifyClosingReason(r));
+    this.closeEvent(classifyClosingReason(r));
   }
 
   /** Installs a relative deadline that cancels this scope when elapsed. */
   deadline(d: Duration): void {
     const ms = parseDuration(d);
-    this.deadlineAt = Date.now() + ms;
+    const deadlineAt = Date.now() + ms;
+    if (this.deadlineAt !== undefined && this.deadlineAt <= deadlineAt) return;
+    clearTimeout(this.deadlineTimer);
+    this.deadlineAt = deadlineAt;
     this.deadlineTimer = setTimeout(() => {
       this.cancel({
         kind: "deadline",
@@ -397,32 +370,23 @@ export class ScopeImpl implements Scope {
       const record = this.defers.pop()!;
       try {
         if (await runCleanup(record) === "timed_out") {
-          this.bus.emit(
-            { type: "scope:cleanup_timeout", scopeId: this.id, timeoutMs: record.timeoutMs, at: Date.now() },
-            this.context
-          );
+          this.emit({ type: "scope:cleanup_timeout", scopeId: this.id, timeoutMs: record.timeoutMs, at: Date.now() });
         }
       } catch (err) {
-        this.bus.emit(
-          { type: "scope:cleanup_failed", scopeId: this.id, error: err, at: Date.now() },
-          this.context
-        );
+        this.emit({ type: "scope:cleanup_failed", scopeId: this.id, error: err, at: Date.now() });
       }
     }
 
     if (this.parent) this.parent.childScopes.delete(this);
-    this.emitClosing(this.firstChildFailure === undefined ? "completed" : "errored");
+    this.closeEvent(this.firstChildFailure === undefined ? "completed" : "errored");
     this.state = "closed";
-    this.bus.emit(
-      {
-        type: "scope:closed",
-        scopeId: this.id,
-        durationMs: Date.now() - this.startedAt,
-        droppedTelemetryEvents: this.bus.droppedEventCount(),
-        at: Date.now(),
-      },
-      this.context
-    );
+    this.emit({
+      type: "scope:closed",
+      scopeId: this.id,
+      durationMs: Date.now() - this.startedAt,
+      droppedTelemetryEvents: this.bus.droppedEventCount(),
+      at: Date.now(),
+    });
     this.resolveClosed();
   }
 
@@ -479,7 +443,7 @@ export class ScopeImpl implements Scope {
   // -- Build a TaskContext for a spawned task body ---------------------
 
   /** Builds the task-facing context object for one spawned task body. */
-  private makeTaskContext(
+  private taskContext(
     id: TaskId,
     name: string,
     kind: TaskKind,
@@ -491,6 +455,15 @@ export class ScopeImpl implements Scope {
     const log = makeTaskLogger(scope, id);
     return {
       get signal() { return getSignal(); },
+      get deadlineAt() {
+        let earliest: number | undefined;
+        for (let current: ScopeImpl | null = scope; current !== null; current = current.parent) {
+          if (current.deadlineAt !== undefined && (earliest === undefined || current.deadlineAt < earliest)) {
+            earliest = current.deadlineAt;
+          }
+        }
+        return earliest;
+      },
       scope,
       attempt: 1,
       id, name, kind,
@@ -520,31 +493,53 @@ export class ScopeImpl implements Scope {
   }
 
   /** Returns the first non-background child failure observed by this scope. */
-  childFailure(): unknown {
+  failure(): unknown {
     return this.firstChildFailure;
   }
 
   /** Updates the visible attempt for a running task snapshot. */
-  updateTaskAttempt(taskId: TaskId, attempt: number): void {
+  setAttempt(taskId: TaskId, attempt: number): void {
     const record = this.tasks.get(taskId);
     /* v8 ignore next -- retry wrappers update only task ids owned by this scope. */
     if (record !== undefined) record.attempt = attempt;
   }
 
   /** Emits a typed retry event for wrappers executing inside this scope. */
-  emitTaskRetry(taskId: TaskId, attempt: number, error: unknown, nextDelayMs: number): void {
-    this.bus.emit({ type: "task:retrying", taskId, attempt, error, nextDelayMs, at: Date.now() }, this.context);
+  emitRetry(taskId: TaskId, attempt: number, error: unknown, nextDelayMs: number): void {
+    this.emit({ type: "task:retrying", taskId, attempt, error, nextDelayMs, at: Date.now() });
+  }
+
+  /** Emits terminal evidence for one admitted retry task-body invocation. */
+  emitAttempt(
+    taskId: TaskId,
+    attempt: number,
+    startedAt: number,
+    outcome: "succeeded" | "failed" | "cancelled",
+  ): void {
+    const at = Date.now();
+    this.emit({
+      type: "task:attempt",
+      taskId,
+      attempt,
+      durationMs: at - startedAt,
+      outcome,
+      at,
+    });
   }
 
   /** Emits exactly one scope closing transition event. */
-  private emitClosing(reason: "completed" | "errored" | "cancelled"): void {
+  private closeEvent(reason: "completed" | "errored" | "cancelled"): void {
     if (this.closingEmitted) return;
     this.closingEmitted = true;
-    this.bus.emit(
-      { type: "scope:closing", scopeId: this.id, reason, at: Date.now() },
-      this.context
-    );
+    clearTimeout(this.deadlineTimer);
+    this.emit({ type: "scope:closing", scopeId: this.id, reason, at: Date.now() });
   }
+
+  /** Emits lifecycle telemetry without allowing observers to affect ownership. */
+  private emit(event: TaskEvent): void {
+    this.bus.emit(event, this.context);
+  }
+
 }
 
 /** Creates a task-local logger backed by typed progress events. */
@@ -773,7 +768,7 @@ export async function group<R>(
   await scope.close();
 
   if (bodyError !== undefined) throw bodyError;
-  const childFailure = scope.childFailure();
+  const childFailure = scope.failure();
   if (childFailure !== undefined) throw childFailure;
   return result as R;
 }

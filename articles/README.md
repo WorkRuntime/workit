@@ -5,10 +5,11 @@ SPDX-License-Identifier: Apache-2.0
 
 # WorkIt Article Series
 
-Seven articles. Each opens with code and a concrete problem, then links the
+Ten articles. Each opens with code and a concrete problem, then links the
 claim to executable evidence. The argument builds from plain `async` / `await`
 ownership to worker boundaries, streaming backpressure, budgeted cleanup,
-observability, and finally agent tool lifecycles.
+observability, agent tool lifecycles, lifecycle receipts, time-policy planning,
+and explicit terminal activity boundaries.
 
 The sequence focuses on practical high-pressure workloads: AI agents, provider
 racing, streaming STT, 100K-document budget caps, 1-billion-row pipelines,
@@ -24,6 +25,9 @@ worker hard-kill against a CPU spinner, local-first observability, and the
 5. [`05-resource-safety-and-budgeted-work.md`](05-resource-safety-and-budgeted-work.md) -- bracketed cleanup, uncancellable sections, and request budgets.
 6. [`06-observability-without-core-bloat.md`](06-observability-without-core-bloat.md) -- diagnostics, telemetry, sampling, and exporter isolation.
 7. [`07-agent-scope-and-tool-lifecycles.md`](07-agent-scope-and-tool-lifecycles.md) -- agent tools, budgets, events, and replayable execution logs.
+8. [`08-receipts-redaction-and-attempt-evidence.md`](08-receipts-redaction-and-attempt-evidence.md) -- lifecycle receipts, redaction, and terminal retry-attempt evidence.
+9. [`09-plan-retries-before-they-run.md`](09-plan-retries-before-they-run.md) -- deadline introspection, conservative time planning, and shared retry admission.
+10. [`10-terminal-activity-boundaries.md`](10-terminal-activity-boundaries.md) -- explicit activity identity and completed terminal replay after restart.
 
 ## Editorial Rules
 
@@ -40,17 +44,17 @@ These numbers are reproducible from the gates and captured benchmark result.
 Use representative timing language unless a value is asserted by a gate.
 
 ```txt
-214 unit tests, 100% line/branch/function coverage
+375 unit tests, 100% statement/line/branch/function coverage
 0 production dependencies, 0 install scripts, 0 networking imports in core dist
-14,175 B core-group-import minified / 4,835 B gzip
-29,255 B public-api minified / 9,694 B gzip
-126,136 B max heap growth in 100k task soak @ concurrency 128
+13,807 B core-group-import minified / 4,842 B gzip
+28,608 B public-api minified / 9,688 B gzip
+100,000 logical tasks in the bounded runtime soak @ concurrency 128
 1,000,000 logical items in stream memory gate, bounded heap
 1,000,000,000 logical items in 1B claim sample, <= TAKE+CONCURRENCY produced
 well under the 10 ms gate for 100 .with() calls over 5,000 keys
 200ms timeout vs CPU spinner: late-marker file does not exist
 19 article-series benchmarks, all green
-tracked claim evidence suite classified by lifecycle/correctness/security/release/performance
+22 executable evidence files, all green
 ```
 
 ## Reproducing The Receipts

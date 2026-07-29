@@ -8,7 +8,7 @@
  * hedge, series, and parallel compositions. It never runs task bodies.
  */
 
-import type { Duration, RetryOpts } from "../types/index.js";
+import type { BudgetState, ContextKey, Duration, RetryOpts } from "../types/index.js";
 import { parseDuration } from "../engine/duration.js";
 import { normalizeRetry } from "../engine/retry.js";
 
@@ -78,6 +78,8 @@ export type TimePlanWarningCode =
   | "empty_composition"
   | "hedge_exceeds_timeout"
   | "jitter_upper_bound"
+  | "retry_budget_exceeded"
+  | "retry_budget_snapshot_missing"
   | "retry_exceeds_timeout"
   | "time_exceeds_timeout";
 
@@ -87,6 +89,30 @@ export interface TimePlanWarning {
   readonly message: string;
   readonly estimatedMs?: number;
   readonly limitMs?: number;
+  readonly budgetKey?: string;
+  readonly requiredRetries?: number;
+  readonly remainingRetries?: number;
+}
+
+/** Runtime budget snapshot used to assess aggregate retry admission. */
+export interface RetryBudgetSnapshot {
+  readonly key: ContextKey<BudgetState>;
+  readonly state: Readonly<BudgetState>;
+}
+
+/** Optional runtime state supplied to a pure time-policy plan. */
+export interface TimePlanOptions {
+  readonly retryBudgets?: readonly RetryBudgetSnapshot[];
+}
+
+/** Aggregate retry demand for one budget key referenced by a policy tree. */
+export interface TimePlanRetryBudget {
+  readonly key: string;
+  readonly required: number;
+  readonly limit?: number;
+  readonly spent?: number;
+  readonly remaining?: number;
+  readonly status: "admissible" | "exceeded" | "unverified";
 }
 
 /** Planning result for one policy tree. */
@@ -96,24 +122,39 @@ export interface TimePlan {
   readonly criticalPathMs: number;
   readonly parallelWorkMs: number;
   readonly attempts: number;
+  readonly retryBudgets: readonly TimePlanRetryBudget[];
   readonly warnings: readonly TimePlanWarning[];
 }
 
 const MAX_POLICY_DEPTH = 64;
 
 /** Plans a declarative time policy without executing user task bodies. */
-export function planTimePolicy(policy: TimePolicy): TimePlan {
-  return plan(policy, 0);
+export function planTimePolicy(policy: TimePolicy, opts: TimePlanOptions = {}): TimePlan {
+  return applyRetryBudgetPlan(plan(policy, 0), policy, opts);
 }
 
 /** Computes retry upper bounds using WorkIt's runtime retry semantics. */
-export function estimateRetry(policy: Pick<RetryTimePolicy, "attempt" | "retry">): TimePlan {
-  return estimateRetryAtDepth(policy, 1);
+export function estimateRetry(
+  policy: Pick<RetryTimePolicy, "attempt" | "retry">,
+  opts: TimePlanOptions = {},
+): TimePlan {
+  return applyRetryBudgetPlan(
+    estimateRetryAtDepth(policy, 1),
+    { type: "retry", ...policy },
+    opts,
+  );
 }
 
 /** Computes hedge upper bounds using WorkIt's staggered duplicate attempts. */
-export function estimateHedge(policy: Pick<HedgeTimePolicy, "attempt" | "after" | "max">): TimePlan {
-  return estimateHedgeAtDepth(policy, 1);
+export function estimateHedge(
+  policy: Pick<HedgeTimePolicy, "attempt" | "after" | "max">,
+  opts: TimePlanOptions = {},
+): TimePlan {
+  return applyRetryBudgetPlan(
+    estimateHedgeAtDepth(policy, 1),
+    { type: "hedge", ...policy },
+    opts,
+  );
 }
 
 function estimateRetryAtDepth(policy: Pick<RetryTimePolicy, "attempt" | "retry">, depth: number): TimePlan {
@@ -142,6 +183,7 @@ function estimateRetryAtDepth(policy: Pick<RetryTimePolicy, "attempt" | "retry">
     criticalPathMs: upperBoundMs,
     parallelWorkMs: attemptPlan.parallelWorkMs * retry.times,
     attempts: attemptPlan.attempts * retry.times,
+    retryBudgets: [],
     warnings,
   };
 }
@@ -159,6 +201,7 @@ function estimateHedgeAtDepth(policy: Pick<HedgeTimePolicy, "attempt" | "after" 
     criticalPathMs: upperBoundMs,
     parallelWorkMs: attemptPlan.parallelWorkMs * policy.max,
     attempts: attemptPlan.attempts * policy.max,
+    retryBudgets: [],
     warnings: attemptPlan.warnings,
   };
 }
@@ -191,6 +234,7 @@ function leafPlan(durationMs: number): TimePlan {
     criticalPathMs: durationMs,
     parallelWorkMs: durationMs,
     attempts: 1,
+    retryBudgets: [],
     warnings: [],
   };
 }
@@ -204,6 +248,7 @@ function combineSeries(policies: readonly TimePolicy[], depth: number): TimePlan
     criticalPathMs: children.reduce((total, child) => total + child.criticalPathMs, 0),
     parallelWorkMs: children.reduce((total, child) => total + child.parallelWorkMs, 0),
     attempts: children.reduce((total, child) => total + child.attempts, 0),
+    retryBudgets: [],
     warnings: children.flatMap((child) => child.warnings),
   };
 }
@@ -217,6 +262,7 @@ function combineParallel(policies: readonly TimePolicy[], depth: number): TimePl
     criticalPathMs: Math.max(...children.map((child) => child.criticalPathMs)),
     parallelWorkMs: children.reduce((total, child) => total + child.parallelWorkMs, 0),
     attempts: children.reduce((total, child) => total + child.attempts, 0),
+    retryBudgets: [],
     warnings: children.flatMap((child) => child.warnings),
   };
 }
@@ -228,11 +274,116 @@ function emptyPlan(): TimePlan {
     criticalPathMs: 0,
     parallelWorkMs: 0,
     attempts: 0,
+    retryBudgets: [],
     warnings: [{
       code: "empty_composition",
       message: "empty time composition has zero cost",
     }],
   };
+}
+
+function applyRetryBudgetPlan(base: TimePlan, policy: TimePolicy, opts: TimePlanOptions): TimePlan {
+  const demand = collectRetryBudgetDemand(policy);
+  if (demand.size === 0) return base;
+
+  const snapshots = readRetryBudgetSnapshots(opts.retryBudgets ?? []);
+  const retryBudgets: TimePlanRetryBudget[] = [];
+  const warnings = [...base.warnings];
+  let valid = base.valid;
+
+  for (const [key, required] of demand) {
+    const state = snapshots.get(key);
+    if (state === undefined) {
+      valid = false;
+      retryBudgets.push({ key, required, status: "unverified" });
+      warnings.push({
+        code: "retry_budget_snapshot_missing",
+        message: "retry budget admission cannot be verified without a matching runtime snapshot",
+        budgetKey: key,
+        requiredRetries: required,
+      });
+      continue;
+    }
+
+    const remaining = state.limit - state.spent;
+    const admissible = required <= remaining;
+    if (!admissible) valid = false;
+    retryBudgets.push({
+      key,
+      required,
+      limit: state.limit,
+      spent: state.spent,
+      remaining,
+      status: admissible ? "admissible" : "exceeded",
+    });
+    if (!admissible) {
+      warnings.push({
+        code: "retry_budget_exceeded",
+        message: "declared retry demand exceeds the remaining shared retry budget",
+        budgetKey: key,
+        requiredRetries: required,
+        remainingRetries: remaining,
+      });
+    }
+  }
+
+  return { ...base, valid, retryBudgets, warnings };
+}
+
+function collectRetryBudgetDemand(
+  policy: TimePolicy,
+  multiplier = 1,
+  demand = new Map<string, number>(),
+): Map<string, number> {
+  switch (policy.type) {
+    case "series":
+    case "parallel":
+      for (const child of policy.policies) collectRetryBudgetDemand(child, multiplier, demand);
+      break;
+    case "retry": {
+      const retry = normalizeRetry(policy.retry);
+      if (typeof policy.retry !== "number" && policy.retry.retryBudget !== undefined) {
+        addRetryDemand(demand, policy.retry.retryBudget.name, boundedProduct(retry.times - 1, multiplier));
+      }
+      collectRetryBudgetDemand(policy.attempt, boundedProduct(multiplier, retry.times), demand);
+      break;
+    }
+    case "hedge":
+      collectRetryBudgetDemand(policy.attempt, boundedProduct(multiplier, policy.max), demand);
+      break;
+    case "timeout":
+    case "deadline":
+      collectRetryBudgetDemand(policy.policy, multiplier, demand);
+      break;
+    case "attempt":
+      break;
+  }
+  return demand;
+}
+
+function addRetryDemand(demand: Map<string, number>, key: string, amount: number): void {
+  demand.set(key, Math.min(Number.MAX_SAFE_INTEGER, (demand.get(key) ?? 0) + amount));
+}
+
+function boundedProduct(left: number, right: number): number {
+  return Math.min(Number.MAX_SAFE_INTEGER, left * right);
+}
+
+function readRetryBudgetSnapshots(
+  snapshots: readonly RetryBudgetSnapshot[],
+): Map<string, Readonly<BudgetState>> {
+  const result = new Map<string, Readonly<BudgetState>>();
+  for (const snapshot of snapshots) {
+    const { limit, spent } = snapshot.state;
+    if (!Number.isFinite(limit) || !Number.isFinite(spent) || limit < 0 || spent < 0 || spent > limit) {
+      throw new RangeError("retry budget snapshot must have finite non-negative spent <= limit");
+    }
+    if (result.has(snapshot.key.name)) {
+      throw new RangeError(`duplicate retry budget snapshot: ${snapshot.key.name}`);
+    }
+    result.set(snapshot.key.name, snapshot.state);
+  }
+  return result;
 }
 
 function planTimeout(policy: TimeoutTimePolicy, depth: number): TimePlan {
