@@ -21,14 +21,19 @@ const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const tscCli = require.resolve("typescript/bin/tsc");
-const wranglerJsCli = require.resolve("wrangler/bin/wrangler.js");
+const wranglerPackagePath = require.resolve("wrangler/package.json");
+const wranglerPackage = JSON.parse(await readFile(wranglerPackagePath, "utf8"));
+const wranglerBin = typeof wranglerPackage.bin === "string"
+  ? wranglerPackage.bin
+  : wranglerPackage.bin?.wrangler;
+if (typeof wranglerBin !== "string") throw new Error("Wrangler package must declare its CLI in package.json#bin.");
+const wranglerJsCli = resolve(dirname(wranglerPackagePath), wranglerBin);
 const bunCli = await findExecutable(["bun.exe", "bun"], [join(homedir(), ".bun", "bin", "bun.exe")]);
 const denoCli = await findExecutable(["deno.exe", "deno"], [join(homedir(), ".deno", "bin", "deno.exe")]);
 const wranglerCli = await findExecutable(
   ["wrangler.cmd", "wrangler"],
   [
     wranglerJsCli,
-    join(ROOT, "node_modules", "wrangler", "bin", "wrangler.js"),
     join(ROOT, "node_modules", ".bin", "wrangler.cmd"),
     join(homedir(), "node_modules", ".bin", "wrangler.cmd"),
   ]
@@ -108,7 +113,7 @@ try {
   });
 
   await writeFile(join(temp, "smoke.mjs"), `
-    import { run, work, group } from "@workit/core";
+    import { createBudget, run, work, group } from "@workit/core";
     import { ActivitySerializationError, createFileActivityStore, createMemoryActivityStore, runActivity } from "@workit/core/activity";
     import { analyzeReceipt, verifyReceipt, verifySourceProtocol } from "@workit/core/analysis";
     import { AgentCapabilityError, embedAll, runAgent, streamWithBackpressure } from "@workit/core/ai";
@@ -117,12 +122,35 @@ try {
     import { createMemoryReceiptLedger, createPostgresReceiptLedger, createSqliteReceiptLedger } from "@workit/core/ledger";
     import { attachTelemetryExporter } from "@workit/core/observability";
     import { attachOpenTelemetry } from "@workit/core/otel";
-    import { buildReceipt } from "@workit/core/replay";
+    import { buildReceipt, createAttemptRecorder } from "@workit/core/replay";
     import { bracketLazy } from "@workit/core/resources";
     import { planTimePolicy } from "@workit/core/time-policy";
     import { offload } from "@workit/core/worker";
 
     const result = await run.all([async () => "sdk", async () => "ok"]);
+    const deadlineAt = Date.now() + 1_000;
+    const observedDeadline = await group(async (task) =>
+      task(run.deadline(async (ctx) => ctx.deadlineAt, deadlineAt))
+    );
+    const RetryBudget = createBudget("ConsumerRetryBudget", { unit: "retries" });
+    const attemptEvidence = createAttemptRecorder({ maxAttempts: 2 });
+    let retryAttempts = 0;
+    const retried = await run.context.with(
+      RetryBudget,
+      { limit: 1, spent: 0, unit: "retries" },
+      async () => group(async (task) => task(run.retry(attemptEvidence.wrap(async () => {
+        retryAttempts++;
+        if (retryAttempts === 1) throw new Error("retry once");
+        return "retried";
+      }), { times: 2, retryBudget: RetryBudget }))),
+    );
+    const retryPlan = planTimePolicy({
+      type: "retry",
+      attempt: { type: "attempt", duration: 1 },
+      retry: { times: 2, retryBudget: RetryBudget },
+    }, {
+      retryBudgets: [{ key: RetryBudget, state: { limit: 1, spent: 0 } }],
+    });
     const batch = await work([1, 2]).inParallel(2).do(async (item) => item * 2);
     const embedded = await embedAll(["a"], { embed: async (text) => [text.length] }, { concurrency: 1 });
     let denied = false;
@@ -169,6 +197,10 @@ try {
     });
 
     if (result.join(":") !== "sdk:ok") throw new Error("root import failed");
+    if (observedDeadline !== deadlineAt) throw new Error("deadline introspection failed");
+    if (retried !== "retried" || retryAttempts !== 2) throw new Error("retry budget failed");
+    if (retryPlan.retryBudgets[0]?.status !== "admissible") throw new Error("retry budget planning failed");
+    if (attemptEvidence.attempts.length !== 2) throw new Error("attempt evidence failed");
     if (batch.results.join(":") !== "2:4") throw new Error("work import failed");
     if (embedded.results[0][0] !== 1) throw new Error("ai import failed");
     if (!denied) throw new Error("AI authority import failed");
@@ -265,14 +297,40 @@ try {
   });
 
   await writeFile(join(temp, "cjs-smoke.cjs"), `
-    const { run, work } = require("@workit/core");
+    const { createBudget, run, work } = require("@workit/core");
     const { cancellable, typedGroup } = require("@workit/core/contracts");
+    const { planTimePolicy } = require("@workit/core/time-policy");
 
     (async () => {
       const values = await run.all([async () => "cjs", async () => "ok"]);
+      const deadlineAt = Date.now() + 1_000;
+      const observedDeadline = await run.group(async (task) =>
+        task(run.deadline(async (ctx) => ctx.deadlineAt, deadlineAt))
+      );
+      const RetryBudget = createBudget("CjsRetryBudget", { unit: "retries" });
+      let retryAttempts = 0;
+      const retried = await run.context.with(
+        RetryBudget,
+        { limit: 1, spent: 0, unit: "retries" },
+        async () => run.group(async (task) => task(run.retry(async () => {
+          retryAttempts++;
+          if (retryAttempts === 1) throw new Error("retry once");
+          return "retried";
+        }, { times: 2, retryBudget: RetryBudget }))),
+      );
+      const retryPlan = planTimePolicy({
+        type: "retry",
+        attempt: { type: "attempt", duration: 1 },
+        retry: { times: 2, retryBudget: RetryBudget },
+      }, {
+        retryBudgets: [{ key: RetryBudget, state: { limit: 1, spent: 0 } }],
+      });
       const output = await work([1, 2, 3]).inParallel(2).do(async (item) => item + 1);
       const typed = await typedGroup(async (spawn) => await spawn(cancellable(async () => "contracts")));
       if (values.join(":") !== "cjs:ok") throw new Error("CommonJS root import failed");
+      if (observedDeadline !== deadlineAt) throw new Error("CommonJS deadline introspection failed");
+      if (retried !== "retried" || retryAttempts !== 2) throw new Error("CommonJS retry budget failed");
+      if (retryPlan.retryBudgets[0]?.status !== "admissible") throw new Error("CommonJS retry budget planning failed");
       if (output.results.join(":") !== "2:3:4") throw new Error("CommonJS work import failed");
       if (typed !== "contracts") throw new Error("CommonJS contracts import failed");
     })().catch((err) => {
@@ -304,6 +362,7 @@ try {
     import {
       ContextBagImpl,
       CostBudget,
+      createBudget,
       createContextKey,
       group,
       run,
@@ -315,6 +374,7 @@ try {
       type Scope,
       type ScopeSnapshot,
       type TaskContext,
+      type TaskEvent,
     } from "@workit/core";
     import {
       ActivitySerializationError,
@@ -351,11 +411,18 @@ try {
       type ReceiptLedgerRecord,
       type SqliteReceiptLedgerClient,
     } from "@workit/core/ledger";
-    import { buildReceipt, type WorkItReceipt } from "@workit/core/replay";
+    import { buildReceipt, createAttemptRecorder, type WorkItReceipt } from "@workit/core/replay";
     import { bracketLazy, type LazyResource } from "@workit/core/resources";
-    import { planTimePolicy, type TimePlan } from "@workit/core/time-policy";
+    import {
+      planTimePolicy,
+      type RetryBudgetSnapshot,
+      type TimePlan,
+      type TimePlanRetryBudget,
+    } from "@workit/core/time-policy";
 
     const RequestKey = createContextKey<{ requestId: string }>("request");
+    const RetryBudget = createBudget("StrictRetryBudget", { unit: "retries" });
+    const attemptEvidence = createAttemptRecorder({ maxAttempts: 2 });
 
     const tuple: readonly [number, string] = await run.all([
       async () => 1,
@@ -370,6 +437,18 @@ try {
     }, {
       context: new ContextBagImpl().with(RequestKey, { requestId: "strict" }),
     });
+    const deadlineAt = Date.now() + 1_000;
+    const observedDeadline: number | undefined = await group(async (task) =>
+      task(run.deadline(async (ctx: TaskContext) => ctx.deadlineAt, deadlineAt))
+    );
+    const retried: string = await run.context.with(
+      RetryBudget,
+      { limit: 1, spent: 0, unit: "retries" },
+      async () => group(async (task) => task(run.retry(async () => "strict-retry", {
+        times: 2,
+        retryBudget: RetryBudget,
+      }))),
+    );
 
     const embedded = await embedAll(["abc"], {
       async embed(input: string) {
@@ -381,6 +460,20 @@ try {
 
     if (tuple[0] !== 1 || tuple[1] !== "typed") throw new Error("tuple inference failed");
     if (value !== "strict") throw new Error("context inference failed");
+    if (observedDeadline !== deadlineAt) throw new Error("deadline inference failed");
+    if (retried !== "strict-retry") throw new Error("retry budget inference failed");
+    if (attemptEvidence.attempts.length !== 0) throw new Error("attempt recorder inference failed");
+    const attemptEvent: TaskEvent = {
+      type: "task:attempt",
+      taskId: "strict-task" as TaskContext["id"],
+      attempt: 1,
+      durationMs: 1,
+      outcome: "succeeded",
+      at: 2,
+    };
+    if (attemptEvent.type !== "task:attempt" || attemptEvent.outcome !== "succeeded") {
+      throw new Error("attempt event inference failed");
+    }
     if (embedded.mode !== "fail") throw new Error("unexpected embedAll mode");
     if (embedded.results[0]?.[0] !== 3) throw new Error("AI helper inference failed");
     if (streamed[0] !== "TYPED") throw new Error("AI stream helper inference failed");
@@ -409,8 +502,20 @@ try {
     void fileActivityStore;
     void ActivitySerializationError;
 
-    const timePlan: TimePlan = planTimePolicy({ type: "attempt", duration: "1s" });
-    if (timePlan.upperBoundMs !== 1_000) throw new Error("time-policy planner inference failed");
+    const retryBudgetSnapshot: RetryBudgetSnapshot = {
+      key: RetryBudget,
+      state: { limit: 1, spent: 0, unit: "retries" },
+    };
+    const timePlan: TimePlan = planTimePolicy({
+      type: "retry",
+      attempt: { type: "attempt", duration: "1s" },
+      retry: { times: 2, initialDelay: 0, jitter: false, retryBudget: RetryBudget },
+    }, {
+      retryBudgets: [retryBudgetSnapshot],
+    });
+    const plannedRetryBudget: TimePlanRetryBudget | undefined = timePlan.retryBudgets[0];
+    if (timePlan.upperBoundMs !== 2_000) throw new Error("time-policy planner inference failed");
+    if (plannedRetryBudget?.status !== "admissible") throw new Error("retry budget planner inference failed");
 
     const plainTask = async () => "plain";
     const typedTask: CancellableTask<string> = cancellable(async () => "typed-contract");

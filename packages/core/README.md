@@ -263,6 +263,36 @@ const chargeWithRetry = run.retry(
 const receipt = await group(async (task) => task(chargeWithRetry));
 ```
 
+### Runtime Deadlines And Retry Budgets
+
+`ctx.deadlineAt` reports the earliest absolute deadline inherited from the
+owning scope tree and active timeout/deadline wrappers. It is introspection over
+the runtime contract; it does not make a task cooperative. Task bodies and
+providers must still observe `ctx.signal`.
+
+`RetryOpts.retryBudget` accepts an existing scope budget key. WorkIt charges one
+unit before admitting each additional attempt; the initial attempt is not
+charged. Sharing the same key across retry wrappers creates one aggregate retry
+limit without introducing a second budget system.
+
+```ts
+import { createBudget, group, run } from "@workit/core";
+
+const RetryBudget = createBudget("CheckoutRetryBudget", { unit: "retries" });
+
+await run.context.with(
+  RetryBudget,
+  { limit: 4, spent: 0, unit: "retries" },
+  () => group(async (task) => task(run.retry(
+    async (ctx) => callProvider({ signal: ctx.signal, deadlineAt: ctx.deadlineAt }),
+    { times: 3, retryBudget: RetryBudget }
+  )))
+);
+```
+
+The budget must be installed in the visible scope context. Exceeding it uses the
+existing atomic budget charge and typed budget cancellation path.
+
 `renderTree()` takes a scope snapshot, not a live scope. Use
 `renderTree(scope.status())`.
 
@@ -294,6 +324,88 @@ ownership helpers live behind explicit subpaths.
 | Declare cancellable and shielded task intent | `@workit/core/contracts` | compile-time composition contract, not proof of task-body cooperation |
 | Run bounded lifecycle fault scenarios | `@workit/core/fault` | in-process evidence harness, not OS/process/network fault injection |
 
+### Idempotency Boundaries
+
+`TaskOpts.idempotencyKey` coalesces concurrent tasks with the same key inside
+one live scope. The entry is removed when that task settles; it is not a durable
+deduplication record. Use `@workit/core/activity` with a caller-owned store for
+terminal replay across process restarts, and `@workit/core/ledger` when lifecycle
+receipts must be persisted independently.
+
+### Attempt Evidence
+
+For a scheduled task wrapped by `run.retry()`, the outer retry boundary emits
+one terminal `task:attempt` event for every attempt it admits. Nested retry
+wrappers remain internal to that task attempt. Receipts built from the scope
+event stream derive attempt number, start/end timing, duration, and outcome
+automatically.
+
+When upgrading from `0.4.x`, exhaustive `TaskEvent` switches must add the new
+variant. Keep the exhaustive `never` check so future event additions continue
+to fail at compile time:
+
+```ts
+import type { TaskEvent } from "@workit/core";
+
+const attempts: Array<{
+  attempt: number;
+  outcome: "succeeded" | "failed" | "cancelled";
+  durationMs: number;
+}> = [];
+
+function handleEvent(event: TaskEvent): void {
+  switch (event.type) {
+    case "task:attempt":
+      attempts.push({
+        attempt: event.attempt,
+        outcome: event.outcome,
+        durationMs: event.durationMs,
+      });
+      return;
+    // Keep existing TaskEvent cases here.
+    default: {
+      const unhandled: never = event;
+      throw new Error(`Unhandled WorkIt event: ${JSON.stringify(unhandled)}`);
+    }
+  }
+}
+```
+
+`createAttemptRecorder()` is the explicit enrichment layer for caller-owned
+metadata, stable reason codes, and provider/activity-level attempts. Place it
+inside the relevant `run.retry()` boundary so each recorded invocation receives
+that boundary's actual `ctx.attempt` value.
+
+```ts
+import { run } from "@workit/core";
+import { createAttemptRecorder, createReceiptRecorder } from "@workit/core/replay";
+
+const attempts = createAttemptRecorder({ maxAttempts: 20 });
+const operation = run.retry(attempts.wrap(callProvider, {
+  metadata: { provider: "primary" },
+  reasonCode: classifyProviderFailure,
+}), { times: 3 });
+
+let observedScope;
+let receiptRecorder;
+await run.scope(async (scope) => {
+  observedScope = scope;
+  receiptRecorder = createReceiptRecorder(scope);
+  await scope.spawn(operation);
+});
+
+const receipt = receiptRecorder.build(observedScope.status(), {
+  attempts: attempts.attempts,
+});
+receiptRecorder.unsubscribe();
+```
+
+Attempt metadata must be JSON-serializable, is bounded by UTF-8 byte length,
+and applies default secret-field redaction. Reason classifiers are
+caller-owned, isolated from task failure, and accepted only when they return a
+bounded lowercase code. This records observed attempts; it does not infer
+provider policy or provide deterministic replay.
+
 ### Time Policy Planning
 
 `@workit/core/time-policy` lets callers inspect declared time policies before
@@ -318,6 +430,36 @@ if (plan.warnings.some((warning) => warning.code === "retry_exceeds_timeout")) {
   reviewTimeBudget(plan);
 }
 ```
+
+Retry policies may reference the same budget key used at runtime. Supply an
+explicit point-in-time snapshot to verify aggregate admission across series,
+parallel, hedge, and nested retry compositions:
+
+```ts
+import { createBudget } from "@workit/core";
+import { planTimePolicy } from "@workit/core/time-policy";
+
+const RetryBudget = createBudget("ProviderRetryBudget", { unit: "retries" });
+const plan = planTimePolicy({
+  type: "retry",
+  attempt: { type: "attempt", duration: "100ms" },
+  retry: { times: 4, retryBudget: RetryBudget },
+}, {
+  retryBudgets: [{
+    key: RetryBudget,
+    state: { limit: 5, spent: 2, unit: "retries" },
+  }],
+});
+
+if (plan.retryBudgets[0]?.status !== "admissible") {
+  rejectAdmission(plan);
+}
+```
+
+Budget demand is conservative: retries nested under retry or hedge policies are
+multiplied by the maximum declared invocations. A missing snapshot is reported
+as unverified, and a snapshot with insufficient remaining capacity makes the
+plan invalid. Runtime consumption after planning can still change availability.
 
 The planner does not execute JavaScript, inspect provider latency, or guarantee
 operating-system timer precision. Runtime cancellation still depends on task
@@ -529,13 +671,13 @@ thresholds, not exact milliseconds.
 
 | Evidence | Current result |
 |---|---:|
-| Unit tests | 354 passing |
+| Unit tests | 375 passing |
 | Coverage gate | 100% statements, branches, functions, lines |
 | Evidence proof files | 22 passing |
 | Runtime dependencies | 0 |
 | Article benchmark suite | 19/19 passing |
-| Core group import | 14,175 B minified / 4,835 B gzip |
-| Public bundle | 29,255 B minified / 9,694 B gzip |
+| Core group import | 13,807 B minified / 4,842 B gzip |
+| Public bundle | 28,608 B minified / 9,688 B gzip |
 | Stream gate | 1,000,000 logical items with bounded producer growth |
 | Soak gate | 100,000 logical tasks with bounded concurrency |
 | Exporter stress | 100,000 events with bounded queue |
@@ -710,7 +852,7 @@ cite the software release you used:
   title = {WorkIt: A TypeScript Structured Concurrency Runtime for Node.js Server Runtimes},
   year = {2026},
   url = {https://github.com/WorkRuntime/workit},
-  version = {0.4.0},
+  version = {0.5.0},
   license = {Apache-2.0}
 }
 ```

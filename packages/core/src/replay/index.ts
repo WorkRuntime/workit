@@ -8,15 +8,18 @@
  * events. They intentionally do not claim deterministic scheduler replay.
  */
 
-import type {
-  CancelReason,
-  Scope,
-  ScopeId,
-  ScopeSnapshot,
-  TaskEvent,
-  TaskId,
-  TaskKind,
-  Unsubscribe,
+import {
+  CancellationError,
+  type TaskFn,
+  type TaskContext,
+  type CancelReason,
+  type Scope,
+  type ScopeId,
+  type ScopeSnapshot,
+  type TaskEvent,
+  type TaskId,
+  type TaskKind,
+  type Unsubscribe,
 } from "../types/index.js";
 
 /** Receipt schema version emitted by this subpath. */
@@ -41,6 +44,8 @@ export interface WorkItReceiptEvent {
   readonly name?: string;
   readonly kind?: TaskKind;
   readonly attempt?: number;
+  readonly startedAt?: number;
+  readonly outcome?: WorkItAttemptOutcome;
   readonly nextDelayMs?: number;
   readonly timeoutMs?: number;
   readonly durationMs?: number;
@@ -78,6 +83,22 @@ export interface WorkItReceiptTerminal {
   readonly error?: WorkItReceiptError;
 }
 
+/** Terminal outcome of one explicitly recorded task attempt. */
+export type WorkItAttemptOutcome = "succeeded" | "failed" | "cancelled";
+
+/** Bounded evidence for one invocation of a retryable task body. */
+export interface WorkItAttemptEvidence {
+  readonly taskId: TaskId;
+  readonly attempt: number;
+  readonly startedAt: number;
+  readonly completedAt: number;
+  readonly durationMs: number;
+  readonly outcome: WorkItAttemptOutcome;
+  readonly reasonCode?: string;
+  readonly metadata?: Readonly<Record<string, unknown>>;
+  readonly error?: WorkItReceiptError;
+}
+
 /** Complete audit receipt for one observed scope tree. */
 export interface WorkItReceipt {
   readonly version: WorkItReceiptVersion;
@@ -88,6 +109,7 @@ export interface WorkItReceipt {
   readonly terminal: WorkItReceiptTerminal;
   readonly summary: WorkItReceiptSummary;
   readonly events: readonly WorkItReceiptEvent[];
+  readonly attempts?: readonly WorkItAttemptEvidence[];
   readonly snapshot: ScopeSnapshot;
   readonly limitations: readonly string[];
 }
@@ -105,6 +127,7 @@ export interface ReceiptBuildOptions {
   readonly clock?: () => number;
   readonly redaction?: ReceiptRedactionPolicy;
   readonly limitations?: readonly string[];
+  readonly attempts?: readonly WorkItAttemptEvidence[];
 }
 
 /** Recorder options for live scope observation. */
@@ -118,6 +141,26 @@ export interface ReceiptRecorder {
   readonly droppedEvents: number;
   build(snapshot?: ScopeSnapshot, opts?: ReceiptBuildOptions): WorkItReceipt;
   unsubscribe(): void;
+}
+
+/** Options shared by all attempts captured by one recorder. */
+export interface AttemptRecorderOptions {
+  readonly clock?: () => number;
+  readonly maxAttempts?: number;
+  readonly maxMetadataBytes?: number;
+}
+
+/** Per-task evidence policy applied by an attempt recorder. */
+export interface AttemptEvidenceOptions {
+  readonly metadata?: Readonly<Record<string, unknown>>;
+  readonly reasonCode?: (error: unknown, ctx: TaskContext) => string | undefined;
+}
+
+/** Bounded recorder for explicit task-attempt evidence. */
+export interface AttemptRecorder {
+  readonly attempts: readonly WorkItAttemptEvidence[];
+  readonly droppedAttempts: number;
+  wrap<T>(task: TaskFn<T>, opts?: AttemptEvidenceOptions): TaskFn<T>;
 }
 
 interface InternalReceiptBuildOptions extends ReceiptBuildOptions {
@@ -142,6 +185,9 @@ const DEFAULT_REDACT_FIELDS = [
   "refreshToken",
 ] as const;
 const DEFAULT_MAX_REDACTION_DEPTH = 8;
+const DEFAULT_MAX_ATTEMPTS = 10_000;
+const DEFAULT_MAX_ATTEMPT_METADATA_BYTES = 4_096;
+const REASON_CODE_PATTERN = /^[a-z][a-z0-9_]{0,127}$/;
 
 /** Attaches a bounded receipt recorder to a live scope event stream. */
 export function createReceiptRecorder(scope: Scope, opts: ReceiptRecorderOptions = {}): ReceiptRecorder {
@@ -173,6 +219,65 @@ export function createReceiptRecorder(scope: Scope, opts: ReceiptRecorderOptions
   };
 }
 
+/** Creates a bounded recorder that captures actual invocations of wrapped task bodies. */
+export function createAttemptRecorder(opts: AttemptRecorderOptions = {}): AttemptRecorder {
+  const clock = opts.clock ?? Date.now;
+  const maxAttempts = opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+  const maxMetadataBytes = opts.maxMetadataBytes ?? DEFAULT_MAX_ATTEMPT_METADATA_BYTES;
+  if (!Number.isInteger(maxAttempts) || maxAttempts < 1) throw new RangeError("maxAttempts must be a positive integer");
+  if (!Number.isInteger(maxMetadataBytes) || maxMetadataBytes < 1) {
+    throw new RangeError("maxMetadataBytes must be a positive integer");
+  }
+
+  const attempts: WorkItAttemptEvidence[] = [];
+  let droppedAttempts = 0;
+  return {
+    get attempts() { return attempts.map((attempt) => structuredClone(attempt)); },
+    get droppedAttempts() { return droppedAttempts; },
+    wrap<T>(task: TaskFn<T>, attemptOpts: AttemptEvidenceOptions = {}): TaskFn<T> {
+      const metadata = normalizeAttemptMetadata(attemptOpts.metadata, maxMetadataBytes);
+      return async (ctx) => {
+        const startedAt = clock();
+        try {
+          const value = await task(ctx);
+          record("succeeded", ctx, startedAt);
+          return value;
+        } catch (error) {
+          record(error instanceof CancellationError ? "cancelled" : "failed", ctx, startedAt, error);
+          throw error;
+        }
+      };
+
+      function record(
+        outcome: WorkItAttemptOutcome,
+        ctx: TaskContext,
+        startedAt: number,
+        error?: unknown,
+      ): void {
+        if (attempts.length >= maxAttempts) {
+          droppedAttempts++;
+          return;
+        }
+        const completedAt = clock();
+        const reasonCode = error === undefined
+          ? undefined
+          : readAttemptReasonCode(attemptOpts.reasonCode, error, ctx);
+        attempts.push({
+          taskId: ctx.id,
+          attempt: ctx.attempt,
+          startedAt,
+          completedAt,
+          durationMs: Math.max(0, completedAt - startedAt),
+          outcome,
+          ...(reasonCode !== undefined ? { reasonCode } : {}),
+          ...(metadata !== undefined ? { metadata } : {}),
+          ...(error !== undefined ? { error: normalizeError(error) } : {}),
+        });
+      }
+    },
+  };
+}
+
 /** Builds a replayable audit receipt from existing typed events and a snapshot. */
 export function buildReceipt(
   events: readonly TaskEvent[],
@@ -183,6 +288,7 @@ export function buildReceipt(
   const createdAt = opts.clock?.() ?? Date.now();
   const receiptId = opts.receiptId ?? `receipt:${snapshot.id}:${createdAt}`;
   const normalizedEvents = events.map(normalizeEvent);
+  const attempts = opts.attempts ?? attemptsFromEvents(normalizedEvents);
   const summary = summarizeReceipt(snapshot, normalizedEvents, internalOpts.droppedEvents ?? 0);
   const terminal = inferTerminal(snapshot, normalizedEvents);
   const limitations = [
@@ -198,12 +304,57 @@ export function buildReceipt(
     terminal,
     summary,
     events: normalizedEvents,
+    ...(opts.attempts !== undefined || attempts.length > 0
+      ? { attempts: attempts.map((attempt) => ({ ...attempt })) }
+      : {}),
     snapshot,
     limitations,
     ...(snapshot.name !== undefined ? { rootScopeName: snapshot.name } : {}),
   };
 
   return redactReceipt(receipt, opts.redaction);
+}
+
+function readAttemptReasonCode(
+  classify: AttemptEvidenceOptions["reasonCode"],
+  error: unknown,
+  ctx: TaskContext,
+): string | undefined {
+  try {
+    const reasonCode = classify?.(error, ctx);
+    return typeof reasonCode === "string"
+      && REASON_CODE_PATTERN.test(reasonCode)
+      ? reasonCode
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeAttemptMetadata(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+  maxBytes: number,
+): Readonly<Record<string, unknown>> | undefined {
+  if (metadata === undefined) return undefined;
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(metadata);
+  } catch {
+    throw new TypeError("attempt metadata must be JSON serializable");
+  }
+  if (serialized === undefined) throw new TypeError("attempt metadata must serialize to a JSON object");
+  if (new TextEncoder().encode(serialized).byteLength > maxBytes) {
+    throw new RangeError("attempt metadata exceeds maxMetadataBytes");
+  }
+  const value = JSON.parse(serialized) as unknown;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("attempt metadata must serialize to a JSON object");
+  }
+  return redactValue(value, {
+    removeFields: new Set(),
+    redactFields: new Set(DEFAULT_REDACT_FIELDS.map((field) => field.toLowerCase())),
+    maxDepth: DEFAULT_MAX_REDACTION_DEPTH,
+  }, 0) as Readonly<Record<string, unknown>>;
 }
 
 /** Applies field-level redaction to an existing receipt. */
@@ -227,6 +378,16 @@ function normalizeEvent(event: TaskEvent): WorkItReceiptEvent {
         scopeId: event.scopeId,
         name: event.name,
         kind: event.kind,
+        at: event.at,
+      };
+    case "task:attempt":
+      return {
+        type: event.type,
+        taskId: event.taskId,
+        attempt: event.attempt,
+        startedAt: event.at - event.durationMs,
+        durationMs: event.durationMs,
+        outcome: event.outcome,
         at: event.at,
       };
     case "task:retrying":
@@ -323,6 +484,24 @@ function normalizeEvent(event: TaskEvent): WorkItReceiptEvent {
           : {}),
       };
   }
+}
+
+function attemptsFromEvents(events: readonly WorkItReceiptEvent[]): WorkItAttemptEvidence[] {
+  return events.flatMap((event) => event.type === "task:attempt"
+    && event.taskId !== undefined
+    && event.attempt !== undefined
+    && event.startedAt !== undefined
+    && event.durationMs !== undefined
+    && event.outcome !== undefined
+    ? [{
+        taskId: event.taskId,
+        attempt: event.attempt,
+        startedAt: event.startedAt,
+        completedAt: event.at,
+        durationMs: event.durationMs,
+        outcome: event.outcome,
+      }]
+    : []);
 }
 
 function summarizeReceipt(

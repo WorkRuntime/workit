@@ -8,6 +8,7 @@
 import assert from "node:assert/strict";
 import { test } from "vitest";
 
+import { createBudget } from "../../dist/index.js";
 import { estimateHedge, estimateRetry, planTimePolicy } from "../../dist/time-policy/index.js";
 
 test("Given fixed retry policy, estimateRetry computes runtime-aligned worst-case delay", () => {
@@ -125,6 +126,133 @@ test("Given linear and exponential retry policies, estimateRetry respects maxDel
 
   assert.equal(linear.upperBoundMs, 55);
   assert.equal(exponential.upperBoundMs, 55);
+});
+
+test("Given shared retry budget snapshots, planner aggregates nested retry demand by key", () => {
+  const RetryBudget = createBudget("PlannerRetryBudget", { unit: "retries" });
+  const plan = planTimePolicy({
+    type: "series",
+    policies: [
+      {
+        type: "retry",
+        attempt: { type: "attempt", duration: 10 },
+        retry: { times: 2, retryBudget: RetryBudget },
+      },
+      {
+        type: "retry",
+        attempt: {
+          type: "retry",
+          attempt: { type: "attempt", duration: 10 },
+          retry: { times: 2, retryBudget: RetryBudget },
+        },
+        retry: { times: 3, retryBudget: RetryBudget },
+      },
+    ],
+  }, {
+    retryBudgets: [{
+      key: RetryBudget,
+      state: { limit: 7, spent: 1, unit: "retries" },
+    }],
+  });
+
+  assert.equal(plan.valid, true);
+  assert.deepEqual(plan.retryBudgets, [{
+    key: "PlannerRetryBudget",
+    required: 6,
+    limit: 7,
+    spent: 1,
+    remaining: 6,
+    status: "admissible",
+  }]);
+  assert.equal(plan.warnings.some((warning) => warning.code.startsWith("retry_budget")), false);
+});
+
+test("Given parallel hedges over nested retries, planner multiplies shared budget demand conservatively", () => {
+  const RetryBudget = createBudget("ParallelHedgeRetryBudget", { unit: "retries" });
+  const plan = planTimePolicy({
+    type: "parallel",
+    policies: [
+      {
+        type: "hedge",
+        after: 5,
+        max: 3,
+        attempt: {
+          type: "retry",
+          attempt: { type: "attempt", duration: 10 },
+          retry: { times: 2, retryBudget: RetryBudget },
+        },
+      },
+      {
+        type: "deadline",
+        now: 0,
+        deadlineAt: 1_000,
+        policy: {
+          type: "retry",
+          attempt: { type: "attempt", duration: 10 },
+          retry: { times: 2, retryBudget: RetryBudget },
+        },
+      },
+    ],
+  }, {
+    retryBudgets: [{
+      key: RetryBudget,
+      state: { limit: 4, spent: 0, unit: "retries" },
+    }],
+  });
+
+  assert.equal(plan.valid, true);
+  assert.equal(plan.retryBudgets[0].required, 4);
+  assert.equal(plan.retryBudgets[0].status, "admissible");
+});
+
+test("Given insufficient or missing retry budget snapshots, planner reports bounded admission warnings", () => {
+  const RetryBudget = createBudget("ConstrainedRetryBudget", { unit: "retries" });
+  const policy = {
+    type: "retry",
+    attempt: { type: "attempt", duration: 10 },
+    retry: { times: 4, retryBudget: RetryBudget },
+  };
+
+  const exceeded = estimateRetry(policy, {
+    retryBudgets: [{
+      key: RetryBudget,
+      state: { limit: 3, spent: 1, unit: "retries" },
+    }],
+  });
+  const unverified = estimateRetry(policy);
+
+  assert.equal(exceeded.valid, false);
+  assert.equal(exceeded.retryBudgets[0].status, "exceeded");
+  assert.equal(exceeded.retryBudgets[0].required, 3);
+  assert.equal(exceeded.retryBudgets[0].remaining, 2);
+  assert.equal(exceeded.warnings.at(-1).code, "retry_budget_exceeded");
+
+  assert.equal(unverified.valid, false);
+  assert.deepEqual(unverified.retryBudgets, [{
+    key: "ConstrainedRetryBudget",
+    required: 3,
+    status: "unverified",
+  }]);
+  assert.equal(unverified.warnings.at(-1).code, "retry_budget_snapshot_missing");
+});
+
+test("Given duplicate or invalid retry budget snapshots, planner rejects ambiguous state", () => {
+  const RetryBudget = createBudget("InvalidPlannerRetryBudget", { unit: "retries" });
+  const policy = {
+    type: "retry",
+    attempt: { type: "attempt", duration: 10 },
+    retry: { times: 2, retryBudget: RetryBudget },
+  };
+
+  assert.throws(() => planTimePolicy(policy, {
+    retryBudgets: [
+      { key: RetryBudget, state: { limit: 2, spent: 0 } },
+      { key: RetryBudget, state: { limit: 2, spent: 0 } },
+    ],
+  }), /duplicate retry budget snapshot/);
+  assert.throws(() => planTimePolicy(policy, {
+    retryBudgets: [{ key: RetryBudget, state: { limit: 1, spent: 2 } }],
+  }), /retry budget snapshot/);
 });
 
 test("Given timeout policies, planTimePolicy distinguishes retry, hedge, and generic truncation", () => {

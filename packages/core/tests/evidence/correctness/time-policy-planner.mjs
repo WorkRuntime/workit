@@ -5,6 +5,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { createBudget } from "../../../dist/index.js";
 import { estimateRetry, planTimePolicy } from "../../../dist/time-policy/index.js";
 import { createSuite } from "../harness.mjs";
 
@@ -47,6 +48,52 @@ await suite.proof(
         && plan.warnings.some((warning) => warning.code === "deadline_infeasible"),
       valid: plan.valid,
       upperBoundMs: plan.upperBoundMs,
+      warnings: plan.warnings.map((warning) => warning.code),
+    };
+  },
+);
+
+await suite.proof(
+  "CORR-027",
+  "time-policy planner aggregates shared retry budget demand",
+  "nested retry policies using one budget key are rejected before execution when aggregate retry demand exceeds the supplied runtime snapshot",
+  async () => {
+    const RetryBudget = createBudget("PlannedSharedRetryBudget", { unit: "retries" });
+    const plan = planTimePolicy({
+      type: "series",
+      policies: [
+        {
+          type: "retry",
+          attempt: { type: "attempt", duration: 10 },
+          retry: { times: 2, retryBudget: RetryBudget },
+        },
+        {
+          type: "retry",
+          attempt: {
+            type: "retry",
+            attempt: { type: "attempt", duration: 10 },
+            retry: { times: 2, retryBudget: RetryBudget },
+          },
+          retry: { times: 3, retryBudget: RetryBudget },
+        },
+      ],
+    }, {
+      retryBudgets: [{
+        key: RetryBudget,
+        state: { limit: 6, spent: 1, unit: "retries" },
+      }],
+    });
+
+    return {
+      ok: !plan.valid
+        && plan.retryBudgets.length === 1
+        && plan.retryBudgets[0]?.key === RetryBudget.name
+        && plan.retryBudgets[0]?.required === 6
+        && plan.retryBudgets[0]?.remaining === 5
+        && plan.retryBudgets[0]?.status === "exceeded"
+        && plan.warnings.some((warning) => warning.code === "retry_budget_exceeded"),
+      valid: plan.valid,
+      retryBudgets: plan.retryBudgets,
       warnings: plan.warnings.map((warning) => warning.code),
     };
   },

@@ -6,7 +6,7 @@
  */
 
 import { CancellationError, run } from "../../../dist/index.js";
-import { createReceiptRecorder } from "../../../dist/replay/index.js";
+import { createAttemptRecorder, createReceiptRecorder } from "../../../dist/replay/index.js";
 import { createSuite, sleep } from "../harness.mjs";
 
 const suite = createSuite("lifecycle");
@@ -71,6 +71,38 @@ await suite.proof(
       errorClass: error?.constructor?.name,
       outcome: receipt.terminal.outcome,
       cancelReason: receipt.terminal.cancelReason,
+    };
+  },
+);
+
+await suite.proof(
+  "LIFE-012",
+  "attempt evidence records actual retry invocations",
+  "each admitted retry invocation records its attempt number, bounded reason code, outcome, and redacted metadata",
+  async () => {
+    const recorder = createAttemptRecorder();
+    let calls = 0;
+
+    await run.group(async (task) => task(run.retry(recorder.wrap(async () => {
+      calls++;
+      if (calls === 1) throw new Error("provider unavailable");
+      return "ok";
+    }, {
+      metadata: { provider: "primary", token: "secret" },
+      reasonCode: () => "provider_unavailable",
+    }), { times: 2, initialDelay: 0 })));
+
+    const attempts = recorder.attempts;
+    return {
+      ok: attempts.length === 2
+        && attempts[0]?.attempt === 1
+        && attempts[0]?.outcome === "failed"
+        && attempts[0]?.reasonCode === "provider_unavailable"
+        && attempts[0]?.metadata?.token === "[redacted]"
+        && attempts[1]?.attempt === 2
+        && attempts[1]?.outcome === "succeeded",
+      attempts,
+      droppedAttempts: recorder.droppedAttempts,
     };
   },
 );

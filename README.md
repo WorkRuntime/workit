@@ -67,7 +67,7 @@ cite the software release you used:
   title = {WorkIt: A TypeScript Structured Concurrency Runtime for Node.js Server Runtimes},
   year = {2026},
   url = {https://github.com/WorkRuntime/workit},
-  version = {0.4.0},
+  version = {0.5.0},
   license = {Apache-2.0}
 }
 ```

@@ -10,8 +10,10 @@ import assert from "node:assert/strict";
 import { getEventListeners } from "node:events";
 import {
   run,
+  createBudget,
   createContextKey,
   group,
+  BudgetExceededError,
   CancellationError,
   TimeoutError,
   WorkAggregateError,
@@ -766,6 +768,235 @@ test("run.retry policies cover cancel-aware delay and backoff branches", async (
     }),
     CancellationError
   );
+});
+
+test("task context exposes the earliest deadline inherited through nested scopes", async () => {
+  let parentDeadline;
+  let childDeadline;
+
+  const observed = await run.scope(async (parent) => {
+    parent.deadline(4_000);
+    parentDeadline = parent.status().deadlineAt;
+
+    const inherited = await run.scope(async (child) => {
+      child.deadline(8_000);
+      return child.spawn(async (ctx) => ctx.deadlineAt);
+    });
+
+    const narrowed = await run.scope(async (child) => {
+      child.deadline(1_000);
+      childDeadline = child.status().deadlineAt;
+      return child.spawn(async (ctx) => ctx.deadlineAt);
+    });
+
+    return [inherited, narrowed];
+  });
+
+  assert.deepEqual(observed, [parentDeadline, childDeadline]);
+  assert.ok(childDeadline < parentDeadline);
+  assert.equal(await run.group(async (task) => task(async (ctx) => ctx.deadlineAt)), undefined);
+});
+
+test("scope deadlines can only tighten and clear their timer when the scope closes", async () => {
+  const observed = await run.scope(async (scope) => {
+    scope.deadline(2_000);
+    const first = scope.status().deadlineAt;
+    scope.deadline(4_000);
+    const unchanged = scope.status().deadlineAt;
+    scope.deadline(1_000);
+    const tightened = scope.status().deadlineAt;
+    return { first, unchanged, tightened };
+  });
+
+  assert.equal(observed.unchanged, observed.first);
+  assert.ok(observed.tightened < observed.first);
+});
+
+test("deadline introspection composes through deadline, retry, fallback, and hedge", async () => {
+  const deadlineAt = Date.now() + 2_000;
+  const observed = [];
+  let retryAttempts = 0;
+
+  await run.group(async (task) => {
+    await task(run.deadline(run.retry(async (ctx) => {
+      observed.push(ctx.deadlineAt);
+      retryAttempts++;
+      if (retryAttempts === 1) throw new Error("retry once");
+      return "retried";
+    }, { times: 2, initialDelay: 0 }), deadlineAt));
+
+    await task(run.deadline(run.fallback(
+      async (ctx) => {
+        observed.push(ctx.deadlineAt);
+        throw new Error("use fallback");
+      },
+      async (ctx) => {
+        observed.push(ctx.deadlineAt);
+        return "fallback";
+      }
+    ), deadlineAt));
+
+    await task(run.deadline(run.hedge(async (ctx) => {
+      observed.push(ctx.deadlineAt);
+      if (ctx.attempt === 1) await sleep(20, ctx.signal);
+      return ctx.attempt;
+    }, { after: 1, max: 2 }), deadlineAt));
+  });
+
+  assert.ok(observed.length >= 5);
+  assert.ok(observed.every((value) => value === deadlineAt));
+
+  let scopeDeadline;
+  const inherited = await run.scope(async (scope) => {
+    scope.deadline(1_000);
+    scopeDeadline = scope.status().deadlineAt;
+    return scope.spawn(run.deadline(async (ctx) => ctx.deadlineAt, Date.now() + 2_000));
+  });
+  assert.equal(inherited, scopeDeadline);
+});
+
+test("retry budget is shared and charged before each additional attempt", async () => {
+  const RetryBudget = createBudget("RetryBudget", { unit: "retries" });
+  let firstTaskAttempts = 0;
+  let secondTaskAttempts = 0;
+
+  await assert.rejects(
+    run.context.with(RetryBudget, { limit: 1, spent: 0, unit: "retries" }, async () => {
+      await run.group(async (task) => {
+        await task(run.retry(async () => {
+          firstTaskAttempts++;
+          if (firstTaskAttempts === 1) throw new Error("retry first task");
+          return "first complete";
+        }, { times: 2, initialDelay: 0, retryBudget: RetryBudget }));
+
+        await task(run.retry(async () => {
+          secondTaskAttempts++;
+          throw new Error("retry second task");
+        }, { times: 3, initialDelay: 0, retryBudget: RetryBudget }));
+      });
+    }),
+    (error) => error instanceof BudgetExceededError
+      && error.budgetKey === "RetryBudget"
+      && error.attempted === 1
+  );
+
+  assert.equal(firstTaskAttempts, 2);
+  assert.equal(secondTaskAttempts, 1);
+});
+
+test("retry emits one generic terminal lifecycle event for every admitted attempt", async () => {
+  const events = [];
+  let calls = 0;
+
+  await run.scope(async (scope) => {
+    const unsubscribe = scope.onEvent((event) => events.push(event));
+    try {
+      await scope.spawn(run.retry(async () => {
+        calls++;
+        if (calls === 1) throw new Error("retry");
+        return "ok";
+      }, { times: 2, initialDelay: 0 }));
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  const attempts = events.filter((event) => event.type === "task:attempt");
+  assert.deepEqual(attempts.map((event) => [event.attempt, event.outcome]), [
+    [1, "failed"],
+    [2, "succeeded"],
+  ]);
+  assert.ok(attempts.every((event) =>
+    event.durationMs >= 0
+    && event.durationMs <= event.at
+  ));
+});
+
+test("nested retries keep generic task attempt ownership at the outer boundary", async () => {
+  const events = [];
+  let leafCalls = 0;
+
+  const result = await run.scope(async (scope) => {
+    const unsubscribe = scope.onEvent((event) => events.push(event));
+    try {
+      return await scope.spawn(run.retry(
+        run.retry(async () => {
+          leafCalls++;
+          if (leafCalls < 4) throw new Error("retry nested task");
+          return "ok";
+        }, { times: 2, initialDelay: 0 }),
+        { times: 2, initialDelay: 0 },
+      ));
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  assert.equal(result, "ok");
+  assert.equal(leafCalls, 4);
+  assert.deepEqual(
+    events
+      .filter((event) => event.type === "task:attempt")
+      .map((event) => [event.attempt, event.outcome]),
+    [
+      [1, "failed"],
+      [2, "succeeded"],
+    ],
+  );
+});
+
+test("retry budget is not charged when retry policy rejects another attempt", async () => {
+  const RetryBudget = createBudget("RejectedRetryBudget", { unit: "retries" });
+  let attempts = 0;
+
+  await assert.rejects(
+    run.context.with(RetryBudget, { limit: 0, spent: 0, unit: "retries" }, async () =>
+      run.group(async (task) => task(run.retry(async () => {
+        attempts++;
+        throw new Error("terminal");
+      }, { times: 3, retryIf: () => false, retryBudget: RetryBudget })))
+    ),
+    /terminal/
+  );
+
+  assert.equal(attempts, 1);
+});
+
+test("retry budget must be installed before a retry is admitted", async () => {
+  const RetryBudget = createBudget("MissingRetryBudget", { unit: "retries" });
+  let attempts = 0;
+
+  await assert.rejects(
+    run.group(async (task) => task(run.retry(async () => {
+      attempts++;
+      throw new Error("retry");
+    }, { times: 2, retryBudget: RetryBudget }))),
+    /Budget "MissingRetryBudget" not set in scope/
+  );
+
+  assert.equal(attempts, 1);
+});
+
+test("run.retry snapshots its retry budget policy at construction", async () => {
+  const OriginalBudget = createBudget("OriginalRetryBudget", { unit: "retries" });
+  const MutatedBudget = createBudget("MutatedRetryBudget", { unit: "retries" });
+  const policy = { times: 2, initialDelay: 0, retryBudget: OriginalBudget };
+  let attempts = 0;
+  const wrapped = run.retry(async () => {
+    attempts++;
+    if (attempts === 1) throw new Error("retry");
+    return "ok";
+  }, policy);
+  policy.retryBudget = MutatedBudget;
+
+  const result = await run.context.with(
+    OriginalBudget,
+    { limit: 1, spent: 0, unit: "retries" },
+    async () => run.group(async (task) => task(wrapped)),
+  );
+
+  assert.equal(result, "ok");
+  assert.equal(attempts, 2);
 });
 
 test("retry delay listeners are removed after completed sleeps", async () => {
