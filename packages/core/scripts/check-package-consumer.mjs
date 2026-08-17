@@ -20,6 +20,7 @@ import { build } from "esbuild";
 const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
 const ROOT = resolve(fileURLToPath(new URL("..", import.meta.url)));
+const nodeOnly = process.argv.includes("--node-only");
 const tscCli = require.resolve("typescript/bin/tsc");
 const wranglerPackagePath = require.resolve("wrangler/package.json");
 const wranglerPackage = JSON.parse(await readFile(wranglerPackagePath, "utf8"));
@@ -39,9 +40,9 @@ const wranglerCli = await findExecutable(
   ]
 );
 
-if (bunCli === null) throw new Error("Bun compatibility fixture requires a Bun executable.");
-if (denoCli === null) throw new Error("Deno compatibility fixture requires a Deno executable.");
-if (wranglerCli === null) throw new Error("Cloudflare Worker dry-run fixture requires Wrangler.");
+if (!nodeOnly && bunCli === null) throw new Error("Bun compatibility fixture requires a Bun executable.");
+if (!nodeOnly && denoCli === null) throw new Error("Deno compatibility fixture requires a Deno executable.");
+if (!nodeOnly && wranglerCli === null) throw new Error("Cloudflare Worker dry-run fixture requires Wrangler.");
 
 const temp = await mkdtemp(join(tmpdir(), "workit-consumer-"));
 
@@ -117,6 +118,7 @@ try {
     import { ActivitySerializationError, createFileActivityStore, createMemoryActivityStore, runActivity } from "@workit/core/activity";
     import { analyzeReceipt, verifyReceipt, verifySourceProtocol } from "@workit/core/analysis";
     import { AgentCapabilityError, embedAll, runAgent, streamWithBackpressure } from "@workit/core/ai";
+    import { firstAcceptable } from "@workit/core/candidates";
     import { cancellable, getTaskContract, shielded, typedGroup } from "@workit/core/contracts";
     import { cleanupHang, runFaultScenario } from "@workit/core/fault";
     import { createMemoryReceiptLedger, createPostgresReceiptLedger, createSqliteReceiptLedger } from "@workit/core/ledger";
@@ -128,6 +130,11 @@ try {
     import { offload } from "@workit/core/worker";
 
     const result = await run.all([async () => "sdk", async () => "ok"]);
+    const candidateResult = await firstAcceptable(["primary"], {
+      execute: async (candidate) => candidate,
+      accept: async () => ({ accepted: true }),
+      classifyFailure: async () => ({ disposition: "terminal", reasonCode: "consumer_failure" }),
+    });
     const deadlineAt = Date.now() + 1_000;
     const observedDeadline = await group(async (task) =>
       task(run.deadline(async (ctx) => ctx.deadlineAt, deadlineAt))
@@ -197,6 +204,9 @@ try {
     });
 
     if (result.join(":") !== "sdk:ok") throw new Error("root import failed");
+    if (candidateResult.status !== "accepted" || candidateResult.value !== "primary") {
+      throw new Error("candidates import failed");
+    }
     if (observedDeadline !== deadlineAt) throw new Error("deadline introspection failed");
     if (retried !== "retried" || retryAttempts !== 2) throw new Error("retry budget failed");
     if (retryPlan.retryBudgets[0]?.status !== "admissible") throw new Error("retry budget planning failed");
@@ -298,11 +308,36 @@ try {
 
   await writeFile(join(temp, "cjs-smoke.cjs"), `
     const { createBudget, run, work } = require("@workit/core");
+    const { firstAcceptable } = require("@workit/core/candidates");
     const { cancellable, typedGroup } = require("@workit/core/contracts");
     const { planTimePolicy } = require("@workit/core/time-policy");
 
     (async () => {
       const values = await run.all([async () => "cjs", async () => "ok"]);
+      const candidateResult = await firstAcceptable(["primary"], {
+        execute: async (candidate) => candidate,
+        accept: async () => ({ accepted: true }),
+        classifyFailure: async () => ({ disposition: "terminal", reasonCode: "consumer_failure" }),
+      });
+      const CandidateRetryBudget = createBudget("CjsCandidateRetryBudget", { unit: "retries" });
+      let candidateAttempts = 0;
+      const budgetedCandidateResult = await run.context.with(
+        CandidateRetryBudget,
+        { limit: 1, spent: 0, unit: "retries" },
+        async () => firstAcceptable(["primary"], {
+          execute: async (candidate) => {
+            candidateAttempts++;
+            if (candidateAttempts === 1) throw new Error("retry candidate");
+            return candidate;
+          },
+          accept: async () => ({ accepted: true }),
+          classifyFailure: async () => ({
+            disposition: "retry_same_candidate",
+            reasonCode: "candidate_retry",
+          }),
+          retry: { times: 2, initialDelay: 0, retryBudget: CandidateRetryBudget },
+        }),
+      );
       const deadlineAt = Date.now() + 1_000;
       const observedDeadline = await run.group(async (task) =>
         task(run.deadline(async (ctx) => ctx.deadlineAt, deadlineAt))
@@ -328,6 +363,12 @@ try {
       const output = await work([1, 2, 3]).inParallel(2).do(async (item) => item + 1);
       const typed = await typedGroup(async (spawn) => await spawn(cancellable(async () => "contracts")));
       if (values.join(":") !== "cjs:ok") throw new Error("CommonJS root import failed");
+      if (candidateResult.status !== "accepted" || candidateResult.value !== "primary") {
+        throw new Error("CommonJS candidates import failed");
+      }
+      if (budgetedCandidateResult.status !== "accepted" || candidateAttempts !== 2) {
+        throw new Error("CommonJS candidates did not share the root retry budget context");
+      }
       if (observedDeadline !== deadlineAt) throw new Error("CommonJS deadline introspection failed");
       if (retried !== "retried" || retryAttempts !== 2) throw new Error("CommonJS retry budget failed");
       if (retryPlan.retryBudgets[0]?.status !== "admissible") throw new Error("CommonJS retry budget planning failed");
@@ -394,6 +435,10 @@ try {
     } from "@workit/core/analysis";
     import { AgentCapabilityError, embedAll, runAgent, streamWithBackpressure } from "@workit/core/ai";
     import {
+      firstAcceptable,
+      type CandidateRunResult,
+    } from "@workit/core/candidates";
+    import {
       cancellable,
       discardCancellation,
       getTaskContract,
@@ -428,6 +473,21 @@ try {
       async () => 1,
       async () => "typed",
     ] as const);
+    const candidateResult: CandidateRunResult<string, string> = await firstAcceptable(["primary"], {
+      execute: async (candidate) => candidate,
+      accept: async () => ({ accepted: true }),
+      classifyFailure: async () => ({ disposition: "terminal", reasonCode: "strict_failure" }),
+    });
+    if (candidateResult.status === "accepted" && candidateResult.value !== "primary") {
+      throw new Error("candidate result inference failed");
+    }
+    const candidateStatuses: Record<CandidateRunResult<string, string>["status"], true> = {
+      accepted: true,
+      exhausted: true,
+      terminal: true,
+      requires_user_input: true,
+    };
+    void candidateStatuses;
 
     const value = await group(async (task) => {
       return await task(async (ctx: TaskContext) => {
@@ -705,10 +765,12 @@ try {
     if (result.join(":") !== "bun:ok") throw new Error("Bun runtime fixture failed");
   `, "utf8");
 
-  await execFileAsync(bunCli, ["bun-fixture.mjs"], {
-    cwd: temp,
-    timeout: 120_000,
-  });
+  if (!nodeOnly) {
+    await execFileAsync(bunCli, ["bun-fixture.mjs"], {
+      cwd: temp,
+      timeout: 120_000,
+    });
+  }
 
   await writeFile(join(temp, "deno-fixture.mjs"), `
     import { run } from "@workit/core";
@@ -717,10 +779,12 @@ try {
     if (result.join(":") !== "deno:ok") throw new Error("Deno runtime fixture failed");
   `, "utf8");
 
-  await execFileAsync(denoCli, ["run", "--allow-read", "--allow-env", "--allow-sys", "deno-fixture.mjs"], {
-    cwd: temp,
-    timeout: 120_000,
-  });
+  if (!nodeOnly) {
+    await execFileAsync(denoCli, ["run", "--allow-read", "--allow-env", "--allow-sys", "deno-fixture.mjs"], {
+      cwd: temp,
+      timeout: 120_000,
+    });
+  }
 
   await writeFile(join(temp, "aws-fixture.mjs"), `
     import { work } from "@workit/core";
@@ -962,8 +1026,9 @@ try {
 
   await writeFile(join(temp, "browser-entry.mjs"), `
     import { group } from "@workit/core";
+    import { firstAcceptable } from "@workit/core/candidates";
     import { offload } from "@workit/core/worker";
-    globalThis.__workitBrowserSmoke = [typeof group, typeof offload];
+    globalThis.__workitBrowserSmoke = [typeof group, typeof firstAcceptable, typeof offload];
   `, "utf8");
 
   const browserBundle = await build({
@@ -997,32 +1062,34 @@ try {
     };
   `, "utf8");
 
-  await execCli(wranglerCli, [
-    "deploy",
-    "cloudflare-worker.mjs",
-    "--name",
-    "workit-compat-smoke",
-    "--dry-run",
-    "--outdir",
-    "wrangler-out",
-    "--compatibility-date",
-    "2026-05-07",
-  ], {
-    cwd: temp,
-    timeout: 120_000,
-  });
+  if (!nodeOnly) {
+    await execCli(wranglerCli, [
+      "deploy",
+      "cloudflare-worker.mjs",
+      "--name",
+      "workit-compat-smoke",
+      "--dry-run",
+      "--outdir",
+      "wrangler-out",
+      "--compatibility-date",
+      "2026-05-07",
+    ], {
+      cwd: temp,
+      timeout: 120_000,
+    });
 
-  const workerBundle = await readFile(join(temp, "wrangler-out", "cloudflare-worker.js"), "utf8");
-  if (workerBundle.includes("node:async_hooks") || workerBundle.includes("node:worker_threads")) {
-    throw new Error("Cloudflare Worker dry-run pulled in Node-only WorkIt modules");
-  }
-  if (!workerBundle.includes("UnsupportedRuntimeError")) {
-    throw new Error("Cloudflare Worker dry-run did not resolve to the unsupported runtime split");
+    const workerBundle = await readFile(join(temp, "wrangler-out", "cloudflare-worker.js"), "utf8");
+    if (workerBundle.includes("node:async_hooks") || workerBundle.includes("node:worker_threads")) {
+      throw new Error("Cloudflare Worker dry-run pulled in Node-only WorkIt modules");
+    }
+    if (!workerBundle.includes("UnsupportedRuntimeError")) {
+      throw new Error("Cloudflare Worker dry-run did not resolve to the unsupported runtime split");
+    }
   }
 
   console.log(JSON.stringify({
     packageConsumer: "ok",
-    runtimeFixtures: "ok",
+    runtimeFixtures: nodeOnly ? "node-only" : "ok",
     frameworkFixtures: "ok",
     frameworks: ["express", "fastify", "trpc", "next", "vercel-ai"],
     tarball: pack.filename,

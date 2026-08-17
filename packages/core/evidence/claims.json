@@ -108,6 +108,26 @@
       "limitations": "Attempt recording wraps explicit task bodies. It does not infer provider policy, prove remote cancellation, or provide deterministic scheduler replay."
     },
     {
+      "id": "LIFE-013",
+      "title": "candidate deadline is aggregate and terminal across the chain",
+      "class": "lifecycle",
+      "status": "proven",
+      "proof": "tests/evidence/lifecycle/candidate-lifecycle.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "one absolute deadline reaches the admitted candidate context and timeout admits no fallback candidate",
+      "limitations": "Timer precision depends on the JavaScript event loop, and remote providers stop only when they honor AbortSignal."
+    },
+    {
+      "id": "LIFE-014",
+      "title": "candidate callback cancellation remains authoritative",
+      "class": "lifecycle",
+      "status": "proven",
+      "proof": "tests/evidence/lifecycle/candidate-lifecycle.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "cancellation thrown by quality or classification callbacks propagates unchanged and admits no fallback",
+      "limitations": "The proof covers typed in-process WorkIt cancellation, not provider-side termination without cooperative AbortSignal support."
+    },
+    {
       "id": "CORR-001",
       "title": "budget inputs are immutable boundary values",
       "class": "correctness",
@@ -308,6 +328,108 @@
       "limitations": "Planning uses an explicit point-in-time budget snapshot. Concurrent runtime consumption after planning can reduce the remaining budget before execution."
     },
     {
+      "id": "CORR-028",
+      "title": "candidate policy separates retries, quality rejection, and fallback",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/candidate-policy.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "a retryable transport failure, successful low-quality result, and accepted fallback produce distinct ordered bounded evidence",
+      "limitations": "Candidate execution is sequential and in-process. Provider side effects remain caller-owned and require caller-supplied idempotency."
+    },
+    {
+      "id": "CORR-029",
+      "title": "candidate policy preserves authoritative cancellation",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/candidate-policy.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "a real WorkIt cancellation bypasses provider classification and admits no later candidate",
+      "limitations": "Remote work stops only when the underlying provider cooperates with AbortSignal."
+    },
+    {
+      "id": "CORR-030",
+      "title": "candidate retries share the WorkIt retry budget",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/candidate-policy.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "candidate fallback cannot admit a retry after the shared scope retry budget is exhausted",
+      "limitations": "The budget covers retries admitted by WorkIt. Calls performed outside the candidate task remain application responsibility."
+    },
+    {
+      "id": "CORR-031",
+      "title": "candidate admission and aggregate attempts are bounded",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/candidate-policy.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "callbacks cannot expand the admitted candidate snapshot and unsafe candidate-count by retry-count products fail before execution",
+      "limitations": "The configured maximum bounds WorkIt admissions; it does not account for provider-internal retries outside the candidate task."
+    },
+    {
+      "id": "CORR-032",
+      "title": "candidate decisions are normalized exactly once",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/candidate-policy.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "mutable getters cannot change failure disposition, reason, or acceptance after validation",
+      "limitations": "Normalization protects WorkIt policy reads; callers still own mutable candidate and result objects passed to their callbacks."
+    },
+    {
+      "id": "CORR-033",
+      "title": "candidate error taxonomy is conservative and provider-neutral",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/candidate-policy.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "known WorkIt cancellation, timeout, and budget failures have stable decisions while unknown provider errors remain unclassified",
+      "limitations": "Provider-specific errors require a caller classifier; WorkIt does not infer HTTP, SDK, billing, or safety policy."
+    },
+    {
+      "id": "CORR-034",
+      "title": "candidate callback failures do not become fallback",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/candidate-policy.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "quality and classifier callback bugs propagate unchanged and admit no later candidate",
+      "limitations": "Applications remain responsible for testing their classifier and quality predicate implementations."
+    },
+    {
+      "id": "CORR-035",
+      "title": "telemetry context and observer failures remain isolated",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/runtime-resilience.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "throwing telemetry context access and observers cannot escape event emission or block another observer",
+      "limitations": "Observer exceptions are intentionally discarded. Exporter diagnostics and delivery guarantees belong to opt-in observability adapters.",
+      "verifiedFor": "0.5.0",
+      "ledgerNote": "Backfilled after the 0.5.0 tag because its changelog claim had unit coverage but no dedicated claim-ledger entry."
+    },
+    {
+      "id": "CORR-036",
+      "title": "hostile thrown values cannot bypass candidate classification",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/candidate-policy.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "proxy traps and throwing Error accessors remain bounded while the caller classifier retains policy authority",
+      "limitations": "This is JavaScript object hardening, not isolation from arbitrary code executing in the same process."
+    },
+    {
+      "id": "CORR-037",
+      "title": "bounded operational candidate scenarios preserve declared policy",
+      "class": "correctness",
+      "status": "proven",
+      "proof": "tests/evidence/correctness/candidate-scenarios.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "quality fallback, caller-owned idempotency, user-input stops, and cooperative cancellation preserve their declared boundaries",
+      "limitations": "These are bounded in-process fixtures, not a real provider, durable-store, distributed-system, or Oryn production canary."
+    },
+    {
       "id": "SEC-001",
       "title": "worker offload rejects remote and executable URL schemes",
       "class": "security",
@@ -326,6 +448,16 @@
       "command": "npm run test:evidence",
       "expectedInvariant": "late marker is not written after offload timeout",
       "limitations": "The hard boundary applies to worker offload; JavaScript cannot preempt a CPU loop on the main thread."
+    },
+    {
+      "id": "SEC-003",
+      "title": "candidate metadata normalization keeps prototype-shaped fields inert",
+      "class": "security",
+      "status": "proven",
+      "proof": "tests/evidence/security/candidate-boundary.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "an own __proto__ metadata field is retained as data without changing Object.prototype and secret fields are redacted",
+      "limitations": "This proof covers candidate evidence normalization. It is not a general object sandbox or protection for caller code that mutates global prototypes."
     },
     {
       "id": "REL-001",
@@ -388,6 +520,40 @@
       "limitations": "This proof uses node:sqlite when the active Node runtime provides it. Postgres remains an environment-gated integration path because WorkIt does not take a runtime pg dependency."
     },
     {
+      "id": "REL-008",
+      "title": "candidates subpath has locked ESM CommonJS and type artifacts",
+      "class": "release",
+      "status": "proven",
+      "proof": "tests/evidence/release/candidate-package-contract.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "dedicated ESM, CommonJS, and declaration artifacts expose firstAcceptable while the root API remains unchanged",
+      "limitations": "Installed-tarball and runtime-matrix behavior is verified by the separate package-consumer release gate."
+    },
+    {
+      "id": "REL-009",
+      "title": "published core has zero runtime dependencies",
+      "class": "release",
+      "status": "proven",
+      "proof": "tests/evidence/release/core-release-contracts.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "package dependencies are absent and the generated CycloneDX SBOM contains no runtime components",
+      "limitations": "Development and optional peer dependencies remain outside the zero-runtime-dependency claim.",
+      "verifiedFor": "0.5.0",
+      "ledgerNote": "Backfilled after the 0.5.0 tag because the release changelog claim was enforced by SBOM gates but absent from the claim ledger."
+    },
+    {
+      "id": "REL-010",
+      "title": "compiled package entrypoints stay within enforced size budgets",
+      "class": "release",
+      "status": "proven",
+      "proof": "tests/evidence/release/core-release-contracts.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "the size gate passes for compiled root, group, candidates ESM, and candidates CommonJS artifacts",
+      "limitations": "Bundle results depend on the pinned build toolchain and measure declared fixtures rather than every consumer bundler configuration.",
+      "verifiedFor": "0.5.0",
+      "ledgerNote": "The root and group measurements backfill the 0.5.0 claim; candidate measurements apply to the 0.6.0 target."
+    },
+    {
       "id": "PERF-001",
       "title": "article benchmark suite has expected executable coverage",
       "class": "performance",
@@ -406,6 +572,38 @@
       "command": "npm run test:evidence",
       "expectedInvariant": "benchmarks/results/articles.latest.json records 19 passing benches",
       "limitations": "Timing values are representative for the captured machine and run; semantic assertions are the portable claim."
+    },
+    {
+      "id": "PERF-003",
+      "title": "candidate execution and retained evidence remain bounded",
+      "class": "performance",
+      "status": "proven",
+      "proof": "tests/evidence/performance/candidate-bounds.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "large quality and retry chains stay inside time and retained-heap budgets while evidence retains only its configured window",
+      "limitations": "Timings and heap deltas are environment-sensitive regression bounds, not universal latency or memory guarantees."
+    },
+    {
+      "id": "PROD-001",
+      "title": "scope idempotency is not durable idempotency",
+      "class": "product-decision",
+      "status": "product-decision",
+      "proof": "README.md",
+      "command": "npm run check:evidence-ledger",
+      "expectedInvariant": "TaskOpts.idempotencyKey is documented as live-scope coalescing and durable restart behavior remains caller-owned",
+      "limitations": "Applications requiring restart-safe side effects must use a durable idempotency store or an explicit activity boundary.",
+      "verifiedFor": "0.5.0",
+      "ledgerNote": "Backfilled after the 0.5.0 tag as an explicit product-decision claim."
+    },
+    {
+      "id": "PROD-002",
+      "title": "candidate side-effect idempotency remains caller-owned",
+      "class": "product-decision",
+      "status": "product-decision",
+      "proof": "src/candidates/index.ts",
+      "command": "npm run check:evidence-ledger",
+      "expectedInvariant": "firstAcceptable remains a sequential in-process policy helper and does not imply durable idempotency or background handoff",
+      "limitations": "Retries and fallback can repeat side effects; callers must supply durable idempotency where operations are not naturally safe."
     }
   ]
 }

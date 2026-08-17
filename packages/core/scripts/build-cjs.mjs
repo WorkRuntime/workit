@@ -12,12 +12,35 @@
 import { rm } from "node:fs/promises";
 import { build } from "esbuild";
 
+const candidateSharedRuntimePlugin = {
+  name: "candidate-shared-runtime",
+  setup(buildContext) {
+    buildContext.onResolve({ filter: /^\.\.\/run\/index\.js$/ }, (args) =>
+      isCandidateModule(args.importer, "index.js")
+        ? { path: "@workit/core", external: true }
+        : undefined);
+    buildContext.onResolve({ filter: /^\.\.\/replay\/index\.js$/ }, (args) =>
+      isCandidateModule(args.importer, "index.js")
+        ? { path: "@workit/core/replay", external: true }
+        : undefined);
+    buildContext.onResolve({ filter: /^\.\.\/types\/index\.js$/ }, (args) =>
+      isCandidateModule(args.importer, "classification.js")
+        ? { path: "@workit/core", external: true }
+        : undefined);
+  },
+};
+
 const ENTRIES = [
   { entry: "dist/index.js", outfile: "dist-cjs/index.cjs" },
   { entry: "dist/activity/index.js", outfile: "dist-cjs/activity/index.cjs" },
   { entry: "dist/ai/index.js", outfile: "dist-cjs/ai/index.cjs" },
   { entry: "dist/analysis/index.js", outfile: "dist-cjs/analysis/index.cjs" },
   { entry: "dist/channel/index.js", outfile: "dist-cjs/channel/index.cjs" },
+  {
+    entry: "dist/candidates/index.js",
+    outfile: "dist-cjs/candidates/index.cjs",
+    plugins: [candidateSharedRuntimePlugin],
+  },
   { entry: "dist/contracts/index.js", outfile: "dist-cjs/contracts/index.cjs" },
   { entry: "dist/diagnostics/index.js", outfile: "dist-cjs/diagnostics/index.cjs" },
   { entry: "dist/fault/index.js", outfile: "dist-cjs/fault/index.cjs" },
@@ -40,6 +63,11 @@ for (const target of ENTRIES) {
     platform: "node",
     target: "node20",
     external: ["@opentelemetry/api"],
+    plugins: target.plugins ?? [],
     logLevel: "silent",
   });
+}
+
+function isCandidateModule(importer, filename) {
+  return importer.replaceAll("\\", "/").endsWith(`/candidates/${filename}`);
 }

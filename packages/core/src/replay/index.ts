@@ -662,9 +662,15 @@ function redactValue(value: unknown, policy: RedactionRuntimePolicy, depth: numb
   for (const [key, item] of Object.entries(input)) {
     const normalizedKey = key.toLowerCase();
     if (policy.removeFields.has(normalizedKey)) continue;
-    output[key] = policy.redactFields.has(normalizedKey)
+    const redactedItem = policy.redactFields.has(normalizedKey)
       ? "[redacted]"
       : redactValue(item, policy, depth + 1);
+    Object.defineProperty(output, key, {
+      value: redactedItem,
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
   }
   return output;
 }

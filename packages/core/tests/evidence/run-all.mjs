@@ -6,46 +6,36 @@
  */
 
 import { spawn } from "node:child_process";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { computeEvidenceSourceDigest } from "../../scripts/evidence-source-digest.mjs";
+import { evidenceProofs } from "./manifest.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const files = [
-  "lifecycle/owned-work.mjs",
-  "lifecycle/activity-restart.mjs",
-  "lifecycle/resource-audit.mjs",
-  "lifecycle/resource-ownership.mjs",
-  "lifecycle/replay-receipts.mjs",
-  "correctness/agent-authority.mjs",
-  "correctness/analysis-verifiers.mjs",
-  "correctness/activity-boundary.mjs",
-  "correctness/fault-injection.mjs",
-  "correctness/resource-ownership-model.mjs",
-  "correctness/runtime-contracts.mjs",
-  "correctness/source-protocol-analysis.mjs",
-  "correctness/time-policy-planner.mjs",
-  "correctness/formal-time-policy-model.mjs",
-  "correctness/nested-time-policy-composition.mjs",
-  "correctness/typed-cancellation-contracts.mjs",
-  "security/worker-boundary.mjs",
-  "release/release-integrity.mjs",
-  "release/receipt-ledger.mjs",
-  "release/sql-receipt-ledger.mjs",
-  "release/sql-ledger-integration.mjs",
-  "performance/benchmark-contracts.mjs",
-];
+const packageRoot = path.resolve(here, "../..");
+const options = parseArguments(process.argv.slice(2));
 
 const summary = {
   author: "Admilson B. F. Cossa",
   spdxLicense: "Apache-2.0",
   artifact: "workit-publication-evidence",
+  schemaVersion: 2,
+  releaseTarget: options.releaseTarget,
+  sourceDigest: await computeEvidenceSourceDigest(packageRoot),
+  environment: {
+    node: process.version,
+    platform: process.platform,
+    arch: process.arch,
+  },
   proofs: [],
 };
 
-for (const file of files) {
+for (const proof of evidenceProofs) {
+  const { file, nodeArguments } = proof;
   const startedAt = Date.now();
   const childResult = await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [path.join(here, file)], {
+    const child = spawn(process.execPath, [...nodeArguments, path.join(here, file)], {
       stdio: ["ignore", "pipe", "pipe"],
     });
     let stdout = "";
@@ -81,6 +71,45 @@ for (const file of files) {
 const failures = summary.proofs.filter((proof) => proof.exitCode !== 0).length;
 summary.passed = summary.proofs.length - failures;
 summary.failed = failures;
+summary.claimResults = summary.proofs.flatMap((proof) =>
+  (proof.report?.results ?? []).map((result) => ({
+    id: result.id,
+    proof: `tests/evidence/${proof.file}`,
+    status: result.status,
+    actualResult: result.evidence,
+  }))
+);
 
-process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
+const serialized = JSON.stringify(summary, null, 2) + "\n";
+if (options.output !== undefined) {
+  const output = resolveOutput(options.output);
+  await mkdir(path.dirname(output), { recursive: true });
+  await writeFile(output, serialized, "utf8");
+}
+process.stdout.write(serialized);
 process.exit(failures > 0 ? 1 : 0);
+
+function parseArguments(args) {
+  const values = new Map();
+  for (let index = 0; index < args.length; index += 2) {
+    const name = args[index];
+    const value = args[index + 1];
+    if ((name !== "--output" && name !== "--release-target") || value === undefined) {
+      throw new Error("Usage: run-all.mjs [--output <package-relative-path>] [--release-target <version>]");
+    }
+    values.set(name, value);
+  }
+  return {
+    output: values.get("--output"),
+    releaseTarget: values.get("--release-target") ?? null,
+  };
+}
+
+function resolveOutput(value) {
+  const output = path.resolve(packageRoot, value);
+  const relative = path.relative(packageRoot, output);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error("Evidence output must remain inside the package root");
+  }
+  return output;
+}
