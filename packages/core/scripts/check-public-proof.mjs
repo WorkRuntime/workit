@@ -23,12 +23,19 @@ const REQUIRED_COMMANDS = [
   "npm run check:soak",
   "npm run check:package-consumer",
   "npm run check:claims",
+  "npm run test:evidence",
+  "npm run check:evidence-ledger",
+  "npm run check:candidates-api",
+  "npm run check:candidates-performance",
+  "npm run check:candidate-scenarios",
 ];
 
 const REQUIRED_MIGRATIONS = ["p-limit", "p-map", "RxJS", "Bottleneck"];
 const REQUIRED_RUNTIMES = [
   "Node.js ESM",
   "Node.js CommonJS",
+  "Bun",
+  "Deno",
   "Express",
   "Fastify",
   "tRPC",

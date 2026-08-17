@@ -9,7 +9,12 @@
     "npm run check:stream-memory",
     "npm run check:soak",
     "npm run check:package-consumer",
-    "npm run check:claims"
+    "npm run check:claims",
+    "npm run test:evidence",
+    "npm run check:evidence-ledger",
+    "npm run check:candidates-api",
+    "npm run check:candidates-performance",
+    "npm run check:candidate-scenarios"
   ],
   "benchmarkFixtures": [
     {
@@ -56,6 +61,16 @@
       "evidence": "npm run check:package-consumer"
     },
     {
+      "runtime": "Bun",
+      "status": "pinned compatibility fixture; not primary support contract",
+      "evidence": "npm run check:package-consumer"
+    },
+    {
+      "runtime": "Deno",
+      "status": "pinned compatibility fixture; not primary support contract",
+      "evidence": "npm run check:package-consumer"
+    },
+    {
       "runtime": "Express",
       "status": "supported fixture",
       "evidence": "npm run check:package-consumer"
@@ -73,7 +88,7 @@
     {
       "runtime": "Next.js route",
       "status": "supported fixture",
-      "evidence": "npm run check:claims"
+      "evidence": "npm run check:package-consumer"
     },
     {
       "runtime": "Vercel AI SDK handler",

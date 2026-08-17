@@ -7,6 +7,21 @@ SPDX-License-Identifier: Apache-2.0
 
 ## Unreleased
 
+- Add the explicit `@workit/core/candidates` subpath with deterministic
+  `firstAcceptable()` selection, provider-neutral failure dispositions, typed
+  semantic quality decisions, existing retry/deadline/budget reuse, and bounded
+  redacted candidate-attempt evidence.
+- Add conservative built-in taxonomy for WorkIt cancellation, timeout, and
+  retry-budget exhaustion while leaving unknown provider failures under the
+  caller's explicit classifier policy.
+- Keep real cancellation authoritative, return terminal and user-input stops as
+  exhaustive typed results, and leave root runtime exports unchanged.
+- Add ESM, CommonJS, strict TypeScript, unsupported-runtime, unit, property, and
+  installed-package coverage for candidate policy contracts.
+- Add a manifest-driven evidence runner, per-claim actual-result capture in the
+  ignored coverage directory, and a source-digest ledger gate that rejects
+  missing, failing, unregistered, or stale evidence.
+
 ## 0.5.0
 
 Add runtime deadline introspection, shared retry admission limits, and bounded

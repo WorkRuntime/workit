@@ -87,13 +87,16 @@ owned by `packages/core`.
 
 The monorepo layout must not change how users install or import WorkIt.
 
-Stable consumer paths for this release line:
+Consumer paths in the current checkout are listed below. Paths described under
+`Unreleased` in the changelog are not part of the npm `latest` version until the
+corresponding minor release is published.
 
 ```txt
 @workit/core
 @workit/core/activity
 @workit/core/ai
 @workit/core/analysis
+@workit/core/candidates
 @workit/core/channel
 @workit/core/contracts
 @workit/core/diagnostics
@@ -117,6 +120,10 @@ npm run test:coverage
 npm run check:size
 npm run check:package-consumer
 ```
+
+The current checkout's candidate-policy subpath is documented in the
+[`@workit/core` package README](packages/core/README.md#candidate-selection).
+It remains unreleased while the package version is `0.5.0`.
 
 Run the site gates from the repository root:
 
