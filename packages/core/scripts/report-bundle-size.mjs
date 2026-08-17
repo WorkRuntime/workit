@@ -34,6 +34,10 @@ const ENTRIES = [
     name: "direct-work-import",
     source: 'export { work } from "./dist/work/index.js";',
   },
+  {
+    name: "candidates-subpath",
+    source: 'export * from "./dist/candidates/index.js";',
+  },
 ];
 
 for (const entry of ENTRIES) {

@@ -90,6 +90,8 @@ export const streamWithBackpressure = unsupportedFunction("streamWithBackpressur
 export const transcribeStream = unsupportedFunction("transcribeStream");
 export const wrapAI = unsupportedFunction("wrapAI");
 export const offload = unsupportedFunction("offload");
+export const firstAcceptable = unsupportedFunction("firstAcceptable");
+export const classifyWorkItFailure = unsupportedFunction("classifyWorkItFailure");
 
 export const run = Object.freeze({
   all: unsupportedFunction("run.all"),

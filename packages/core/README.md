@@ -318,6 +318,7 @@ ownership helpers live behind explicit subpaths.
 | Build lifecycle receipts from scope events and snapshots | `@workit/core/replay` | audit evidence, not deterministic scheduler replay |
 | Persist receipts in caller-owned stores | `@workit/core/ledger` | memory, file, and caller-owned SQL receipt ledgers, not a database framework |
 | Verify receipts and caller-provided protocol specs | `@workit/core/analysis` | bounded verification over supplied evidence, not whole-program analysis |
+| Select the first semantically acceptable candidate | `@workit/core/candidates` | sequential candidate policy, not implicit racing or durable idempotency |
 | Record explicit terminal activity boundaries | `@workit/core/activity` | completed activity replay, not in-flight workflow recovery |
 | Compose lazy, shared, and scope-owned resources | `@workit/core/resources` | cleanup ownership through WorkIt scopes, not automatic resource detection |
 | Plan declared retry, hedge, timeout, deadline, series, and parallel time bounds | `@workit/core/time-policy` | conservative planning over declared policies, not wall-clock execution proof |
@@ -331,6 +332,97 @@ one live scope. The entry is removed when that task settles; it is not a durable
 deduplication record. Use `@workit/core/activity` with a caller-owned store for
 terminal replay across process restarts, and `@workit/core/ledger` when lifecycle
 receipts must be persisted independently.
+
+### Candidate Selection
+
+> **0.6.0 release candidate:** this subpath is present in the prepared package,
+> but it is not included in npm `latest` until the signed `v0.6.0` tag and
+> provenance-backed publish complete.
+>
+> Publication is also blocked by evidence claim `REL-011` until Oryn passes a
+> real integration canary at its provider and durable-idempotency boundaries.
+> The bounded fixtures in this repository do not satisfy that claim.
+
+`@workit/core/candidates` separates transport success, semantic quality, and
+failure policy. Candidates run sequentially in caller order. WorkIt's built-in
+taxonomy handles its own cancellation, timeout, and retry-budget errors first.
+The caller classifier owns unknown failures such as provider responses and
+decides whether to retry the same candidate, advance, stop terminally, or
+require user input. Real WorkIt cancellation always throws and cannot be
+converted into fallback.
+
+```ts
+import {
+  classifyWorkItFailure,
+  firstAcceptable,
+} from "@workit/core/candidates";
+import { TimeoutError } from "@workit/core";
+
+const result = await firstAcceptable([primaryModel, fallbackModel], {
+  execute: (model, ctx) => model.generate({ signal: ctx.signal }),
+  accept: (value) => value.confidence >= 0.8
+    ? { accepted: true }
+    : { accepted: false, reasonCode: "confidence_too_low" },
+  classifyFailure: (error) => isTransient(error)
+    ? { disposition: "retry_same_candidate", reasonCode: "transient_provider_failure" }
+    : { disposition: "try_next_candidate", reasonCode: "candidate_unavailable" },
+  retry: { times: 2, initialDelay: "100ms" },
+  maxCandidates: 2,
+  evidence: { maxAttempts: 8 },
+  candidateMetadata: (_model, candidateIndex) => ({ candidateIndex }),
+});
+
+if (result.status === "accepted") {
+  useResult(result.value);
+}
+
+// The same conservative taxonomy is available for policy inspection.
+const knownFailure = classifyWorkItFailure(new TimeoutError(1_000));
+```
+
+`classifyWorkItFailure()` returns these stable built-in decisions:
+
+| Error | Decision | `reasonCode` | `firstAcceptable()` behavior |
+|---|---|---|---|
+| `CancellationError` | `cancelled` | `workit_cancelled` | rethrows the original cancellation; no fallback is admitted |
+| `TimeoutError` | `terminal` | `workit_timeout` | returns a terminal result; no fallback is admitted |
+| `BudgetExceededError` | `terminal` | `workit_budget_exhausted` | returns a terminal result; no fallback is admitted |
+| unknown/provider error | `undefined` | caller-defined | invokes `classifyFailure` exactly once for the normalized decision |
+
+The result is an exhaustive discriminated union:
+
+| `status` | Meaning | Additional fields |
+|---|---|---|
+| `accepted` | first transport-successful value accepted by the quality predicate | `candidate`, `candidateIndex`, `value` |
+| `exhausted` | no candidate produced an acceptable value and no policy stop occurred | none |
+| `terminal` | a built-in or caller terminal decision stopped the chain | `reasonCode`, original `error` |
+| `requires_user_input` | caller policy stopped for approval or missing input | `reasonCode` |
+
+Every result includes bounded `evidence` and `droppedEvidence`. Each evidence
+entry records candidate index, attempt, outcome, decision, optional reason code,
+timing, normalized error, and redacted metadata.
+
+`deadlineAt` is one absolute aggregate deadline for the entire candidate chain,
+not a fresh timeout per candidate. Every admitted task context observes the same
+effective deadline. When it expires, the result is terminal and later candidates
+are not admitted.
+
+Quality rejection is recorded as a successful transport attempt with the
+separate `quality_rejected` decision. Evidence uses the existing attempt
+recorder, validates lowercase bounded reason codes, bounds and redacts metadata,
+truncates error text, and reports dropped attempts. Defaults admit at most 16
+candidates and retain at most 256 evidence entries; larger candidate lists must
+raise `maxCandidates` explicitly, up to the hard cap of 1,000. Configuration is
+rejected when `candidateCount * retry.times` exceeds 10,000 admitted attempts.
+
+The helper does not race candidates and does not make side effects idempotent.
+Use caller-owned idempotency for operations that may be repeated by retries or
+fallback. `retryIf` is intentionally not accepted in the retry option because
+`classifyFailure` is the single retry admission policy.
+
+Exceptions thrown by `accept`, `classifyFailure`, or `candidateMetadata` are
+configuration/callback failures and are not silently converted into fallback.
+WorkIt cancellation thrown by a callback remains authoritative.
 
 ### Attempt Evidence
 
@@ -671,9 +763,9 @@ thresholds, not exact milliseconds.
 
 | Evidence | Current result |
 |---|---:|
-| Unit tests | 375 passing |
-| Coverage gate | 100% statements, branches, functions, lines |
-| Evidence proof files | 22 passing |
+| Unit and property tests | 403 passing |
+| Coverage gate | 100% statements (2,902/2,902), branches (1,837/1,837), functions (688/688), lines (2,797/2,797) |
+| Evidence proof files | 30 passing / 56 executable claims captured |
 | Runtime dependencies | 0 |
 | Article benchmark suite | 19/19 passing |
 | Core group import | 13,807 B minified / 4,842 B gzip |
@@ -688,7 +780,7 @@ Representative article-benchmark results:
 |---|---:|---:|
 | Provider race losers after winner | losers continue until their sleeps finish | losers cancelled in scope close |
 | Retry after cancellation | 7 extra attempts, 622 ms latency | 0 extra attempts, 1 ms latency |
-| Context `.with()` over 5,000 keys | 31.68 ms | 0.014 ms |
+| Context `.with()` over 5,000 keys | 31.253 ms | 0.011 ms |
 | 1B-row source, take 25 | 281 items pulled | 40 items pulled |
 | Sampling volume | 1,300 events | 36 events |
 
@@ -699,10 +791,11 @@ npm run verify
 ```
 
 `npm run verify` runs type-checking, header and test hygiene, unit tests,
-security checks, vulnerability audit, SBOM validation, API and bundle-size
-locks, runtime benchmarks, stream and soak gates, exporter stress,
-package-consumer fixtures, public-proof validation, worker-contract checks,
-release-policy checks, and `npm pack --dry-run`.
+manifest-driven evidence proofs, source-digest ledger validation, security
+checks, vulnerability audit, SBOM validation, API and bundle-size locks,
+runtime benchmarks, stream and soak gates, exporter stress, package-consumer
+fixtures, public-proof validation, worker-contract checks, release-policy
+checks, and `npm pack --dry-run`.
 
 Run the article benchmark suite:
 
@@ -757,6 +850,15 @@ Supported:
 - Azure Functions-shaped handlers
 - Next.js route-shaped handlers
 - Express, Fastify, tRPC, and Vercel AI SDK fixtures
+
+Compatibility-tested, but outside the primary Node.js support commitment:
+
+- Bun `1.3.13` installed-package fixture
+- Deno `2.2.7` installed-package fixture
+
+These fixtures prove the tested package surface on the pinned versions. They do
+not broaden the documented primary runtime target beyond Node.js server
+runtimes.
 
 Unsupported today:
 
@@ -852,7 +954,7 @@ cite the software release you used:
   title = {WorkIt: A TypeScript Structured Concurrency Runtime for Node.js Server Runtimes},
   year = {2026},
   url = {https://github.com/WorkRuntime/workit},
-  version = {0.5.0},
+  version = {0.6.0},
   license = {Apache-2.0}
 }
 ```

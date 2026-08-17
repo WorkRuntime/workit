@@ -57,6 +57,7 @@ provenance enabled. A release is not approved unless these commands pass:
 ```sh
 npm run verify
 npm run test:coverage
+npm run check:release-readiness
 npm run check:vulnerabilities
 npm run check:sbom
 npm pack --dry-run --json

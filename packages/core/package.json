@@ -1,6 +1,6 @@
 {
   "name": "@workit/core",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Structured concurrency runtime for TypeScript: owned async work, cancellation, budgets, retries, timeouts, worker offload, scopes.",
   "keywords": [
     "structured-concurrency",
@@ -81,6 +81,14 @@
       "types": "./dist/channel/index.d.ts",
       "import": "./dist/channel/index.js",
       "require": "./dist-cjs/channel/index.cjs"
+    },
+    "./candidates": {
+      "types": "./dist/candidates/index.d.ts",
+      "node": {
+        "import": "./dist/candidates/index.js",
+        "require": "./dist-cjs/candidates/index.cjs"
+      },
+      "default": "./dist/runtime/unsupported.js"
     },
     "./contracts": {
       "types": "./dist/contracts/index.d.ts",
@@ -164,9 +172,12 @@
     "check:sbom": "npm run build && node scripts/check-sbom.mjs",
     "check:tests": "node scripts/check-tests.mjs",
     "check:api": "npm run build && node scripts/check-api-surface.mjs",
+    "check:candidates-api": "npm run build && node scripts/check-candidates-api.mjs",
     "check:size": "npm run build && node scripts/check-bundle-size.mjs",
     "report:size": "npm run build && node scripts/report-bundle-size.mjs",
     "check:benchmark": "npm run build && node scripts/check-benchmark.mjs",
+    "check:candidates-performance": "npm run build && node --expose-gc scripts/check-candidates-performance.mjs",
+    "check:candidate-scenarios": "npm run build && node scripts/check-candidate-scenarios.mjs",
     "check:context-performance": "npm run build && node scripts/check-context-performance.mjs",
     "check:1b": "npm run build && node scripts/check-1b-benchmark.mjs",
     "check:leak": "npm run build && node --expose-gc scripts/check-leak.mjs",
@@ -174,14 +185,17 @@
     "check:soak": "npm run build && node --expose-gc scripts/check-soak.mjs",
     "check:exporter-stress": "npm run build && node --expose-gc scripts/check-exporter-stress.mjs",
     "check:package-consumer": "npm run build && node scripts/check-package-consumer.mjs",
+    "check:package-consumer:node": "npm run build && node scripts/check-package-consumer.mjs --node-only",
     "check:claims": "npm run build && node scripts/check-claim-fixtures.mjs",
+    "check:evidence-ledger": "node scripts/check-evidence-ledger.mjs",
+    "check:release-readiness": "node scripts/check-release-readiness.mjs",
     "check:public-proof": "node scripts/check-public-proof.mjs",
     "check:worker-contract": "node scripts/check-worker-contract-docs.mjs",
     "check:release-policy": "npm run build && node scripts/check-release-provenance.mjs",
-    "check:release": "npm run build && node scripts/check-release-provenance.mjs --registry-dry-run",
+    "check:release": "npm run check:release-readiness && npm run build && node scripts/check-release-provenance.mjs --registry-dry-run",
     "bench:articles": "node benchmarks/articles/run-all.mjs",
     "bench:articles:repeated": "node benchmarks/articles/run-repeated.mjs",
-    "test:evidence": "node tests/evidence/run-all.mjs",
+    "test:evidence": "npm run build && node tests/evidence/run-all.mjs --output coverage/evidence/latest.json",
     "test:property": "npm run build && vitest run tests/property",
     "pack:dry": "npm run build && npm pack --dry-run --json",
     "sample:1b": "npm run build && node samples/1b-stream.sample.js",
@@ -209,7 +223,7 @@
     "soak:24h": "npm run build && node --expose-gc scripts/soak-24h.mjs",
     "test": "npm run build && vitest run --maxWorkers=1",
     "test:coverage": "npm run build && vitest run --coverage --maxWorkers=1",
-    "verify": "npm run typecheck && npm run check:no-network && npm run check:headers && npm run check:tests && npm test && npm run check:security && npm run check:vulnerabilities && npm run check:sbom && npm run check:api && npm run check:size && npm run check:benchmark && npm run check:context-performance && npm run check:1b && npm run check:leak && npm run check:stream-memory && npm run check:soak && npm run check:exporter-stress && npm run check:package-consumer && npm run check:claims && npm run check:public-proof && npm run check:worker-contract && npm run check:release-policy && npm run pack:dry"
+    "verify": "npm run typecheck && npm run check:no-network && npm run check:headers && npm run check:tests && npm test && npm run test:evidence && npm run check:evidence-ledger && npm run check:security && npm run check:vulnerabilities && npm run check:sbom && npm run check:api && npm run check:candidates-api && npm run check:size && npm run check:benchmark && npm run check:candidates-performance && npm run check:candidate-scenarios && npm run check:context-performance && npm run check:1b && npm run check:leak && npm run check:stream-memory && npm run check:soak && npm run check:exporter-stress && npm run check:package-consumer && npm run check:claims && npm run check:public-proof && npm run check:worker-contract && npm run check:release-policy && npm run pack:dry"
   },
   "engines": {
     "node": ">=20.11"

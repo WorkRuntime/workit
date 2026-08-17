@@ -11,6 +11,7 @@
  */
 
 import { gzipSync } from "node:zlib";
+import { stat } from "node:fs/promises";
 import { build } from "esbuild";
 
 const DIST_ENTRY = "./dist/index.js";
@@ -28,7 +29,15 @@ const BUDGETS = [
     maxMinifiedBytes: 14_000,
     maxGzipBytes: 4_900,
   },
+  {
+    name: "candidates-subpath",
+    source: 'export * from "./dist/candidates/index.js";',
+    maxMinifiedBytes: 29_450,
+    maxGzipBytes: 9_900,
+  },
 ];
+
+const CANDIDATES_CJS_MAX_BYTES = 18_000;
 
 const failures = [];
 
@@ -60,6 +69,12 @@ for (const budget of BUDGETS) {
   if (minifiedBytes > budget.maxMinifiedBytes || gzipBytes > budget.maxGzipBytes) {
     failures.push(`${budget.name} exceeded configured bundle budget`);
   }
+}
+
+const candidatesCjsBytes = (await stat("./dist-cjs/candidates/index.cjs")).size;
+console.log(`candidates-commonjs: ${candidatesCjsBytes} B (limit ${CANDIDATES_CJS_MAX_BYTES} B)`);
+if (candidatesCjsBytes > CANDIDATES_CJS_MAX_BYTES) {
+  failures.push("candidates-commonjs exceeded configured bundle budget");
 }
 
 if (failures.length > 0) {

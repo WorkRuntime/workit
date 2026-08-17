@@ -55,6 +55,11 @@ assert.match(workflow, /attestations:\s*write/u, "release workflow must allow Gi
 assert.match(workflow, /npm publish --workspace @workit\/core --provenance --access public/u, "release workflow must publish @workit/core with npm provenance");
 assert.match(workflow, /npm run verify/u, "release workflow must run full verification before publish");
 assert.match(workflow, /npm run test:coverage/u, "release workflow must run coverage before publish");
+assert.match(
+  workflow,
+  /npm run check:release-readiness/u,
+  "release workflow must reject unresolved release-blocking evidence"
+);
 assert.match(workflow, /gpg\.ssh\.allowedSignersFile/u, "release workflow must configure SSH allowed signers before tag verification");
 assert.match(workflow, /fetch-depth:\s*0/u, "release workflow must fetch signed tag objects and release history");
 assert.ok(
@@ -87,7 +92,7 @@ assert.match(allowedSigners, /admilsoncossa@gmail\.com ssh-ed25519 /u, "release 
 await assertExistingTagsAreSigned();
 
 if (!requireRegistryDryRun) {
-  console.log("release-policy-gate: provenance workflow validated and package is publishable");
+  console.log("release-policy-gate: provenance workflow and publication shape validated; evidence readiness is a separate gate");
   process.exit(0);
 }
 

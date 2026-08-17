@@ -15,6 +15,7 @@ runtime source + npm run verify
 benchmarks/articles/run-all.mjs
 tests/evidence/run-all.mjs
 evidence/claims.json
+coverage/evidence/latest.json (temporary, ignored)
 -> README, articles
 ```
 
@@ -38,11 +39,19 @@ the impact and invariant are security-relevant.
 npm run verify
 npm run bench:articles
 npm run test:evidence
+npm run check:evidence-ledger
 ```
 
 `benchmarks/results/articles.latest.json` stores the captured article benchmark
 run used by README and articles for representative values. The benchmark
 assertions remain the portable proof.
+
+`test:evidence` rebuilds the package, executes every proof declared in
+`tests/evidence/manifest.mjs`, and writes the per-claim actual results to the
+ignored `coverage/evidence/latest.json` artifact. The capture includes a SHA-256 digest over the
+claim ledger, package contract, API snapshots, runtime source, and executable
+evidence. `check:evidence-ledger` rejects missing claims, missing proof files,
+unregistered evidence scripts, failing results, or a stale digest.
 
 ## Evidence Stack
 
@@ -53,6 +62,7 @@ assertions remain the portable proof.
 | Captured bench run | `benchmarks/results/articles.latest.json` | representative publication values for this revision |
 | Claim ledger | `evidence/claims.json` | claim IDs, class, proof path, invariant, status, and limitation |
 | Evidence tests | `tests/evidence/run-all.mjs` | curated lifecycle, correctness, security, release, and performance proofs |
+| Temporary captured results | `coverage/evidence/latest.json` | ignored environment, source digest, elapsed time, and actual result used by the current verification run |
 
 ## Publication Rule
 
@@ -60,3 +70,16 @@ README summarizes. Articles teach. Neither invents claim status. Public prose
 must cite one of the executable sources above, and security claims must stay
 security-specific rather than using "security" as a label for every adversarial
 or lifecycle proof.
+
+Historical tags are never rewritten: later backfills remain explicitly labeled
+as backfills in the ledger.
+
+## Oryn 0.6.0 Canary
+
+`oryn-candidate-canary.v0.6.0.json` is the redacted external-integration receipt
+for `REL-011`. It binds the packed `0.6.0` tarball hash, WorkIt and Oryn commits,
+real provider routing decisions, daemon-backed receipt round-trip, durable replay,
+and controlled retry-budget, deadline, and user-input-stop scenarios. The receipt
+retains environment warnings and limitations; it contains neither provider response
+bodies nor credentials. `release/oryn-candidate-canary.mjs` validates this receipt
+as part of `test:evidence`, and the evidence-source digest includes the receipt.
