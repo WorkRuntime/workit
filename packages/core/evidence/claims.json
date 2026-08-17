@@ -557,12 +557,14 @@
       "id": "REL-011",
       "title": "Oryn real integration canary gates the 0.6.0 publication",
       "class": "release",
-      "status": "deferred",
+      "status": "proven",
       "releaseBlocking": true,
-      "proof": "README.md",
-      "command": "Oryn release environment: run the real candidates integration canary and attach its redacted receipt",
+      "proof": "tests/evidence/release/oryn-candidate-canary.mjs",
+      "command": "npm run test:evidence",
       "expectedInvariant": "Oryn exercises firstAcceptable against its real provider boundary and caller-owned durable idempotency, preserving quality fallback, retry budget, aggregate deadline, cancellation, user-input stop, and bounded redacted evidence before v0.6.0 is tagged",
-      "limitations": "Deferred because this repository has no authority over the Oryn deployment, provider credentials, or durable store. Bounded in-process fixtures and package-consumer tests do not satisfy this claim."
+      "limitations": "One local Oryn edge/daemon canary crossed real Ollama provider and daemon receipt boundaries. It is not a production-load, multi-host, or long-duration soak result; retry-budget, deadline, and requires-user-input faults remain controlled boundary scenarios.",
+      "verifiedFor": "0.6.0",
+      "ledgerNote": "Resolved by the redacted receipt in evidence/oryn-candidate-canary.v0.6.0.json, bound to WorkIt commit 077b5b1, Oryn commit 2e8c7b2, and the packed tarball SHA-256."
     },
     {
       "id": "PERF-001",

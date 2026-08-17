@@ -31,6 +31,7 @@ export const evidenceProofs = Object.freeze([
   proof("security/candidate-boundary.mjs"),
   proof("release/candidate-package-contract.mjs"),
   proof("release/core-release-contracts.mjs"),
+  proof("release/oryn-candidate-canary.mjs"),
   proof("release/release-integrity.mjs"),
   proof("release/receipt-ledger.mjs"),
   proof("release/sql-receipt-ledger.mjs"),

@@ -16,6 +16,7 @@ const EVIDENCE_SOURCE_PATHS = Object.freeze([
   "SECURITY.md",
   "benchmarks",
   "evidence/claims.json",
+  "evidence/oryn-candidate-canary.v0.6.0.json",
   "package.json",
   "samples",
   "scripts",

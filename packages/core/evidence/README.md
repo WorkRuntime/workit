@@ -73,3 +73,13 @@ or lifecycle proof.
 
 Historical tags are never rewritten: later backfills remain explicitly labeled
 as backfills in the ledger.
+
+## Oryn 0.6.0 Canary
+
+`oryn-candidate-canary.v0.6.0.json` is the redacted external-integration receipt
+for `REL-011`. It binds the packed `0.6.0` tarball hash, WorkIt and Oryn commits,
+real provider routing decisions, daemon-backed receipt round-trip, durable replay,
+and controlled retry-budget, deadline, and user-input-stop scenarios. The receipt
+retains environment warnings and limitations; it contains neither provider response
+bodies nor credentials. `release/oryn-candidate-canary.mjs` validates this receipt
+as part of `test:evidence`, and the evidence-source digest includes the receipt.

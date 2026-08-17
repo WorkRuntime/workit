@@ -1,0 +1,132 @@
+{
+  "artifact": "workit-oryn-candidate-canary",
+  "schemaVersion": 1,
+  "release": "0.6.0",
+  "capturedAt": "2026-08-17T19:00:29.581Z",
+  "source": {
+    "workitCommit": "077b5b138a591bb30218fb3e961a911e3bc74276",
+    "workitTarball": {
+      "file": "workit-core-0.6.0.tgz",
+      "sha256": "944746fd62814229401502b9e0c6003f126932ace31e0fd7fae45eda4f0e3256"
+    },
+    "orynCommit": "2e8c7b243351527e8d8fd979085b6d91cd5a5c97",
+    "canaryScriptSha256": "b0570f2a22ee2dfe12dd5a2e8e0c055c4a3b828bd730be49fe079b01d0af2846"
+  },
+  "toolchain": {
+    "node": "24.19.0",
+    "pnpm": "10.27.0",
+    "platform": "win32"
+  },
+  "environment": {
+    "runtimeProfile": "edge",
+    "executionBackend": "daemon",
+    "daemonAddress": "127.0.0.1:7777",
+    "daemonEnabled": true,
+    "syntheticProvider": false,
+    "availableProviders": [
+      "gemini",
+      "ollama",
+      "openrouter"
+    ],
+    "warnings": [
+      {
+        "code": "oryn_entitlement_lease_invalid",
+        "detail": "Oryn bootstrap reported an invalid entitlement lease audience or issuer.",
+        "workitReleaseImpact": "The provider and daemon canary remained executable; this is an Oryn local-environment warning, not evidence of a WorkIt runtime failure."
+      },
+      {
+        "code": "oryn_local_storage_secret_dev_fallback",
+        "detail": "LOCAL_STORAGE_SECRET was not configured and Oryn reported its documented development fallback.",
+        "workitReleaseImpact": "No storage payload or credential was used by the candidate canary; production Oryn deployment must not use this fallback."
+      }
+    ]
+  },
+  "route": {
+    "taskKey": "intent.classify",
+    "providerHint": "ollama",
+    "primaryModel": "glm-5.2:cloud",
+    "fallbackModels": [
+      "kimi-k2.6:cloud",
+      "minimax-m2.7:cloud",
+      "gpt-oss:20b-cloud",
+      "glm-5:cloud"
+    ]
+  },
+  "liveProviderBoundary": {
+    "canaryRunId": "f336ab91-9acf-4f90-8193-c4c91a0ca2d5",
+    "providerCalls": 2,
+    "acceptedCandidateIndex": 1,
+    "acceptedModel": "kimi-k2.6:cloud",
+    "decisions": [
+      {
+        "candidateIndex": 0,
+        "modelId": "glm-5.2:cloud",
+        "provider": "ollama",
+        "attempt": 1,
+        "outcome": "succeeded",
+        "decision": "quality_rejected",
+        "reasonCode": "canary_quality_ordinal_mismatch",
+        "token": "[redacted]"
+      },
+      {
+        "candidateIndex": 1,
+        "modelId": "kimi-k2.6:cloud",
+        "provider": "ollama",
+        "attempt": 1,
+        "outcome": "succeeded",
+        "decision": "accepted",
+        "reasonCode": null,
+        "token": "[redacted]"
+      }
+    ],
+    "evidenceLimit": 4,
+    "droppedEvidence": 0
+  },
+  "durableReplay": {
+    "activityDirectoryPersistedAcrossRuntimeInstances": true,
+    "recreatedRuntime": true,
+    "replayOperationCalls": 0,
+    "providerCallsAfterLiveExecution": 2,
+    "providerCallsAfterReplay": 2,
+    "daemonReceiptRoundTrip": true,
+    "receiptId": "work-attempt:attempt-f336ab91-9acf-4f90-8193-c4c91a0ca2d5",
+    "replayReceiptId": "work-attempt:attempt-f336ab91-9acf-4f90-8193-c4c91a0ca2d5"
+  },
+  "controlledBoundaryScenarios": {
+    "sharedRetryBudget": {
+      "status": "accepted",
+      "attempts": 2,
+      "spent": 1,
+      "limit": 1
+    },
+    "aggregateDeadline": {
+      "status": "terminal",
+      "reasonCode": "workit_timeout",
+      "elapsedMs": 32,
+      "configuredMs": 25
+    },
+    "requiresUserInput": {
+      "status": "requires_user_input",
+      "reasonCode": "provider_credential_required",
+      "candidateCalls": 1,
+      "fallbackStopped": true
+    }
+  },
+  "assertions": {
+    "liveAcceptedAfterQualityFallback": true,
+    "evidenceBounded": true,
+    "evidenceRedacted": true,
+    "durableReplaySkippedProvider": true,
+    "daemonReceiptRoundTrip": true,
+    "sharedRetryBudgetChargedOnce": true,
+    "aggregateDeadlineStoppedWork": true,
+    "userInputStoppedFallback": true,
+    "noUnhandledProcessFailure": true
+  },
+  "unexpectedProcessFailures": [],
+  "limitations": [
+    "This is one local Oryn edge/daemon canary, not a production-load, multi-host, or long-duration soak result.",
+    "Provider response bodies are intentionally excluded; only routing facts, bounded decisions, redacted metadata, and output-independent assertions are retained.",
+    "Retry-budget, deadline, and requires-user-input faults are controlled boundary scenarios executed from the packed 0.6.0 artifact inside the real Oryn process; provider quality fallback and durable replay use the real provider and daemon boundaries."
+  ]
+}
