@@ -338,6 +338,10 @@ receipts must be persisted independently.
 > **0.6.0 release candidate:** this subpath is present in the prepared package,
 > but it is not included in npm `latest` until the signed `v0.6.0` tag and
 > provenance-backed publish complete.
+>
+> Publication is also blocked by evidence claim `REL-011` until Oryn passes a
+> real integration canary at its provider and durable-idempotency boundaries.
+> The bounded fixtures in this repository do not satisfy that claim.
 
 `@workit/core/candidates` separates transport success, semantic quality, and
 failure policy. Candidates run sequentially in caller order. WorkIt's built-in

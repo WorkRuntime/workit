@@ -11,17 +11,11 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { evidenceProofs } from "../tests/evidence/manifest.mjs";
 import { computeEvidenceSourceDigest } from "./evidence-source-digest.mjs";
+import { summarizeEvidenceLedger } from "./evidence-ledger-status.mjs";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ledger = await readJson("evidence/claims.json");
 const capture = await readJson("coverage/evidence/latest.json");
-const allowedStatuses = new Set([
-  "deferred",
-  "environment-blocked",
-  "product-decision",
-  "proven",
-  "unproven",
-]);
 const proofManifest = new Set(evidenceProofs.map(({ file }) => `tests/evidence/${file}`));
 const claimIds = new Set();
 
@@ -34,7 +28,6 @@ for (const claim of ledger.claims) {
   assert.ok(!claimIds.has(claim.id), `duplicate claim id: ${claim.id}`);
   claimIds.add(claim.id);
   assert.ok(ledger.allowedClasses.includes(claim.class), `${claim.id} has invalid class`);
-  assert.ok(allowedStatuses.has(claim.status), `${claim.id} has invalid status`);
   for (const field of ["title", "proof", "command", "expectedInvariant", "limitations"]) {
     assert.equal(typeof claim[field], "string", `${claim.id} is missing ${field}`);
     assert.ok(claim[field].length > 0, `${claim.id} has empty ${field}`);
@@ -42,6 +35,13 @@ for (const claim of ledger.claims) {
   await access(resolve(packageRoot, claim.proof));
   if (claim.command === "npm run test:evidence") {
     assert.ok(proofManifest.has(claim.proof), `${claim.id} proof is absent from evidence manifest`);
+  }
+  if (claim.releaseBlocking === true && claim.status === "proven") {
+    assert.equal(
+      claim.command,
+      "npm run test:evidence",
+      `${claim.id} cannot resolve a release blocker without executable captured evidence`,
+    );
   }
 }
 
@@ -66,11 +66,13 @@ for (const claim of ledger.claims) {
   assert.ok(result.actualResult !== undefined, `${claim.id} captured actual result is missing`);
 }
 
+const releaseStatus = summarizeEvidenceLedger(ledger.claims);
 process.stdout.write(JSON.stringify({
   evidenceLedger: "ok",
   claims: ledger.claims.length,
   capturedResults: capture.claimResults.length,
   sourceDigest: capture.sourceDigest,
+  ...releaseStatus,
 }) + "\n");
 
 async function readJson(path) {

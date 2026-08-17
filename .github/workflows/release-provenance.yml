@@ -60,6 +60,9 @@ jobs:
       - name: Verify coverage
         run: npm run test:coverage
 
+      - name: Verify release evidence readiness
+        run: npm run check:release-readiness
+
       - name: Verify release tag
         if: inputs.dry_run == 'false'
         shell: bash

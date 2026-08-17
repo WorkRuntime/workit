@@ -554,6 +554,17 @@
       "ledgerNote": "The root and group measurements backfill the 0.5.0 claim; candidate measurements apply to the 0.6.0 target."
     },
     {
+      "id": "REL-011",
+      "title": "Oryn real integration canary gates the 0.6.0 publication",
+      "class": "release",
+      "status": "deferred",
+      "releaseBlocking": true,
+      "proof": "README.md",
+      "command": "Oryn release environment: run the real candidates integration canary and attach its redacted receipt",
+      "expectedInvariant": "Oryn exercises firstAcceptable against its real provider boundary and caller-owned durable idempotency, preserving quality fallback, retry budget, aggregate deadline, cancellation, user-input stop, and bounded redacted evidence before v0.6.0 is tagged",
+      "limitations": "Deferred because this repository has no authority over the Oryn deployment, provider credentials, or durable store. Bounded in-process fixtures and package-consumer tests do not satisfy this claim."
+    },
+    {
       "id": "PERF-001",
       "title": "article benchmark suite has expected executable coverage",
       "class": "performance",
