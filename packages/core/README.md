@@ -335,9 +335,9 @@ receipts must be persisted independently.
 
 ### Candidate Selection
 
-> **Unreleased:** this subpath exists in the current checkout and is planned for
-> the next minor release. It is not included in npm `latest` while the package
-> version remains `0.5.0`.
+> **0.6.0 release candidate:** this subpath is present in the prepared package,
+> but it is not included in npm `latest` until the signed `v0.6.0` tag and
+> provenance-backed publish complete.
 
 `@workit/core/candidates` separates transport success, semantic quality, and
 failure policy. Candidates run sequentially in caller order. WorkIt's built-in
@@ -950,7 +950,7 @@ cite the software release you used:
   title = {WorkIt: A TypeScript Structured Concurrency Runtime for Node.js Server Runtimes},
   year = {2026},
   url = {https://github.com/WorkRuntime/workit},
-  version = {0.5.0},
+  version = {0.6.0},
   license = {Apache-2.0}
 }
 ```

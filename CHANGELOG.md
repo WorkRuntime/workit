@@ -7,6 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 
 ## Unreleased
 
+## 0.6.0
+
 - Add the explicit `@workit/core/candidates` subpath with deterministic
   `firstAcceptable()` selection, provider-neutral failure dispositions, typed
   semantic quality decisions, existing retry/deadline/budget reuse, and bounded

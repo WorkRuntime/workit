@@ -67,7 +67,7 @@ cite the software release you used:
   title = {WorkIt: A TypeScript Structured Concurrency Runtime for Node.js Server Runtimes},
   year = {2026},
   url = {https://github.com/WorkRuntime/workit},
-  version = {0.5.0},
+  version = {0.6.0},
   license = {Apache-2.0}
 }
 ```
@@ -87,9 +87,9 @@ owned by `packages/core`.
 
 The monorepo layout must not change how users install or import WorkIt.
 
-Consumer paths in the current checkout are listed below. Paths described under
-`Unreleased` in the changelog are not part of the npm `latest` version until the
-corresponding minor release is published.
+Consumer paths in the `0.6.0` release candidate are listed below. The new
+candidate-policy subpath is not part of npm `latest` until the signed `v0.6.0`
+tag and provenance-backed publish complete.
 
 ```txt
 @workit/core
@@ -121,9 +121,9 @@ npm run check:size
 npm run check:package-consumer
 ```
 
-The current checkout's candidate-policy subpath is documented in the
+The `0.6.0` release candidate's candidate-policy subpath is documented in the
 [`@workit/core` package README](packages/core/README.md#candidate-selection).
-It remains unreleased while the package version is `0.5.0`.
+It remains unavailable from npm `latest` until the release is published.
 
 Run the site gates from the repository root:
 
