@@ -187,7 +187,7 @@
     "check:package-consumer": "npm run build && node scripts/check-package-consumer.mjs",
     "check:package-consumer:node": "npm run build && node scripts/check-package-consumer.mjs --node-only",
     "check:compat-previous": "npm run build && node scripts/check-previous-compatibility.mjs",
-    "check:node-compatibility": "npm run typecheck && npm test && node scripts/check-package-consumer.mjs --node-only",
+    "check:node-compatibility": "npm run typecheck && npm run check:package-consumer:node",
     "check:pack-reproducibility": "node scripts/check-pack-reproducibility.mjs",
     "check:claims": "npm run build && node scripts/check-claim-fixtures.mjs",
     "check:evidence-ledger": "node scripts/check-evidence-ledger.mjs",
