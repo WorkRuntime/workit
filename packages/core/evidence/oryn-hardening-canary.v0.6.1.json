@@ -2,17 +2,17 @@
   "artifact": "workit-oryn-hardening-canary",
   "schemaVersion": 1,
   "release": "0.6.1",
-  "capturedAt": "2026-08-28T07:29:26.988Z",
+  "capturedAt": "2026-08-28T08:00:37.846Z",
   "source": {
-    "workitCommit": "eec670d63a49f1eca22bb74496e8f8daf7acfb2a",
+    "workitCommit": "a0bed6f1cc9a81cb309ea86c0cfcd151c2cffd87",
     "workitTarball": {
       "file": "workit-core-0.6.1.tgz",
-      "sha256": "c11b2efb40fef629bdd95e9c6324c3f4d44984b40d3997523a6fa5da447723d9"
+      "sha256": "3e0b385a8342df95fb638788d1bc333d4e1efc8b85e7a71839d6e0c0ee84a699"
     },
     "orynBaseCommit": "2e8c7b243351527e8d8fd979085b6d91cd5a5c97",
     "orynCanaryScriptSha256": "b27af0667b048b28e0d5bbf93a3ab650058fd3e2b22503ea243c384d501ab33a",
     "orynPackageSha256": "19d865ebad695ecf599104f50626709b10d503bb5b519c8e8fa198ad06e7e973",
-    "orynLockSha256": "7e449b70d3762c4f9027baa4ece3dbbf516efbc2801dbe3be5c735a5ee084923"
+    "orynLockSha256": "db473fb8ffe73f50ca699a8a6171f5bc3133206a9b26958e11f6a335ebfa9393"
   },
   "toolchain": {
     "node": "24.19.0",
@@ -56,7 +56,7 @@
     ]
   },
   "liveProviderBoundary": {
-    "canaryRunId": "c6de4b82-ba12-4fa9-8a42-747a900c4855",
+    "canaryRunId": "377c4673-4cc5-4e38-8bf4-1bd8b188f3f3",
     "providerCalls": 2,
     "acceptedCandidateIndex": 1,
     "acceptedModel": "kimi-k2.6:cloud",
@@ -92,8 +92,8 @@
     "providerCallsAfterLiveExecution": 2,
     "providerCallsAfterReplay": 2,
     "daemonReceiptRoundTrip": true,
-    "receiptId": "work-attempt:attempt-c6de4b82-ba12-4fa9-8a42-747a900c4855",
-    "replayReceiptId": "work-attempt:attempt-c6de4b82-ba12-4fa9-8a42-747a900c4855"
+    "receiptId": "work-attempt:attempt-377c4673-4cc5-4e38-8bf4-1bd8b188f3f3",
+    "replayReceiptId": "work-attempt:attempt-377c4673-4cc5-4e38-8bf4-1bd8b188f3f3"
   },
   "controlledBoundaryScenarios": {
     "sharedRetryBudget": {

@@ -588,7 +588,7 @@
       "expectedInvariant": "Oryn exercises the packed 0.6.1 artifact against its real provider and daemon boundaries while preserving quality fallback, durable replay, retry budget, aggregate deadline, user-input stop, and bounded redacted evidence",
       "limitations": "One local Oryn edge/daemon canary crossed real Ollama provider and daemon receipt boundaries. It is not a production-load, multi-host, or long-duration soak result; retry-budget, deadline, and requires-user-input faults remain controlled boundary scenarios.",
       "verifiedFor": "0.6.1",
-      "ledgerNote": "Resolved by the redacted receipt in evidence/oryn-hardening-canary.v0.6.1.json, bound to WorkIt commit eec670d, Oryn base commit 2e8c7b2, the canary dependency files, script, and packed tarball SHA-256."
+      "ledgerNote": "Resolved by the redacted receipt in evidence/oryn-hardening-canary.v0.6.1.json, bound to WorkIt commit a0bed6f, Oryn base commit 2e8c7b2, the canary dependency files, script, and packed tarball SHA-256."
     },
     {
       "id": "PERF-001",
