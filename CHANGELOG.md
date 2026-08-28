@@ -7,6 +7,21 @@ SPDX-License-Identifier: Apache-2.0
 
 ## Unreleased
 
+## 0.6.1
+
+- Correct public documentation that still described the already-published
+  candidate-policy subpath as an unavailable release candidate.
+- Keep the `0.6.0` runtime and public export surface unchanged while freezing
+  declaration snapshots for every published TypeScript entrypoint.
+- Add installed-package compatibility checks against `0.6.0`, deterministic
+  package-build verification, and Node 20.11, 22, and 24 CI coverage.
+- Keep `ContextBagImpl` public for the 1.0 contract and document its bounded,
+  immutable context role.
+- Update development-only verification tooling to patched releases; the
+  published package continues to have zero runtime dependencies.
+- Normalize npm repository metadata and refresh release evidence and
+  provenance gates for the `0.6.1` artifact.
+
 ## 0.6.0
 
 - Add the explicit `@workit/core/candidates` subpath with deterministic

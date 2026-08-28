@@ -325,6 +325,31 @@ ownership helpers live behind explicit subpaths.
 | Declare cancellable and shielded task intent | `@workit/core/contracts` | compile-time composition contract, not proof of task-body cooperation |
 | Run bounded lifecycle fault scenarios | `@workit/core/fault` | in-process evidence harness, not OS/process/network fault injection |
 
+### Public Stability Contract
+
+The `0.6.1` hardening release freezes all currently published paths for the 1.0
+contract. Stability covers their documented public declarations and runtime
+exports; it does not expand the explicit boundaries below.
+
+| Public path | 1.0 classification | Explicit boundary |
+|---|---|---|
+| `@workit/core` | stable | Node server runtime; cooperative task cancellation |
+| `@workit/core/activity` | stable | terminal replay, not in-flight workflow recovery |
+| `@workit/core/ai` | stable | adapters and authority contracts, not provider SDK ownership |
+| `@workit/core/analysis` | stable | supplied evidence, not whole-program proof |
+| `@workit/core/candidates` | stable | deterministic sequential selection; caller-owned side-effect idempotency |
+| `@workit/core/channel` | stable | in-process bounded channel |
+| `@workit/core/contracts` | stable | declared intent, not runtime proof of cooperation |
+| `@workit/core/diagnostics` | stable | bounded snapshot diagnostics |
+| `@workit/core/fault` | stable | in-process scenarios, not OS or network fault injection |
+| `@workit/core/ledger` | stable | caller-owned stores, not a database framework |
+| `@workit/core/observability` | stable | bounded telemetry exporters |
+| `@workit/core/otel` | stable | optional `@opentelemetry/api` peer |
+| `@workit/core/replay` | stable | receipt evidence, not deterministic scheduler replay |
+| `@workit/core/resources` | stable | explicit scope ownership, not automatic discovery |
+| `@workit/core/time-policy` | stable | conservative declared bounds, not wall-clock proof |
+| `@workit/core/worker` | stable | Node ESM worker offload |
+
 ### Idempotency Boundaries
 
 `TaskOpts.idempotencyKey` coalesces concurrent tasks with the same key inside
@@ -333,15 +358,18 @@ deduplication record. Use `@workit/core/activity` with a caller-owned store for
 terminal replay across process restarts, and `@workit/core/ledger` when lifecycle
 receipts must be persisted independently.
 
+### Context API Stability
+
+`ContextBagImpl` remains a supported public constructor for callers that need
+to create an initial immutable context bag before opening a scope. Prefer the
+`ContextBag` interface in public type annotations and `ctx.context` or
+`scope.context` after a scope starts. The implementation does not provide a
+mutable service container or process-global registry.
+
 ### Candidate Selection
 
-> **0.6.0 release candidate:** this subpath is present in the prepared package,
-> but it is not included in npm `latest` until the signed `v0.6.0` tag and
-> provenance-backed publish complete.
->
-> Publication is also blocked by evidence claim `REL-011` until Oryn passes a
-> real integration canary at its provider and durable-idempotency boundaries.
-> The bounded fixtures in this repository do not satisfy that claim.
+> Available since `0.6.0`. Its release evidence includes the real Oryn provider
+> and durable-idempotency boundary canary recorded by claim `REL-011`.
 
 `@workit/core/candidates` separates transport success, semantic quality, and
 failure policy. Candidates run sequentially in caller order. WorkIt's built-in
@@ -792,10 +820,11 @@ npm run verify
 
 `npm run verify` runs type-checking, header and test hygiene, unit tests,
 manifest-driven evidence proofs, source-digest ledger validation, security
-checks, vulnerability audit, SBOM validation, API and bundle-size locks,
+checks, vulnerability audit, SBOM validation, runtime and declaration API locks,
 runtime benchmarks, stream and soak gates, exporter stress, package-consumer
-fixtures, public-proof validation, worker-contract checks, release-policy
-checks, and `npm pack --dry-run`.
+fixtures, previous-release compatibility, public-proof validation,
+worker-contract checks, release-policy checks, deterministic package builds,
+and `npm pack --dry-run`.
 
 Run the article benchmark suite:
 
@@ -840,9 +869,9 @@ Security reports should follow [`SECURITY.md`](SECURITY.md).
 
 ## Runtime Support
 
-Supported:
+Supported and exercised by the release compatibility matrix:
 
-- Node.js `>=20.11`
+- Node.js `20.11+`, 22, and 24 (`engines.node` remains `>=20.11`)
 - ESM consumers
 - CommonJS consumers
 - strict TypeScript consumers
@@ -954,7 +983,7 @@ cite the software release you used:
   title = {WorkIt: A TypeScript Structured Concurrency Runtime for Node.js Server Runtimes},
   year = {2026},
   url = {https://github.com/WorkRuntime/workit},
-  version = {0.6.0},
+  version = {0.6.1},
   license = {Apache-2.0}
 }
 ```

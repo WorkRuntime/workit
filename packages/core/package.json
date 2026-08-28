@@ -1,6 +1,6 @@
 {
   "name": "@workit/core",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Structured concurrency runtime for TypeScript: owned async work, cancellation, budgets, retries, timeouts, worker offload, scopes.",
   "keywords": [
     "structured-concurrency",
@@ -39,7 +39,7 @@
   "author": "Admilson B. F. Cossa",
   "repository": {
     "type": "git",
-    "url": "https://github.com/WorkRuntime/workit"
+    "url": "git+https://github.com/WorkRuntime/workit.git"
   },
   "bugs": {
     "url": "https://github.com/WorkRuntime/workit/issues"
@@ -172,7 +172,7 @@
     "check:sbom": "npm run build && node scripts/check-sbom.mjs",
     "check:tests": "node scripts/check-tests.mjs",
     "check:api": "npm run build && node scripts/check-api-surface.mjs",
-    "check:candidates-api": "npm run build && node scripts/check-candidates-api.mjs",
+    "check:api-declarations": "npm run build && node scripts/check-api-declarations.mjs",
     "check:size": "npm run build && node scripts/check-bundle-size.mjs",
     "report:size": "npm run build && node scripts/report-bundle-size.mjs",
     "check:benchmark": "npm run build && node scripts/check-benchmark.mjs",
@@ -186,6 +186,9 @@
     "check:exporter-stress": "npm run build && node --expose-gc scripts/check-exporter-stress.mjs",
     "check:package-consumer": "npm run build && node scripts/check-package-consumer.mjs",
     "check:package-consumer:node": "npm run build && node scripts/check-package-consumer.mjs --node-only",
+    "check:compat-previous": "npm run build && node scripts/check-previous-compatibility.mjs",
+    "check:node-compatibility": "npm run typecheck && npm test && node scripts/check-package-consumer.mjs --node-only",
+    "check:pack-reproducibility": "node scripts/check-pack-reproducibility.mjs",
     "check:claims": "npm run build && node scripts/check-claim-fixtures.mjs",
     "check:evidence-ledger": "node scripts/check-evidence-ledger.mjs",
     "check:release-readiness": "node scripts/check-release-readiness.mjs",
@@ -223,7 +226,7 @@
     "soak:24h": "npm run build && node --expose-gc scripts/soak-24h.mjs",
     "test": "npm run build && vitest run --maxWorkers=1",
     "test:coverage": "npm run build && vitest run --coverage --maxWorkers=1",
-    "verify": "npm run typecheck && npm run check:no-network && npm run check:headers && npm run check:tests && npm test && npm run test:evidence && npm run check:evidence-ledger && npm run check:security && npm run check:vulnerabilities && npm run check:sbom && npm run check:api && npm run check:candidates-api && npm run check:size && npm run check:benchmark && npm run check:candidates-performance && npm run check:candidate-scenarios && npm run check:context-performance && npm run check:1b && npm run check:leak && npm run check:stream-memory && npm run check:soak && npm run check:exporter-stress && npm run check:package-consumer && npm run check:claims && npm run check:public-proof && npm run check:worker-contract && npm run check:release-policy && npm run pack:dry"
+    "verify": "npm run typecheck && npm run check:no-network && npm run check:headers && npm run check:tests && npm test && npm run test:evidence && npm run check:evidence-ledger && npm run check:security && npm run check:vulnerabilities && npm run check:sbom && npm run check:api && npm run check:api-declarations && npm run check:size && npm run check:benchmark && npm run check:candidates-performance && npm run check:candidate-scenarios && npm run check:context-performance && npm run check:1b && npm run check:leak && npm run check:stream-memory && npm run check:soak && npm run check:exporter-stress && npm run check:package-consumer && npm run check:compat-previous && npm run check:claims && npm run check:public-proof && npm run check:worker-contract && npm run check:release-policy && npm run check:pack-reproducibility && npm run pack:dry"
   },
   "engines": {
     "node": ">=20.11"
@@ -239,11 +242,11 @@
   "devDependencies": {
     "@opentelemetry/api": "1.9.1",
     "@types/node": "25.6.1",
-    "@vitest/coverage-v8": "4.1.5",
-    "esbuild": "0.28.1",
-    "fast-check": "4.7.0",
+    "@vitest/coverage-v8": "4.1.11",
+    "esbuild": "0.28.2",
+    "fast-check": "4.9.0",
     "typescript": "6.0.3",
-    "vitest": "4.1.5",
-    "wrangler": "4.114.0"
+    "vitest": "4.1.11",
+    "wrangler": "4.127.0"
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "workit",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "description": "WorkIt monorepo.",
   "type": "module",
@@ -20,6 +20,10 @@
     "check:sbom": "npm --workspace @workit/core run check:sbom",
     "check:tests": "npm --workspace @workit/core run check:tests",
     "check:api": "npm --workspace @workit/core run check:api",
+    "check:api-declarations": "npm --workspace @workit/core run check:api-declarations",
+    "check:compat-previous": "npm --workspace @workit/core run check:compat-previous",
+    "check:node-compatibility": "npm --workspace @workit/core run check:node-compatibility",
+    "check:pack-reproducibility": "npm --workspace @workit/core run check:pack-reproducibility",
     "check:size": "npm --workspace @workit/core run check:size",
     "report:size": "npm --workspace @workit/core run report:size",
     "check:benchmark": "npm --workspace @workit/core run check:benchmark",
