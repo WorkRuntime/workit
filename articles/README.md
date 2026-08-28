@@ -40,21 +40,20 @@ worker hard-kill against a CPU spinner, local-first observability, and the
 
 ## Headline Numbers
 
-These numbers are reproducible from the gates and captured benchmark result.
-Use representative timing language unless a value is asserted by a gate.
+Release-wide test, coverage, evidence, and bundle totals are intentionally not
+duplicated in this article index because they change as the package evolves.
+Use the current package README, `benchmarks/public-proof.json`, and
+`evidence/claims.json` as the release authority. The stable article-suite
+scenario sizes are reproducible from the gates and captured benchmark result.
 
 ```txt
-375 unit tests, 100% statement/line/branch/function coverage
 0 production dependencies, 0 install scripts, 0 networking imports in core dist
-13,807 B core-group-import minified / 4,842 B gzip
-28,608 B public-api minified / 9,688 B gzip
 100,000 logical tasks in the bounded runtime soak @ concurrency 128
 1,000,000 logical items in stream memory gate, bounded heap
 1,000,000,000 logical items in 1B claim sample, <= TAKE+CONCURRENCY produced
 well under the 10 ms gate for 100 .with() calls over 5,000 keys
 200ms timeout vs CPU spinner: late-marker file does not exist
 19 article-series benchmarks, all green
-22 executable evidence files, all green
 ```
 
 ## Reproducing The Receipts

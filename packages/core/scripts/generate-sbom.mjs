@@ -10,7 +10,7 @@
  */
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 const packageJson = JSON.parse(await readFile("package.json", "utf8"));
@@ -31,14 +31,14 @@ const lockDigest = createHash("sha256")
     peerDependencies: packageLockEntry.peerDependencies ?? {},
   }))
   .digest("hex");
+const serialNumber = deterministicUuid(`${bomRef}:${lockDigest}`);
 
 const sbom = {
   bomFormat: "CycloneDX",
   specVersion: "1.6",
-  serialNumber: `urn:uuid:${randomUUID()}`,
+  serialNumber: `urn:uuid:${serialNumber}`,
   version: 1,
   metadata: {
-    timestamp: new Date().toISOString(),
     tools: {
       components: [{
         type: "application",
@@ -74,4 +74,12 @@ function packagePurl(name, version) {
   if (!name.startsWith("@")) return `pkg:npm/${name}@${version}`;
   const [scope, packageName] = name.split("/");
   return `pkg:npm/${encodeURIComponent(scope)}/${packageName}@${version}`;
+}
+
+function deterministicUuid(value) {
+  const bytes = createHash("sha256").update(value).digest().subarray(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }

@@ -9,8 +9,7 @@ import { test } from "vitest";
 import assert from "node:assert/strict";
 import fc from "fast-check";
 import { firstAcceptable } from "../../dist/candidates/index.js";
-
-const PROPERTY_RUNS = 35;
+import { PROPERTY_RUNS, propertySeed } from "./config.js";
 
 test("property: candidate attempts never exceed maxCandidates times retry attempts", async () => {
   await fc.assert(
@@ -43,7 +42,7 @@ test("property: candidate attempts never exceed maxCandidates times retry attemp
         assert.equal(result.evidence.length, attempts);
       },
     ),
-    { numRuns: PROPERTY_RUNS, seed: 0xCA7D01 },
+    { numRuns: PROPERTY_RUNS, seed: propertySeed(0xCA7D01) },
   );
 });
 
@@ -80,7 +79,7 @@ test("property: accepted results come from the first admitted acceptable candida
         );
       },
     ),
-    { numRuns: PROPERTY_RUNS, seed: 0xCA7D02 },
+    { numRuns: PROPERTY_RUNS, seed: propertySeed(0xCA7D02) },
   );
 });
 
@@ -104,7 +103,6 @@ test("property: stopping dispositions never admit a later candidate", async () =
         assert.deepEqual(result.evidence.map((attempt) => attempt.candidateIndex), [0]);
       },
     ),
-    { numRuns: PROPERTY_RUNS, seed: 0xCA7D03 },
+    { numRuns: PROPERTY_RUNS, seed: propertySeed(0xCA7D03) },
   );
 });
-

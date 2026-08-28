@@ -325,6 +325,40 @@ ownership helpers live behind explicit subpaths.
 | Declare cancellable and shielded task intent | `@workit/core/contracts` | compile-time composition contract, not proof of task-body cooperation |
 | Run bounded lifecycle fault scenarios | `@workit/core/fault` | in-process evidence harness, not OS/process/network fault injection |
 
+### Public Stability Contract
+
+The `0.6.1` hardening release freezes all currently published paths for the 1.0
+contract. Stability covers their documented public declarations and runtime
+exports; it does not expand the explicit boundaries below.
+
+| Public path | 1.0 classification | Explicit boundary |
+|---|---|---|
+| `@workit/core` | stable | Node server runtime; cooperative task cancellation |
+| `@workit/core/activity` | stable | terminal replay, not in-flight workflow recovery |
+| `@workit/core/ai` | stable | adapters and authority contracts, not provider SDK ownership |
+| `@workit/core/analysis` | stable | supplied evidence, not whole-program proof |
+| `@workit/core/candidates` | stable | deterministic sequential selection; caller-owned side-effect idempotency |
+| `@workit/core/channel` | stable | in-process bounded channel |
+| `@workit/core/contracts` | stable | declared intent, not runtime proof of cooperation |
+| `@workit/core/diagnostics` | stable | bounded snapshot diagnostics |
+| `@workit/core/fault` | stable | in-process scenarios, not OS or network fault injection |
+| `@workit/core/ledger` | stable | caller-owned stores, not a database framework |
+| `@workit/core/observability` | stable | bounded telemetry exporters |
+| `@workit/core/otel` | stable | optional `@opentelemetry/api` peer |
+| `@workit/core/replay` | stable | receipt evidence, not deterministic scheduler replay |
+| `@workit/core/resources` | stable | explicit scope ownership, not automatic discovery |
+| `@workit/core/time-policy` | stable | conservative declared bounds, not wall-clock proof |
+| `@workit/core/worker` | stable | Node ESM worker offload |
+
+The 1.0 freeze deliberately does not promise multi-channel `select`, unbounded
+channels, worker pooling, browser or edge execution, durable in-flight scope
+resume, a workflow DSL, or a distributed job queue. Channels remain bounded;
+callers can compose cancellable receives with the existing runtime when they
+need a small local selection policy. Each `offload()` invocation creates and
+owns one fresh worker. These omissions are explicit product boundaries, not
+hidden implementation claims, and none is required to preserve the frozen 1.0
+surface above.
+
 ### Idempotency Boundaries
 
 `TaskOpts.idempotencyKey` coalesces concurrent tasks with the same key inside
@@ -333,15 +367,18 @@ deduplication record. Use `@workit/core/activity` with a caller-owned store for
 terminal replay across process restarts, and `@workit/core/ledger` when lifecycle
 receipts must be persisted independently.
 
+### Context API Stability
+
+`ContextBagImpl` remains a supported public constructor for callers that need
+to create an initial immutable context bag before opening a scope. Prefer the
+`ContextBag` interface in public type annotations and `ctx.context` or
+`scope.context` after a scope starts. The implementation does not provide a
+mutable service container or process-global registry.
+
 ### Candidate Selection
 
-> **0.6.0 release candidate:** this subpath is present in the prepared package,
-> but it is not included in npm `latest` until the signed `v0.6.0` tag and
-> provenance-backed publish complete.
->
-> Publication is also blocked by evidence claim `REL-011` until Oryn passes a
-> real integration canary at its provider and durable-idempotency boundaries.
-> The bounded fixtures in this repository do not satisfy that claim.
+> Available since `0.6.0`. Its release evidence includes the real Oryn provider
+> and durable-idempotency boundary canary recorded by claim `REL-011`.
 
 `@workit/core/candidates` separates transport success, semantic quality, and
 failure policy. Candidates run sequentially in caller order. WorkIt's built-in
@@ -763,9 +800,9 @@ thresholds, not exact milliseconds.
 
 | Evidence | Current result |
 |---|---:|
-| Unit and property tests | 403 passing |
-| Coverage gate | 100% statements (2,902/2,902), branches (1,837/1,837), functions (688/688), lines (2,797/2,797) |
-| Evidence proof files | 30 passing / 56 executable claims captured |
+| Unit and property tests | 410 passing in the 0.6.1 release verification |
+| Coverage gate | 100% statements (2,917/2,917), branches (1,847/1,847), functions (692/692), lines (2,811/2,811) |
+| Claim ledger | 59 proven claims / 2 recorded product decisions |
 | Runtime dependencies | 0 |
 | Article benchmark suite | 19/19 passing |
 | Core group import | 13,807 B minified / 4,842 B gzip |
@@ -784,6 +821,12 @@ Representative article-benchmark results:
 | 1B-row source, take 25 | 281 items pulled | 40 items pulled |
 | Sampling volume | 1,300 events | 36 events |
 
+The article-suite baseline rows are local behavioral models implemented in the
+repository, not performance measurements of named third-party packages. They
+support ownership-invariant comparisons only. WorkIt does not claim that these
+fixtures establish performance superiority over `p-limit`, `p-map`, `p-retry`,
+Effection, Effect, or any other external implementation.
+
 Run the main verification gate:
 
 ```sh
@@ -792,10 +835,18 @@ npm run verify
 
 `npm run verify` runs type-checking, header and test hygiene, unit tests,
 manifest-driven evidence proofs, source-digest ledger validation, security
-checks, vulnerability audit, SBOM validation, API and bundle-size locks,
+checks, vulnerability audit, SBOM validation, runtime and declaration API locks,
 runtime benchmarks, stream and soak gates, exporter stress, package-consumer
-fixtures, public-proof validation, worker-contract checks, release-policy
-checks, and `npm pack --dry-run`.
+fixtures, previous-release compatibility, public-proof validation,
+worker-contract checks, release-policy checks, deterministic package builds,
+and `npm pack --dry-run`.
+
+A scheduled deep property workflow raises all nine properties from 35 to 1,000
+generated runs each and rotates their seed by workflow run number. Pull requests
+retain the bounded fixed-seed 35-run profile for fast deterministic feedback;
+failed nightly runs retain Fast Check's seed and path for reproduction. The
+nightly workflow is additional exploration, not a substitute for release gates
+or bounded executable models.
 
 Run the article benchmark suite:
 
@@ -840,9 +891,9 @@ Security reports should follow [`SECURITY.md`](SECURITY.md).
 
 ## Runtime Support
 
-Supported:
+Supported and exercised by the release compatibility matrix:
 
-- Node.js `>=20.11`
+- Node.js `20.11+`, 22, and 24 (`engines.node` remains `>=20.11`)
 - ESM consumers
 - CommonJS consumers
 - strict TypeScript consumers
@@ -954,7 +1005,7 @@ cite the software release you used:
   title = {WorkIt: A TypeScript Structured Concurrency Runtime for Node.js Server Runtimes},
   year = {2026},
   url = {https://github.com/WorkRuntime/workit},
-  version = {0.6.0},
+  version = {0.6.1},
   license = {Apache-2.0}
 }
 ```

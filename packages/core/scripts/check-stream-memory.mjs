@@ -13,18 +13,32 @@ import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import { setTimeout as delay } from "node:timers/promises";
 import { work } from "../dist/index.js";
+import { readBenchmarkThreshold } from "./public-proof-contract.mjs";
 
 const TOTAL_ITEMS = Number.parseInt(process.env.WORKIT_STREAM_ITEMS ?? "1000000", 10);
 const CONCURRENCY = Number.parseInt(process.env.WORKIT_STREAM_CONCURRENCY ?? "32", 10);
 const CONSUME_ITEMS = Number.parseInt(process.env.WORKIT_STREAM_CONSUME ?? "500", 10);
-const MAX_HEAP_GROWTH_BYTES =
-  Number.parseInt(process.env.WORKIT_STREAM_MAX_HEAP_MB ?? "48", 10) * 1024 * 1024;
+const PUBLISHED_MAX_HEAP_GROWTH_BYTES = await readBenchmarkThreshold(
+  "slow-consumer-stream-memory",
+  "maximumHeapGrowthBytes"
+);
+const requestedHeapLimitMb = process.env.WORKIT_STREAM_MAX_HEAP_MB;
+const requestedHeapLimitBytes = requestedHeapLimitMb === undefined
+  ? PUBLISHED_MAX_HEAP_GROWTH_BYTES
+  : Number.parseInt(requestedHeapLimitMb, 10) * 1024 * 1024;
+const MAX_HEAP_GROWTH_BYTES = Math.min(
+  PUBLISHED_MAX_HEAP_GROWTH_BYTES,
+  requestedHeapLimitBytes
+);
 
 if (typeof globalThis.gc !== "function") {
   throw new Error("Stream memory gate requires Node to run with --expose-gc.");
 }
 if (CONSUME_ITEMS >= TOTAL_ITEMS) {
   throw new Error("WORKIT_STREAM_CONSUME must be smaller than WORKIT_STREAM_ITEMS.");
+}
+if (!Number.isSafeInteger(requestedHeapLimitBytes) || requestedHeapLimitBytes <= 0) {
+  throw new Error("WORKIT_STREAM_MAX_HEAP_MB must be a positive integer when provided.");
 }
 
 let produced = 0;

@@ -18,8 +18,7 @@ import {
   run,
   work,
 } from "../../dist/index.js";
-
-const PROPERTY_RUNS = 35;
+import { PROPERTY_RUNS, propertySeed } from "./config.js";
 
 const sleep = (ms, signal) =>
   new Promise((resolve, reject) => {
@@ -64,7 +63,7 @@ test("property: run.pool preserves order and never exceeds the concurrency cap",
       assert.ok(maxActive <= concurrency, `maxActive=${maxActive}, concurrency=${concurrency}`);
       assert.equal(active, 0);
     }),
-    { numRuns: PROPERTY_RUNS, seed: 0x5EED01 }
+    { numRuns: PROPERTY_RUNS, seed: propertySeed(0x5EED01) }
   );
 });
 
@@ -104,7 +103,7 @@ test("property: work().inParallel preserves input order and respects the concurr
         assert.equal(active, 0);
       }
     ),
-    { numRuns: PROPERTY_RUNS, seed: 0x5EED02 }
+    { numRuns: PROPERTY_RUNS, seed: propertySeed(0x5EED02) }
   );
 });
 
@@ -146,7 +145,7 @@ test("property: run.race cancels every cooperative loser with a typed race_lost 
         assert.ok(cancelled.every((entry) => typeof entry.winnerId === "string" && entry.winnerId.length > 0));
       }
     ),
-    { numRuns: PROPERTY_RUNS, seed: 0x5EED03 }
+    { numRuns: PROPERTY_RUNS, seed: propertySeed(0x5EED03) }
   );
 });
 
@@ -177,7 +176,7 @@ test("property: run.retry stops immediately when a cancellation error is thrown"
 
       assert.equal(attempts, cancelAtAttempt);
     }),
-    { numRuns: PROPERTY_RUNS, seed: 0x5EED04 }
+    { numRuns: PROPERTY_RUNS, seed: propertySeed(0x5EED04) }
   );
 });
 
@@ -194,7 +193,7 @@ test("property: timeout preserves a typed timeout cancellation reason", async ()
           && err.reason.timeoutMs === timeoutMs
       );
     }),
-    { numRuns: PROPERTY_RUNS, seed: 0x5EED05 }
+    { numRuns: PROPERTY_RUNS, seed: propertySeed(0x5EED05) }
   );
 });
 
@@ -222,6 +221,6 @@ test("property: the first cancellation reason remains authoritative", async () =
         assert.deepEqual(observed, [{ kind: "manual", tag: tags[0] }]);
       }
     ),
-    { numRuns: PROPERTY_RUNS, seed: 0x5EED06 }
+    { numRuns: PROPERTY_RUNS, seed: propertySeed(0x5EED06) }
   );
 });

@@ -19,6 +19,7 @@ const rootRef = packagePurl(packageJson.name, packageJson.version);
 assert.equal(sbom.bomFormat, "CycloneDX", "SBOM must use CycloneDX");
 assert.equal(sbom.specVersion, "1.6", "SBOM spec version changed");
 assert.match(sbom.serialNumber, /^urn:uuid:[0-9a-f-]{36}$/u, "SBOM serial number must be a UUID URN");
+assert.equal(sbom.metadata?.timestamp, undefined, "SBOM must not contain a non-reproducible build timestamp");
 assert.equal(sbom.metadata?.component?.name, packageJson.name, "SBOM root component name changed");
 assert.equal(sbom.metadata?.component?.version, packageJson.version, "SBOM root component version changed");
 assert.equal(sbom.metadata?.component?.["bom-ref"], rootRef, "SBOM root bom-ref changed");

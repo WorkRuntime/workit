@@ -13,11 +13,15 @@
 
 import { performance } from "node:perf_hooks";
 import { run } from "../dist/index.js";
+import { readBenchmarkThreshold } from "./public-proof-contract.mjs";
 
 const TOTAL = 1_000_000_000n;
 const CHUNK_SIZE = 1_000_000n;
 const CONCURRENCY = 16;
-const MIN_LOGICAL_ITEMS_PER_SECOND = 50_000_000;
+const MIN_LOGICAL_ITEMS_PER_SECOND = await readBenchmarkThreshold(
+  "one-billion-logical-stream",
+  "minimumLogicalItemsPerSecond"
+);
 const chunks = [];
 
 for (let start = 0n; start < TOTAL; start += CHUNK_SIZE) {

@@ -7,6 +7,21 @@ SPDX-License-Identifier: Apache-2.0
 
 ## Unreleased
 
+## 0.6.1
+
+- Correct public documentation that still described the already-published
+  candidate-policy subpath as an unavailable release candidate.
+- Keep the `0.6.0` runtime and public export surface unchanged while freezing
+  declaration snapshots for every published TypeScript entrypoint.
+- Add installed-package compatibility checks against `0.6.0`, deterministic
+  package-build verification, and Node 20.11, 22, and 24 CI coverage.
+- Keep `ContextBagImpl` public for the 1.0 contract and document its bounded,
+  immutable context role.
+- Update development-only verification tooling to patched releases; the
+  published package continues to have zero runtime dependencies.
+- Normalize npm repository metadata and refresh release evidence and
+  provenance gates for the `0.6.1` artifact.
+
 ## 0.6.0
 
 - Add the explicit `@workit/core/candidates` subpath with deterministic
@@ -139,3 +154,52 @@ the published package contract unchanged.
 
 This is an infrastructure release only. New runtime capabilities are planned for
 the next minor line after the monorepo layout is validated in CI and npm.
+
+## 0.1.4
+
+Add the WorkIt use-cases site and its executable runtime-backed examples. The
+package runtime API remains unchanged.
+
+- Add generated evidence snapshots, runtime smoke checks, and data-contract
+  checks for the site.
+- Add repeated article-benchmark execution and captured distribution results.
+- Add a conversation-agent sample and public links to the site and npm package.
+
+## 0.1.3
+
+Harden OpenTelemetry compatibility, security automation, and runtime property
+coverage without changing the core API.
+
+- Fix the optional OpenTelemetry subpath import from synthetic Node evaluation
+  entrypoints and add regression coverage.
+- Add seeded property tests for core lifecycle invariants.
+- Add CodeQL, OpenSSF Scorecard, and security-policy hardening.
+
+## 0.1.2
+
+Publish the first seven-part technical article series and its executable
+evidence package.
+
+- Add 19 self-contained behavioral benchmark scenarios and captured results.
+- Add the initial public claim ledger and curated evidence runner.
+- Expand the public README and package scripts used to reproduce article claims.
+
+## 0.1.1
+
+Improve optional OpenTelemetry diagnostics and release documentation while
+keeping the public runtime contract compatible with 0.1.0.
+
+- Explain missing optional peer dependencies at the OpenTelemetry boundary.
+- Add installed-package consumer coverage for that boundary.
+- Stabilize the circuit-breaker timing assertion and publish the release guide.
+
+## 0.1.0
+
+Initial public release of `@workit/core` as a zero-runtime-dependency structured
+concurrency runtime for Node.js and TypeScript.
+
+- Ship owned scopes, task handles, cancellation, cleanup, retries, timeouts,
+  bounded parallel work, backpressure, budgets, diagnostics, channels, AI
+  helpers, telemetry adapters, and worker offload behind explicit exports.
+- Publish ESM, CommonJS, TypeScript, security, package-consumer, benchmark,
+  memory, soak, and provenance gates.

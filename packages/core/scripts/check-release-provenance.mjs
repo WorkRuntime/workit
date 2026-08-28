@@ -35,7 +35,7 @@ assert.equal(packageJson.publishConfig?.access, "public", "publishConfig.access 
 assert.equal(packageJson.license, "Apache-2.0", "release license must remain Apache-2.0");
 assert.equal(
   packageJson.repository?.url,
-  "https://github.com/WorkRuntime/workit",
+  "git+https://github.com/WorkRuntime/workit.git",
   "package repository.url must match GitHub provenance repository"
 );
 assert.equal(
@@ -78,6 +78,8 @@ assert.match(workflow, /oven-sh\/setup-bun@[a-f0-9]{40}/u, "release workflow mus
 assert.match(workflow, /denoland\/setup-deno@[a-f0-9]{40}/u, "release workflow must provision Deno for package-consumer verification");
 assert.match(workflow, /bun-version:\s*"1\.3\.13"/u, "release workflow must pin the Bun fixture version");
 assert.match(workflow, /deno-version:\s*"2\.2\.7"/u, "release workflow must pin the Deno fixture version");
+assert.match(ci, /node-version:\s*\["20\.11\.1", "22\.x", "24\.x"\]/u, "CI must test every supported Node release line");
+assert.match(workflow, /node-version:\s*\["20\.11\.1", "22\.x", "24\.x"\]/u, "release workflow must test every supported Node release line");
 assert.match(security, /git tag -s/u, "SECURITY.md must require signed release tags");
 assert.match(security, /git tag -v/u, "SECURITY.md must document signed tag verification");
 assertShaPinnedActions(".github/workflows/release-provenance.yml", workflow);
