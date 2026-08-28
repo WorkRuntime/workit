@@ -573,8 +573,8 @@
       "status": "proven",
       "proof": "tests/evidence/release/hardening-contracts.mjs",
       "command": "npm run test:evidence",
-      "expectedInvariant": "all generated declarations are snapshotted, installed-package compatibility is checked against 0.6.0, Node 20.11/22/24 are exercised, and two clean builds pack to identical bytes",
-      "limitations": "The declaration snapshot intentionally freezes the complete generated type graph. The Node matrix executes in CI; local verification covers the active Node version.",
+      "expectedInvariant": "declarations and 0.6.0 compatibility are locked, Node 20.11/22/24 are exercised, two builds pack identically, public benchmark thresholds drive their gates, and 1,000 runs per property are scheduled nightly with rotating reproducible seeds",
+      "limitations": "The declaration snapshot intentionally freezes the complete generated type graph. The Node matrix and deep property profile execute in CI; local release verification covers the active Node version and bounded property profile unless explicitly overridden.",
       "verifiedFor": "0.6.1"
     },
     {

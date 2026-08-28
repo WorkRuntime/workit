@@ -350,6 +350,15 @@ exports; it does not expand the explicit boundaries below.
 | `@workit/core/time-policy` | stable | conservative declared bounds, not wall-clock proof |
 | `@workit/core/worker` | stable | Node ESM worker offload |
 
+The 1.0 freeze deliberately does not promise multi-channel `select`, unbounded
+channels, worker pooling, browser or edge execution, durable in-flight scope
+resume, a workflow DSL, or a distributed job queue. Channels remain bounded;
+callers can compose cancellable receives with the existing runtime when they
+need a small local selection policy. Each `offload()` invocation creates and
+owns one fresh worker. These omissions are explicit product boundaries, not
+hidden implementation claims, and none is required to preserve the frozen 1.0
+surface above.
+
 ### Idempotency Boundaries
 
 `TaskOpts.idempotencyKey` coalesces concurrent tasks with the same key inside
@@ -791,9 +800,9 @@ thresholds, not exact milliseconds.
 
 | Evidence | Current result |
 |---|---:|
-| Unit and property tests | 403 passing |
-| Coverage gate | 100% statements (2,902/2,902), branches (1,837/1,837), functions (688/688), lines (2,797/2,797) |
-| Evidence proof files | 30 passing / 56 executable claims captured |
+| Unit and property tests | 410 passing in the 0.6.1 release verification |
+| Coverage gate | 100% statements (2,917/2,917), branches (1,847/1,847), functions (692/692), lines (2,811/2,811) |
+| Claim ledger | 59 proven claims / 2 recorded product decisions |
 | Runtime dependencies | 0 |
 | Article benchmark suite | 19/19 passing |
 | Core group import | 13,807 B minified / 4,842 B gzip |
@@ -812,6 +821,12 @@ Representative article-benchmark results:
 | 1B-row source, take 25 | 281 items pulled | 40 items pulled |
 | Sampling volume | 1,300 events | 36 events |
 
+The article-suite baseline rows are local behavioral models implemented in the
+repository, not performance measurements of named third-party packages. They
+support ownership-invariant comparisons only. WorkIt does not claim that these
+fixtures establish performance superiority over `p-limit`, `p-map`, `p-retry`,
+Effection, Effect, or any other external implementation.
+
 Run the main verification gate:
 
 ```sh
@@ -825,6 +840,13 @@ runtime benchmarks, stream and soak gates, exporter stress, package-consumer
 fixtures, previous-release compatibility, public-proof validation,
 worker-contract checks, release-policy checks, deterministic package builds,
 and `npm pack --dry-run`.
+
+A scheduled deep property workflow raises all nine properties from 35 to 1,000
+generated runs each and rotates their seed by workflow run number. Pull requests
+retain the bounded fixed-seed 35-run profile for fast deterministic feedback;
+failed nightly runs retain Fast Check's seed and path for reproduction. The
+nightly workflow is additional exploration, not a substitute for release gates
+or bounded executable models.
 
 Run the article benchmark suite:
 

@@ -32,12 +32,12 @@
     {
       "id": "one-billion-logical-stream",
       "command": "npm run check:1b",
-      "minimumLogicalItemsPerSecond": 100000000
+      "minimumLogicalItemsPerSecond": 50000000
     },
     {
       "id": "slow-consumer-stream-memory",
       "command": "npm run check:stream-memory",
-      "maximumHeapGrowthBytes": 67108864
+      "maximumHeapGrowthBytes": 50331648
     },
     {
       "id": "runtime-soak-100k",

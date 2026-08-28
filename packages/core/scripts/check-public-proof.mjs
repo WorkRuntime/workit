@@ -11,8 +11,13 @@
 
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import {
+  readPublicProof,
+  requireBenchmarkFixture,
+  requirePositiveSafeInteger,
+} from "./public-proof-contract.mjs";
 
-const artifact = JSON.parse(await readFile("benchmarks/public-proof.json", "utf8"));
+const artifact = await readPublicProof();
 const readme = await readFile("README.md", "utf8");
 const packageJson = JSON.parse(await readFile("package.json", "utf8"));
 
@@ -75,6 +80,18 @@ assert.ok(
   artifact.benchmarkFixtures.length >= 5,
   "public proof must include benchmark, stream, and soak fixtures"
 );
+const logicalStreamFixture = requireBenchmarkFixture(artifact, "one-billion-logical-stream");
+const streamMemoryFixture = requireBenchmarkFixture(artifact, "slow-consumer-stream-memory");
+const minimumLogicalItemsPerSecond = requirePositiveSafeInteger(
+  logicalStreamFixture,
+  "minimumLogicalItemsPerSecond"
+);
+const maximumHeapGrowthBytes = requirePositiveSafeInteger(
+  streamMemoryFixture,
+  "maximumHeapGrowthBytes"
+);
+assert.equal(logicalStreamFixture.command, "npm run check:1b");
+assert.equal(streamMemoryFixture.command, "npm run check:stream-memory");
 assert.ok(
   readme.includes("benchmarks/public-proof.json"),
   "README must point reviewers to the public proof artifact"
@@ -85,4 +102,6 @@ console.log(JSON.stringify({
   evidenceCommands: artifact.evidenceCommands.length,
   migrationGuides: artifact.migrationGuides.length,
   runtimes: artifact.crossRuntimeMatrix.length,
+  minimumLogicalItemsPerSecond,
+  maximumHeapGrowthBytes,
 }));
