@@ -25,7 +25,9 @@ const REQUIRED_COMMANDS = [
   "npm run check:claims",
   "npm run test:evidence",
   "npm run check:evidence-ledger",
-  "npm run check:candidates-api",
+  "npm run check:api-declarations",
+  "npm run check:compat-previous",
+  "npm run check:pack-reproducibility",
   "npm run check:candidates-performance",
   "npm run check:candidate-scenarios",
 ];

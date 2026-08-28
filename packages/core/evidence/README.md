@@ -83,3 +83,13 @@ and controlled retry-budget, deadline, and user-input-stop scenarios. The receip
 retains environment warnings and limitations; it contains neither provider response
 bodies nor credentials. `release/oryn-candidate-canary.mjs` validates this receipt
 as part of `test:evidence`, and the evidence-source digest includes the receipt.
+
+## Oryn 0.6.1 Hardening Canary
+
+`oryn-hardening-canary.v0.6.1.json` is the redacted packed-artifact receipt for
+`REL-013`. It binds the deterministic `0.6.1` tarball to the WorkIt release
+commit, Oryn base commit, canary script, package manifest, and lockfile hashes.
+The real provider quality fallback and daemon-backed durable replay passed,
+along with controlled retry-budget, aggregate-deadline, and user-input-stop
+scenarios. `release/oryn-hardening-canary.mjs` validates the receipt during
+`test:evidence`.
