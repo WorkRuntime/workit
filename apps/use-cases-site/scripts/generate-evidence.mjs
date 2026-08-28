@@ -19,6 +19,7 @@ const samples = [
   { id: "agent-tree-cancel", path: "packages/core/samples/agent-tree-cancel.sample.js" },
   { id: "conversation-agent", path: "packages/core/samples/conversation-agent.sample.js" },
   { id: "race-providers", path: "packages/core/samples/race-providers.sample.js" },
+  { id: "incident-decision-gate", path: "packages/core/samples/incident-decision-gate.sample.js" },
   { id: "budget-rag", path: "packages/core/samples/budget-rag.sample.js" },
 ];
 

@@ -5,17 +5,22 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { CancellationError, ContextBagImpl, CostBudget, group, run } from "@workit/core";
 
 const repoRoot = resolve(fileURLToPath(new URL("../../../", import.meta.url)));
+const executeFile = promisify(execFile);
+const INCIDENT_GATE_SAMPLE_PATH = "packages/core/samples/incident-decision-gate.sample.js";
 
 export const runners = {
   "vibe-coding-agent": runAgentTree,
   "conversation-agent": runConversationAgent,
   "provider-fallback": runProviderFallback,
+  "incident-decision-gate": runIncidentDecisionGate,
   "rag-pipeline": runRagPipeline,
 };
 
@@ -88,6 +93,30 @@ async function runProviderFallback() {
       `cancelledProviders: ${cancelledProviders.sort().join(", ")}`,
     ],
     code: await readSample("packages/core/samples/race-providers.sample.js"),
+  };
+}
+
+async function runIncidentDecisionGate() {
+  const result = await runJsonSample(INCIDENT_GATE_SAMPLE_PATH);
+  const decisions = result.selection.decisions.join(" -> ");
+
+  return {
+    sample: result.sample,
+    events: [
+      `selection: ${decisions}`,
+      `approval: ${result.approval.status}`,
+      `productionChangesExecuted: ${result.approval.productionChangesExecuted}`,
+    ],
+    receipt: [
+      "runtime: @workit/core",
+      `sample: ${result.sample}`,
+      `selectedCandidate: ${result.selection.selectedCandidate}`,
+      `retryBudget: ${result.selection.retryBudget.spent}/${result.selection.retryBudget.limit}`,
+      `approval.reasonCode: ${result.approval.reasonCode}`,
+      `productionChangesExecuted: ${result.approval.productionChangesExecuted}`,
+      `credentialsRedacted: ${result.selection.credentialsRedacted}`,
+    ],
+    code: await readSample(INCIDENT_GATE_SAMPLE_PATH),
   };
 }
 
@@ -255,6 +284,16 @@ function formatReason(reason) {
 
 function readSample(path) {
   return readFile(resolve(repoRoot, path), "utf8");
+}
+
+async function runJsonSample(path) {
+  const { stdout } = await executeFile(process.execPath, [path], {
+    cwd: repoRoot,
+    env: process.env,
+    maxBuffer: 1024 * 1024,
+    windowsHide: true,
+  });
+  return JSON.parse(stdout.trim());
 }
 
 function sleep(ms, signal) {

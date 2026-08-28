@@ -61,6 +61,25 @@ const exampleContracts = [
     liveEvents: ["task:cancelled", "race_lost"],
   },
   {
+    id: "incident-decision-gate",
+    sampleId: "incident-decision-gate",
+    samplePath: "packages/core/samples/incident-decision-gate.sample.js",
+    liveReceipt: [
+      "runtime: @workit/core",
+      "sample: incident-decision-gate",
+      "selectedCandidate: grounded-reasoner",
+      "retryBudget: 1/1",
+      "approval.reasonCode: production_change_requires_approval",
+      "productionChangesExecuted: 0",
+      "credentialsRedacted: true",
+    ],
+    liveEvents: [
+      "quality_rejected -> retry_same_candidate -> accepted",
+      "approval: requires_user_input",
+      "productionChangesExecuted: 0",
+    ],
+  },
+  {
     id: "rag-pipeline",
     sampleId: "budget-rag",
     samplePath: "packages/core/samples/budget-rag.sample.js",
@@ -87,11 +106,6 @@ const deniedDisplayedStrings = [
   "moat",
   "killer",
 ];
-
-await assertUseCasesMatchExecutableSamples();
-await assertLiveRunnersMatchUseCaseContracts();
-await assertRuntimeApiUsesStaticFallbackOnPublicPages();
-process.stdout.write("site-data-contract: passed\n");
 
 async function assertUseCasesMatchExecutableSamples() {
   const snapshots = readJson(snapshotsPath);
@@ -187,28 +201,36 @@ function assertUseCaseLinesMatchSnapshot(useCase, result) {
 
   assertLine(rendered, `sample: ${result.sample}`, `${useCase.id} rendered lines`);
 
-  switch (result.sample) {
-    case "agent-tree-cancel":
-      assertLine(rendered, `reason.tag: ${result.reason.tag}`, `${useCase.id} rendered lines`);
-      assertLine(rendered, `cleanups.count: ${result.cleanups.length}`, `${useCase.id} rendered lines`);
-      break;
-    case "conversation-agent":
-      assertLine(rendered, `tokens: ${result.tokens.length}`, `${useCase.id} rendered lines`);
-      assertLine(rendered, `toolResults: ${result.toolResults.join(", ")}`, `${useCase.id} rendered lines`);
-      assertLine(rendered, `memoryWrites: ${result.memoryWrites}`, `${useCase.id} rendered lines`);
-      break;
-    case "race-providers":
-      assertLine(rendered, `winner: ${result.winner}`, `${useCase.id} rendered lines`);
-      assertLine(rendered, `cancelledProviders.count: ${result.cancelledProviders.length}`, `${useCase.id} rendered lines`);
-      break;
-    case "budget-rag":
-      assertLine(rendered, `spent: ${result.spent}`, `${useCase.id} rendered lines`);
-      assertLine(rendered, `audit.sources: ${result.audits[0].sources}`, `${useCase.id} rendered lines`);
-      break;
-    default:
-      assert.fail(`Unhandled sample result ${result.sample}.`);
-  }
+  const assertions = SAMPLE_ASSERTIONS[result.sample];
+  assert.equal(typeof assertions, "function", `Unhandled sample result ${result.sample}.`);
+  assertions(rendered, result, useCase.id);
 }
+
+const SAMPLE_ASSERTIONS = Object.freeze({
+  "agent-tree-cancel": (rendered, result, id) => {
+    assertLine(rendered, `reason.tag: ${result.reason.tag}`, `${id} rendered lines`);
+    assertLine(rendered, `cleanups.count: ${result.cleanups.length}`, `${id} rendered lines`);
+  },
+  "conversation-agent": (rendered, result, id) => {
+    assertLine(rendered, `tokens: ${result.tokens.length}`, `${id} rendered lines`);
+    assertLine(rendered, `toolResults: ${result.toolResults.join(", ")}`, `${id} rendered lines`);
+    assertLine(rendered, `memoryWrites: ${result.memoryWrites}`, `${id} rendered lines`);
+  },
+  "race-providers": (rendered, result, id) => {
+    assertLine(rendered, `winner: ${result.winner}`, `${id} rendered lines`);
+    assertLine(rendered, `cancelledProviders.count: ${result.cancelledProviders.length}`, `${id} rendered lines`);
+  },
+  "incident-decision-gate": (rendered, result, id) => {
+    assertLine(rendered, `selectedCandidate: ${result.selection.selectedCandidate}`, `${id} rendered lines`);
+    assertLine(rendered, `retryBudget: ${result.selection.retryBudget.spent}/${result.selection.retryBudget.limit}`, `${id} rendered lines`);
+    assertLine(rendered, `approval.reasonCode: ${result.approval.reasonCode}`, `${id} rendered lines`);
+    assertLine(rendered, `productionChangesExecuted: ${result.approval.productionChangesExecuted}`, `${id} rendered lines`);
+  },
+  "budget-rag": (rendered, result, id) => {
+    assertLine(rendered, `spent: ${result.spent}`, `${id} rendered lines`);
+    assertLine(rendered, `audit.sources: ${result.audits[0].sources}`, `${id} rendered lines`);
+  },
+});
 
 function assertEvidencePathsExist(useCase) {
   for (const item of useCase.evidence) {
@@ -281,3 +303,8 @@ async function importBundledTypeScript(relativePath, outputName) {
 function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
+
+await assertUseCasesMatchExecutableSamples();
+await assertLiveRunnersMatchUseCaseContracts();
+await assertRuntimeApiUsesStaticFallbackOnPublicPages();
+process.stdout.write("site-data-contract: passed\n");
