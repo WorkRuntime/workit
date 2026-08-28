@@ -24,6 +24,7 @@
     "check:compat-previous": "npm --workspace @workit/core run check:compat-previous",
     "check:node-compatibility": "npm --workspace @workit/core run check:node-compatibility",
     "check:incident-gate": "npm --workspace @workit/core run check:incident-gate",
+    "check:article-links": "node --test scripts/check-article-links.test.mjs && node scripts/check-article-links.mjs",
     "check:pack-reproducibility": "npm --workspace @workit/core run check:pack-reproducibility",
     "check:size": "npm --workspace @workit/core run check:size",
     "report:size": "npm --workspace @workit/core run report:size",
@@ -76,6 +77,6 @@
     "soak:24h": "npm --workspace @workit/core run soak:24h",
     "test": "npm --workspace @workit/core run test",
     "test:coverage": "npm --workspace @workit/core run test:coverage",
-    "verify": "npm --workspace @workit/core run verify"
+    "verify": "npm run check:article-links && npm --workspace @workit/core run verify"
   }
 }

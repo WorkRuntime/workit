@@ -87,7 +87,7 @@ Three caps, three reasons:
 | `OpenAITokens`    | Total tokens across all LLM calls  | Same shape. Use a dedicated key per provider when you want separate caps. |
 | `AgentToolCalls`  | Total tool calls -- fan-out limiter | Stops a runaway agent from invoking tools forever. Bench 19-B caps it at 1 and the second tool call fails closed. |
 
-> **Bench [`19-agent-scope.mjs`](../benchmarks/articles/19-agent-scope.mjs).** Five scenarios -- measured.
+> **Bench [`19-agent-scope.mjs`](../packages/core/benchmarks/articles/19-agent-scope.mjs).** Five scenarios -- measured.
 >
 > | # | Scenario | Result |
 > |---|---|---|
@@ -199,7 +199,7 @@ Production-side gates that back the same surface:
 
 | Claim | Evidence |
 |---|---|
-| Tool events bracket execution with monotonic seq | [`19-agent-scope.mjs`](../benchmarks/articles/19-agent-scope.mjs) A verifies four ordered events, sequential `seq`, stable `agentId`, and monotonic `at`. |
+| Tool events bracket execution with monotonic seq | [`19-agent-scope.mjs`](../packages/core/benchmarks/articles/19-agent-scope.mjs) A verifies four ordered events, sequential `seq`, stable `agentId`, and monotonic `at`. |
 | `AgentToolCalls` overflow rejects with `BudgetExceededError` | Bench 19 B sets `limit: 1`; the second tool call throws with `budgetKey: "AgentToolCalls"`. |
 | `OpenAITokens` consumed via `{ tokens: N }` | Bench 19 C verifies the final token budget `spent` is exactly `75`. |
 | Parent scope cancel propagates into tool body | Bench 19 D verifies the tool body observes abort and the outer scope settles with the original manual reason. |
@@ -216,7 +216,7 @@ timeouts, retries, cancellation, progress events, and cleanup all use the same
 ownership tree as the rest of the library.
 
 The public claims behind this series are tracked in
-[`evidence/claims.json`](../evidence/claims.json), exercised by
+[`evidence/claims.json`](../packages/core/evidence/claims.json), exercised by
 `npm run test:evidence`, and benchmarked by `npm run bench:articles`. The prose
 is intentionally not the evidence store; it is the readable path through the
 engineering tradeoffs.

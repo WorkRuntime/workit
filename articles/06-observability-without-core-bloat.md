@@ -20,7 +20,7 @@ $
 
 That's not a feature claim. That's a gate.
 
-> **Bench [`15-core-zero-network.mjs`](../benchmarks/articles/15-core-zero-network.mjs).** Walks the published `dist/` tree (excluding the explicit `observability`, `otel`, and `worker` subpaths), greps every `.js`/`.cjs`/`.mjs` for `node:http`, `node:https`, raw `http`/`https` imports, and `fetch(...)`.
+> **Bench [`15-core-zero-network.mjs`](../packages/core/benchmarks/articles/15-core-zero-network.mjs).** Walks the published `dist/` tree (excluding the explicit `observability`, `otel`, and `worker` subpaths), greps every `.js`/`.cjs`/`.mjs` for `node:http`, `node:https`, raw `http`/`https` imports, and `fetch(...)`.
 >
 > | Metric | Result |
 > |---|---|
@@ -76,7 +76,7 @@ Same workload, same agent. With `errors_and_slow` (slow threshold 2 seconds) and
 
 The intended debugging signal is preserved for slow and failing runs. A passing run rarely needs full trace inspection -- you need it when something breaks or hangs, which is exactly what this policy keeps.
 
-> **Bench [`16-sampling-and-aggregation.mjs`](../benchmarks/articles/16-sampling-and-aggregation.mjs).** 100 root scopes x 5 child tasks each. 5% slow, 2% errored. Both modes attach `attachTelemetryExporter` to the same workload.
+> **Bench [`16-sampling-and-aggregation.mjs`](../packages/core/benchmarks/articles/16-sampling-and-aggregation.mjs).** 100 root scopes x 5 child tasks each. 5% slow, 2% errored. Both modes attach `attachTelemetryExporter` to the same workload.
 >
 > | `sampling.mode` | Exported events | Reduction factor |
 > |---|---|---|
@@ -172,7 +172,7 @@ Every exported field is classified bounded or unbounded. Unbounded fields are **
 
 Wrap your metric exporter with `createCardinalitySafeMetricExporter` and pass an `allowedLabels` allow-list -- anything outside is rejected at runtime.
 
-> **Bench [`17-cardinality-safe-metrics.mjs`](../benchmarks/articles/17-cardinality-safe-metrics.mjs).** Five candidate metric points, allow-list `["task.kind", "outcome", "scope.name"]`.
+> **Bench [`17-cardinality-safe-metrics.mjs`](../packages/core/benchmarks/articles/17-cardinality-safe-metrics.mjs).** Five candidate metric points, allow-list `["task.kind", "outcome", "scope.name"]`.
 >
 > | Point | Labels | Outcome |
 > |---|---|---|
@@ -343,7 +343,7 @@ if (report.findings.length > 0) {
 
 Diagnoses live, on demand, against an existing snapshot. Subpath-only so the root runtime stays small.
 
-> **Bench [`18-diagnostics-finding-codes.mjs`](../benchmarks/articles/18-diagnostics-finding-codes.mjs).** Five hand-crafted snapshots, one per finding code.
+> **Bench [`18-diagnostics-finding-codes.mjs`](../packages/core/benchmarks/articles/18-diagnostics-finding-codes.mjs).** Five hand-crafted snapshots, one per finding code.
 >
 > | Scenario | `report.status` | Finding codes emitted |
 > |---|---|---|
@@ -428,13 +428,13 @@ Production-side gates that back the same surface:
 
 | Claim | Evidence |
 |---|---|
-| Core has zero networking imports | Static gate finds no `node:http`/`node:https`/`fetch` in `dist/index.js`. Reproduced by [`15-core-zero-network.mjs`](../benchmarks/articles/15-core-zero-network.mjs) over the full published `dist/` tree minus the explicit network-bridge subpaths. |
+| Core has zero networking imports | Static gate finds no `node:http`/`node:https`/`fetch` in `dist/index.js`. Reproduced by [`15-core-zero-network.mjs`](../packages/core/benchmarks/articles/15-core-zero-network.mjs) over the full published `dist/` tree minus the explicit network-bridge subpaths. |
 | Sampling reduction (`errors_and_slow` @ slowThreshold) | 100 root scopes / 5 children, >= 5x reduction asserted; measured ~36x. Production exporter stress test runs 100,000 events. |
 | Aggregation collapses N tasks -> 1 record | `npm run check:exporter-stress` exercises the full summary path with bounded queue. |
 | Telemetry budget never throws | Property test: any budget x any event volume -> tasks complete normally. |
-| Cardinality enforcement at runtime | [`17-cardinality-safe-metrics.mjs`](../benchmarks/articles/17-cardinality-safe-metrics.mjs) verifies unbounded label keys are rejected at the wrapper boundary; adapter coverage owns enum-value validation. |
+| Cardinality enforcement at runtime | [`17-cardinality-safe-metrics.mjs`](../packages/core/benchmarks/articles/17-cardinality-safe-metrics.mjs) verifies unbounded label keys are rejected at the wrapper boundary; adapter coverage owns enum-value validation. |
 | Circuit breaker memory bound under 503 backend | `tests/perf/exporter-failure.test.ts`: < 50 MB heap growth across 1,000 scopes with backend down. |
-| Diagnostics finding codes | [`18-diagnostics-finding-codes.mjs`](../benchmarks/articles/18-diagnostics-finding-codes.mjs) verifies healthy snapshots, old pending tasks, cancelling scopes, pending child scopes, and cleanup timeout findings. |
+| Diagnostics finding codes | [`18-diagnostics-finding-codes.mjs`](../packages/core/benchmarks/articles/18-diagnostics-finding-codes.mjs) verifies healthy snapshots, old pending tasks, cancelling scopes, pending child scopes, and cleanup timeout findings. |
 | OTel optional peer | Missing peer throws explicit install message; not a cryptic resolver error. |
 
 ---

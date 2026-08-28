@@ -40,7 +40,7 @@ That's the only honest answer to "can JS forcibly stop work". The answer is *no 
 
 WorkIt has both layers. They are labeled honestly.
 
-> **Bench [`07-worker-hard-kill.mjs`](../benchmarks/articles/07-worker-hard-kill.mjs).** 5,000 ms spin loop. 200 ms timeout. Late-marker file written *after* the loop completes. Timings are representative; the invariant is the marker-file result.
+> **Bench [`07-worker-hard-kill.mjs`](../packages/core/benchmarks/articles/07-worker-hard-kill.mjs).** 5,000 ms spin loop. 200 ms timeout. Late-marker file written *after* the loop completes. Timings are representative; the invariant is the marker-file result.
 >
 > | Implementation | Settled at | Late-marker file on disk |
 > |---|---|---|
@@ -101,7 +101,7 @@ What `offload` rejects, before the worker spins up:
 - Path traversal segments.
 - Functions, symbols, class instances, custom-prototype objects -- including buried inside `Map` values, `Set` members, or cycles.
 
-The worker boundary is covered by unit tests and by [`tests/evidence/security/worker-boundary.mjs`](../tests/evidence/security/worker-boundary.mjs). The two interesting subtleties: `Object.create(null)` is accepted (a null-prototype object is "plain enough"), and a class with a clean-looking shape is rejected at deep walk because the prototype check runs on the cloneable graph, not just the top level.
+The worker boundary is covered by unit tests and by [`tests/evidence/security/worker-boundary.mjs`](../packages/core/tests/evidence/security/worker-boundary.mjs). The two interesting subtleties: `Object.create(null)` is accepted (a null-prototype object is "plain enough"), and a class with a clean-looking shape is rejected at deep walk because the prototype check runs on the cloneable graph, not just the top level.
 
 ### Worker offload -- the happy path
 
@@ -148,7 +148,7 @@ Inside the shielded body, `ctx.signal` is a fresh signal local to the shield -- 
 
 What this is not: `run.uncancellable` is **cooperative**. It cannot stop a non-cooperative CPU loop inside the shielded body. For that, use `offload`.
 
-> **Bench [`08-uncancellable-shield.mjs`](../benchmarks/articles/08-uncancellable-shield.mjs).** Three scenarios -- measured.
+> **Bench [`08-uncancellable-shield.mjs`](../packages/core/benchmarks/articles/08-uncancellable-shield.mjs).** Three scenarios -- measured.
 >
 > | Scenario | What we measure | Result |
 > |---|---|---|
@@ -215,11 +215,11 @@ Production-side gates that back the same contracts:
 
 | Claim | Evidence |
 |---|---|
-| Worker hard-kill on CPU spinner | [`07-worker-hard-kill.mjs`](../benchmarks/articles/07-worker-hard-kill.mjs) runs `offload({ timeout: "200ms" })` against the spinner module, asserts bounded rejection, and verifies the late-marker file does not exist. |
-| Worker hard-kill on parent cancel | [`tests/evidence/security/worker-boundary.mjs`](../tests/evidence/security/worker-boundary.mjs) verifies parent cancellation terminates worker-owned CPU work. |
+| Worker hard-kill on CPU spinner | [`07-worker-hard-kill.mjs`](../packages/core/benchmarks/articles/07-worker-hard-kill.mjs) runs `offload({ timeout: "200ms" })` against the spinner module, asserts bounded rejection, and verifies the late-marker file does not exist. |
+| Worker hard-kill on parent cancel | [`tests/evidence/security/worker-boundary.mjs`](../packages/core/tests/evidence/security/worker-boundary.mjs) verifies parent cancellation terminates worker-owned CPU work. |
 | 5 concurrent offloads | Worker unit coverage exercises mixed fast and spinning workers without cross-talk between results. |
-| Input validation | [`tests/evidence/security/worker-boundary.mjs`](../tests/evidence/security/worker-boundary.mjs) verifies remote and executable worker URLs are rejected; unit coverage exercises structured-clone classification. |
-| `run.uncancellable` semantics | [`08-uncancellable-shield.mjs`](../benchmarks/articles/08-uncancellable-shield.mjs) covers parent cancel during body, shield timeout, nested shields, signal isolation, and reason preservation. |
+| Input validation | [`tests/evidence/security/worker-boundary.mjs`](../packages/core/tests/evidence/security/worker-boundary.mjs) verifies remote and executable worker URLs are rejected; unit coverage exercises structured-clone classification. |
+| `run.uncancellable` semantics | [`08-uncancellable-shield.mjs`](../packages/core/benchmarks/articles/08-uncancellable-shield.mjs) covers parent cancel during body, shield timeout, nested shields, signal isolation, and reason preservation. |
 | `CancelReason.kind` coverage | Every kind in the discriminated union has at least one tracked test that produces it. |
 
 The ergonomic version of cooperative cancellation:
