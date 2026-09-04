@@ -9,6 +9,10 @@ import { Braces, ExternalLink, FlaskConical, Play, RotateCcw, ShieldCheck } from
 import { useMemo, useState } from "react";
 import type { FailureScenario } from "../../../../examples/ai-failure-lab/contract/scenario-contract.mjs";
 import { parseScenarioJson } from "../../../../examples/ai-failure-lab/contract/scenario-contract.mjs";
+import {
+  REAL_WORKIT_LAUNCH_URL,
+  WORKIT_RUNTIME_VERSION,
+} from "../../../../examples/ai-failure-lab/launch-targets.mjs";
 import type { ScenarioPreviewResult } from "../../../../examples/ai-failure-lab/policy/preview-engine.mjs";
 import { previewScenario } from "../../../../examples/ai-failure-lab/policy/preview-engine.mjs";
 import { PolicyControls, type EditablePolicyField } from "./PolicyControls";
@@ -17,7 +21,6 @@ import { PublicDataImporters } from "./PublicDataImporters";
 import { defaultScenarioPreset, scenarioPresets } from "./scenarioPresets";
 
 const presetById = new Map(scenarioPresets.map((preset) => [preset.id, preset]));
-const stackBlitzUrl = "https://stackblitz.com/fork/github/WorkRuntime/workit/tree/main/examples/ai-failure-lab?startScript=start";
 
 /** Render the public scenario editor and deterministic browser policy model. */
 export function ScenarioStudio() {
@@ -136,16 +139,16 @@ export function ScenarioStudio() {
               </button>
               <a
                 className="command-button justify-center border border-zinc-950 bg-white text-zinc-950 no-underline"
-                href={stackBlitzUrl}
+                href={REAL_WORKIT_LAUNCH_URL}
                 target="_blank"
                 rel="noreferrer"
               >
                 <ExternalLink className="h-4 w-4" aria-hidden="true" />
-                Run real WorkIt
+                Run real WorkIt in Codespaces
               </a>
             </div>
             <p className="text-xs leading-5 text-zinc-500">
-              Opens an editable Node.js project using the published <code>@workit/core@0.6.1</code>. It starts from the tracked dataset; copy your browser edits manually.
+              Opens a real Linux Node environment, installs the locked project, runs its parity tests, then executes the tracked dataset with the published <code>@workit/core@{WORKIT_RUNTIME_VERSION}</code>. A GitHub account and available Codespaces quota are required.
             </p>
           </section>
 

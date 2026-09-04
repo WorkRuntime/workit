@@ -1,0 +1,9 @@
+{
+  "name": "WorkIt AI Failure Lab",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}/examples/ai-failure-lab",
+  "postCreateCommand": "npm ci --no-audit --no-fund && npm test",
+  "postAttachCommand": "npm start",
+  "waitFor": "postCreateCommand",
+  "remoteUser": "node"
+}
