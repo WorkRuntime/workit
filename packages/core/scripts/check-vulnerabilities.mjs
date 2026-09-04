@@ -10,26 +10,22 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import {
+  AUDIT_ATTEMPT_TIMEOUT_MS,
+  verifyProductionDependencies,
+} from "./vulnerability-gate.mjs";
 
 const execFileAsync = promisify(execFile);
 
-let stdout = "";
-try {
-  ({ stdout } = await runNpm(["audit", "--omit=dev", "--json"], {
-    timeout: 120_000,
+await verifyProductionDependencies({
+  runAudit: () => runNpm(["audit", "--omit=dev", "--json"], {
+    timeout: AUDIT_ATTEMPT_TIMEOUT_MS,
     maxBuffer: 10 * 1024 * 1024,
-  }));
-} catch (err) {
-  stdout = err?.stdout ?? "";
-  if (stdout.length === 0) throw err;
-}
-
-const report = JSON.parse(stdout);
-const total = report.metadata?.vulnerabilities?.total ?? 0;
-if (total !== 0) {
-  const names = Object.keys(report.vulnerabilities ?? {});
-  throw new Error(`Production vulnerability gate failed with ${total} finding(s): ${names.join(", ")}`);
-}
+  }),
+  onRetry: ({ nextAttempt, maxAttempts }) => {
+    console.warn(`vulnerability-gate: audit unavailable; retrying ${nextAttempt}/${maxAttempts}`);
+  },
+});
 
 console.log("vulnerability-gate: npm production audit passed with 0 findings");
 

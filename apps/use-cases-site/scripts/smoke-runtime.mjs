@@ -37,6 +37,7 @@ try {
   await waitForHealth();
   await assertVibeCodingRun();
   await assertConversationRun();
+  await assertIncidentDecisionGateRun();
   await assertRagRun();
   await assertUnknownExample();
   process.stdout.write("site-runtime-smoke: passed\n");
@@ -126,6 +127,20 @@ async function assertRagRun() {
   assertLine(result.receipt, "spent: 8");
   assertLine(result.receipt, "limit: 10");
   assertLine(result.receipt, "audit.sources: 2");
+}
+
+async function assertIncidentDecisionGateRun() {
+  const result = await getJson("/api/examples/incident-decision-gate/run");
+
+  assert.equal(result.source, "live-node");
+  assert.equal(result.sample, "incident-decision-gate");
+  assertLine(result.events, "quality_rejected -> retry_same_candidate -> accepted");
+  assertLine(result.events, "approval: requires_user_input");
+  assertLine(result.receipt, "selectedCandidate: grounded-reasoner");
+  assertLine(result.receipt, "retryBudget: 1/1");
+  assertLine(result.receipt, "productionChangesExecuted: 0");
+  assertLine(result.receipt, "credentialsRedacted: true");
+  assertNoLines(result.receipt, ["secret-for-"]);
 }
 
 async function assertUnknownExample() {

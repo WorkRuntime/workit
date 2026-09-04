@@ -10,12 +10,20 @@ import { SiteHeader } from "./components/SiteHeader";
 import { UseCaseRail } from "./components/UseCaseRail";
 import { UseCaseWorkbench } from "./components/UseCaseWorkbench";
 import { defaultUseCase, useCases } from "./data/useCases";
+import { ScenarioStudio } from "./labs/ScenarioStudio";
+import { buildUseCaseRoute, resolveUseCaseId } from "./navigation/useCaseRoute.mjs";
 import { runLiveExample } from "./runtimeApi";
 import type { ExampleRunResult, RunPhase, UseCase } from "./types";
 
+const useCaseIds = Object.freeze(useCases.map(({ id }) => id));
+
+function selectedUseCaseId() {
+  return resolveUseCaseId(window.location.search, useCaseIds, defaultUseCase.id);
+}
+
 /** Render the responsive WorkIt examples workbench. */
 export default function App() {
-  const [selectedId, setSelectedId] = useState(defaultUseCase.id);
+  const [selectedId, setSelectedId] = useState(selectedUseCaseId);
   const [phase, setPhase] = useState<RunPhase>("idle");
   const [runStep, setRunStep] = useState(0);
   const [runResult, setRunResult] = useState<ExampleRunResult | null>(null);
@@ -34,13 +42,19 @@ export default function App() {
     runTimersRef.current = [];
   }
 
-  function selectUseCase(useCase: UseCase) {
+  function resetRunState(useCaseId: string) {
     clearRunTimers();
     runGenerationRef.current++;
-    setSelectedId(useCase.id);
+    setSelectedId(useCaseId);
     setPhase("idle");
     setRunStep(0);
     setRunResult(null);
+  }
+
+  function selectUseCase(useCase: UseCase) {
+    if (useCase.id === selectedId) return;
+    resetRunState(useCase.id);
+    window.history.pushState(null, "", buildUseCaseRoute(window.location.href, useCase.id));
   }
 
   function runScenario() {
@@ -82,7 +96,17 @@ export default function App() {
     setRunResult(null);
   }
 
-  useEffect(() => clearRunTimers, []);
+  useEffect(() => {
+    function restoreUseCaseFromHistory() {
+      resetRunState(selectedUseCaseId());
+    }
+
+    window.addEventListener("popstate", restoreUseCaseFromHistory);
+    return () => {
+      window.removeEventListener("popstate", restoreUseCaseFromHistory);
+      clearRunTimers();
+    };
+  }, []);
 
   async function resolveLiveRun(useCase: UseCase, fallbackPhase: RunPhase, generation: number) {
     const live = await runLiveExample(useCase.id);
@@ -97,6 +121,7 @@ export default function App() {
   return (
     <main className="min-h-screen bg-[#f7f8f4] text-zinc-950">
       <SiteHeader />
+      <ScenarioStudio />
       <section className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
           <div className="order-2 lg:order-1">

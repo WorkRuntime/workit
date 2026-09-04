@@ -178,6 +178,7 @@
     "check:benchmark": "npm run build && node scripts/check-benchmark.mjs",
     "check:candidates-performance": "npm run build && node --expose-gc scripts/check-candidates-performance.mjs",
     "check:candidate-scenarios": "npm run build && node scripts/check-candidate-scenarios.mjs",
+    "check:incident-gate": "npm run build && node samples/incident-decision-gate.sample.js",
     "check:context-performance": "npm run build && node scripts/check-context-performance.mjs",
     "check:1b": "npm run build && node scripts/check-1b-benchmark.mjs",
     "check:leak": "npm run build && node --expose-gc scripts/check-leak.mjs",
@@ -210,6 +211,7 @@
     "sample:all": "npm run build && node samples/safer-promise-all.sample.js",
     "sample:agent": "npm run build && node samples/agent-tree-cancel.sample.js",
     "sample:race": "npm run build && node samples/race-providers.sample.js",
+    "sample:incident-gate": "npm run build && node samples/incident-decision-gate.sample.js",
     "sample:rag": "npm run build && node samples/budget-rag.sample.js",
     "sample:batch": "npm run build && node samples/batch-upload.sample.js",
     "sample:stream": "npm run build && node samples/streaming-summarizer.sample.js",
@@ -226,7 +228,7 @@
     "soak:24h": "npm run build && node --expose-gc scripts/soak-24h.mjs",
     "test": "npm run build && vitest run --maxWorkers=1",
     "test:coverage": "npm run build && vitest run --coverage --maxWorkers=1",
-    "verify": "npm run typecheck && npm run check:no-network && npm run check:headers && npm run check:tests && npm test && npm run test:evidence && npm run check:evidence-ledger && npm run check:security && npm run check:vulnerabilities && npm run check:sbom && npm run check:api && npm run check:api-declarations && npm run check:size && npm run check:benchmark && npm run check:candidates-performance && npm run check:candidate-scenarios && npm run check:context-performance && npm run check:1b && npm run check:leak && npm run check:stream-memory && npm run check:soak && npm run check:exporter-stress && npm run check:package-consumer && npm run check:compat-previous && npm run check:claims && npm run check:public-proof && npm run check:worker-contract && npm run check:release-policy && npm run check:pack-reproducibility && npm run pack:dry"
+    "verify": "npm run typecheck && npm run check:no-network && npm run check:headers && npm run check:tests && npm test && npm run test:evidence && npm run check:evidence-ledger && npm run check:security && npm run check:vulnerabilities && npm run check:sbom && npm run check:api && npm run check:api-declarations && npm run check:size && npm run check:benchmark && npm run check:candidates-performance && npm run check:candidate-scenarios && npm run check:incident-gate && npm run check:context-performance && npm run check:1b && npm run check:leak && npm run check:stream-memory && npm run check:soak && npm run check:exporter-stress && npm run check:package-consumer && npm run check:compat-previous && npm run check:claims && npm run check:public-proof && npm run check:worker-contract && npm run check:release-policy && npm run check:pack-reproducibility && npm run pack:dry"
   },
   "engines": {
     "node": ">=20.11"

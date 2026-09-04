@@ -33,7 +33,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Verify Node compatibility
         run: npm run check:node-compatibility
@@ -50,6 +50,9 @@ jobs:
         with:
           node-version: "22.x"
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            examples/ai-failure-lab/package-lock.json
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
@@ -62,10 +65,18 @@ jobs:
           deno-version: "2.2.7"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
+
+      - name: Install AI Failure Lab dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: examples/ai-failure-lab
 
       - name: Verify package
         run: npm run verify
+
+      - name: Verify AI Failure Lab decision parity
+        run: npm test
+        working-directory: examples/ai-failure-lab
 
       - name: Verify coverage
         run: npm run test:coverage

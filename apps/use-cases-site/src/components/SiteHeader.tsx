@@ -22,6 +22,7 @@ export function SiteHeader() {
           </div>
         </div>
         <nav className="hidden items-center gap-1 md:flex" aria-label="Primary">
+          <a className="nav-link" href="#failure-lab">Failure Lab</a>
           <a className="nav-link" href={githubUrl}>GitHub</a>
           <a className="icon-button" href={githubUrl} aria-label="Open WorkIt on GitHub">
             <GitBranch className="h-4 w-4" aria-hidden="true" />

@@ -38,6 +38,27 @@ interface RaceProvidersResult {
   cancelledProviders: string[];
 }
 
+interface IncidentDecisionGateResult {
+  sample: "incident-decision-gate";
+  selection: {
+    status: string;
+    selectedCandidate: string;
+    action: string;
+    decisions: string[];
+    admittedCalls: string[];
+    retryBudget: { spent: number; limit: number; unit: string };
+    droppedEvidence: number;
+    credentialsRedacted: boolean;
+  };
+  approval: {
+    status: string;
+    reasonCode: string;
+    admittedCalls: string[];
+    productionChangesExecuted: number;
+    credentialsRedacted: boolean;
+  };
+}
+
 interface BudgetRagResult {
   sample: "budget-rag";
   answer: string;
@@ -61,6 +82,7 @@ function sample<T>(id: string): SampleSnapshot<T> {
 const agentEvidence = sample<AgentTreeCancelResult>("agent-tree-cancel");
 const conversationEvidence = sample<ConversationAgentResult>("conversation-agent");
 const raceEvidence = sample<RaceProvidersResult>("race-providers");
+const incidentGateEvidence = sample<IncidentDecisionGateResult>("incident-decision-gate");
 const ragEvidence = sample<BudgetRagResult>("budget-rag");
 
 function list(values: string[]) {
@@ -385,6 +407,121 @@ export const useCases: UseCase[] = [
       },
     ],
     code: raceEvidence.source,
+  },
+  {
+    id: "incident-decision-gate",
+    title: "Auditable incident decision gate",
+    audience: "AI platform and SRE teams",
+    summary: "Select a grounded incident recommendation, bound retries, and stop production mutations for operator authority.",
+    pain: "A model can return a plausible 200 OK diagnosis with no supporting telemetry, while an automatic fallback may propose a dangerous production change. Transport success alone cannot authorize incident response.",
+    answer: "Use firstAcceptable for semantic evidence rules, one retry budget and deadline for the chain, typed human-approval stops, and bounded redacted attempt evidence.",
+    primarySample: incidentGateEvidence.path,
+    features: [
+      { label: "semantic admission", reason: "A high-confidence answer without incident evidence is rejected.", tone: "emerald" },
+      { label: "shared retry budget", reason: "A transient retry consumes the chain's single retry allowance.", tone: "amber" },
+      { label: "human authority", reason: "A production rollback stops before any mutation executes.", tone: "coral" },
+      { label: "redacted evidence", reason: "Attempt decisions remain inspectable without exposing credentials.", tone: "cobalt" },
+    ],
+    flow: [
+      { userAction: "Fast triage returns a plausible but unsupported diagnosis", runtimeOwner: "fast-triage", feature: "quality_rejected" },
+      { userAction: "Grounded reasoning fails transiently", runtimeOwner: "grounded-reasoner", feature: "retry_same_candidate" },
+      { userAction: "The retry returns grounded evidence", runtimeOwner: "grounded-reasoner", feature: "accepted" },
+      { userAction: "A separate plan proposes a production rollback", runtimeOwner: "operator.authority", feature: "requires_user_input" },
+      { userAction: "Unsafe fallback remains unadmitted", runtimeOwner: "unsafe-fallback", feature: "zero production changes" },
+    ],
+    runtimeTree: [
+      {
+        id: "incident-gate",
+        label: "incident.decision",
+        kind: "scope",
+        statusByPhase: { idle: "waiting", running: "running", completed: "done", aborted: "cancelled" },
+        children: [
+          {
+            id: "fast-triage",
+            label: "fast-triage",
+            kind: "llm",
+            statusByPhase: { idle: "waiting", running: "running", completed: "done", aborted: "cancelled" },
+          },
+          {
+            id: "grounded-reasoner",
+            label: "grounded-reasoner",
+            kind: "llm",
+            statusByPhase: { idle: "waiting", running: "running", completed: "done", aborted: "cancelled" },
+          },
+          {
+            id: "retry-budget",
+            label: "retry.budget",
+            kind: "budget",
+            statusByPhase: { idle: "waiting", running: "running", completed: "done", aborted: "cancelled" },
+          },
+          {
+            id: "operator-authority",
+            label: "operator.authority",
+            kind: "policy",
+            statusByPhase: { idle: "waiting", running: "running", completed: "done", aborted: "cancelled" },
+          },
+          {
+            id: "unsafe-fallback",
+            label: "unsafe-fallback",
+            kind: "llm",
+            statusByPhase: { idle: "waiting", running: "waiting", completed: "waiting", aborted: "waiting" },
+          },
+        ],
+      },
+    ],
+    events: {
+      idle: sampleEvents(incidentGateEvidence, ["status: ready"]),
+      running: sampleEvents(incidentGateEvidence, [
+        `selection: ${incidentGateEvidence.result.selection.decisions.join(" -> ")}`,
+        `approval: ${incidentGateEvidence.result.approval.status}`,
+      ]),
+      completed: sampleEvents(incidentGateEvidence, [
+        `selection: ${incidentGateEvidence.result.selection.decisions.join(" -> ")}`,
+        `approval: ${incidentGateEvidence.result.approval.status}`,
+        `productionChangesExecuted: ${incidentGateEvidence.result.approval.productionChangesExecuted}`,
+      ]),
+      aborted: sampleEvents(incidentGateEvidence, [
+        `selection: ${incidentGateEvidence.result.selection.decisions.join(" -> ")}`,
+        `approval: ${incidentGateEvidence.result.approval.status}`,
+      ]),
+    },
+    receipt: {
+      idle: [`sample: ${incidentGateEvidence.result.sample}`, `source: ${incidentGateEvidence.path}`],
+      running: [
+        `selectedCandidate: ${incidentGateEvidence.result.selection.selectedCandidate}`,
+        `retryBudget: ${incidentGateEvidence.result.selection.retryBudget.spent}/${incidentGateEvidence.result.selection.retryBudget.limit}`,
+        `credentialsRedacted: ${incidentGateEvidence.result.selection.credentialsRedacted}`,
+      ],
+      completed: [
+        `selectedCandidate: ${incidentGateEvidence.result.selection.selectedCandidate}`,
+        `action: ${incidentGateEvidence.result.selection.action}`,
+        `retryBudget: ${incidentGateEvidence.result.selection.retryBudget.spent}/${incidentGateEvidence.result.selection.retryBudget.limit}`,
+        `droppedEvidence: ${incidentGateEvidence.result.selection.droppedEvidence}`,
+        `approval.reasonCode: ${incidentGateEvidence.result.approval.reasonCode}`,
+        `productionChangesExecuted: ${incidentGateEvidence.result.approval.productionChangesExecuted}`,
+        `credentialsRedacted: ${incidentGateEvidence.result.selection.credentialsRedacted}`,
+      ],
+      aborted: [
+        `approval: ${incidentGateEvidence.result.approval.status}`,
+        `productionChangesExecuted: ${incidentGateEvidence.result.approval.productionChangesExecuted}`,
+        `credentialsRedacted: ${incidentGateEvidence.result.approval.credentialsRedacted}`,
+      ],
+    },
+    evidence: [
+      {
+        claim: "Incident recommendations are admitted by evidence quality, not transport success.",
+        path: "packages/core/samples/incident-decision-gate.sample.js",
+        invariant: "unsupported output is rejected, one transient retry is charged, and the grounded candidate is accepted.",
+        status: "tracked",
+      },
+      {
+        claim: "Production mutations require explicit human authority.",
+        path: "packages/core/tests/evidence/correctness/candidate-scenarios.mjs",
+        invariant: "requires_user_input stops candidate admission before an unsafe fallback or side effect runs.",
+        status: "tracked",
+      },
+    ],
+    code: incidentGateEvidence.source,
   },
   {
     id: "rag-pipeline",

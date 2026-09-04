@@ -9,7 +9,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
@@ -55,10 +55,36 @@ try {
   const tarball = join(temp, pack.filename);
 
   await writeFile(join(temp, "package.json"), JSON.stringify({ type: "module" }), "utf8");
-  await runNpm(["install", "--ignore-scripts", tarball], {
+  await runNpm([
+    "install",
+    "--offline",
+    "--ignore-scripts",
+    "--no-audit",
+    "--no-fund",
+    "--omit=optional",
+    tarball,
+  ], {
     cwd: temp,
     timeout: 120_000,
   });
+
+  const incidentGateFixture = "incident-decision-gate.sample.js";
+  await copyFile(
+    join(ROOT, "samples", incidentGateFixture),
+    join(temp, incidentGateFixture),
+  );
+  const { stdout: incidentGateStdout } = await execFileAsync(
+    process.execPath,
+    [incidentGateFixture],
+    { cwd: temp, timeout: 120_000 },
+  );
+  const incidentGateResult = JSON.parse(incidentGateStdout.trim());
+  if (incidentGateResult.selection?.status !== "accepted"
+    || incidentGateResult.approval?.status !== "requires_user_input"
+    || incidentGateResult.approval?.productionChangesExecuted !== 0
+    || incidentGateResult.selection?.credentialsRedacted !== true) {
+    throw new Error("Installed-package incident decision gate failed");
+  }
 
   await writeFile(join(temp, "otel-no-peer.mjs"), `
     import { attachOpenTelemetry } from "@workit/core/otel";
@@ -103,6 +129,8 @@ try {
   await runNpm([
     "install",
     "--ignore-scripts",
+    "--no-audit",
+    "--no-fund",
     "@opentelemetry/api@^1.9.1",
     "@trpc/server@11.17.0",
     "express@5.2.1",
@@ -1091,6 +1119,7 @@ try {
     packageConsumer: "ok",
     runtimeFixtures: nodeOnly ? "node-only" : "ok",
     frameworkFixtures: "ok",
+    incidentDecisionGate: "ok",
     frameworks: ["express", "fastify", "trpc", "next", "vercel-ai"],
     tarball: pack.filename,
   }));

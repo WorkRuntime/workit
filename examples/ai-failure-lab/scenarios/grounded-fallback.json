@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "id": "grounded-fallback",
+  "title": "The fast diagnosis has no evidence",
+  "summary": "Reject an unsupported 200 OK, retry one transient provider failure, and accept the grounded recommendation.",
+  "source": {
+    "kind": "fixture",
+    "label": "Deterministic incident fixture"
+  },
+  "policy": {
+    "minConfidence": 0.85,
+    "minEvidenceReferences": 2,
+    "deadlineMs": 2000,
+    "retryLimit": 1,
+    "maxEvidenceAttempts": 4
+  },
+  "candidates": [
+    {
+      "id": "fast-triage",
+      "name": "Fast triage",
+      "latencyMs": 40,
+      "outcomes": [
+        {
+          "type": "success",
+          "confidence": 0.97,
+          "evidence": [],
+          "action": "collect_diagnostics",
+          "risk": "read_only"
+        }
+      ]
+    },
+    {
+      "id": "grounded-reasoner",
+      "name": "Grounded reasoner",
+      "latencyMs": 60,
+      "outcomes": [
+        {
+          "type": "failure",
+          "failureClass": "transient"
+        },
+        {
+          "type": "success",
+          "confidence": 0.93,
+          "evidence": [
+            "trace:checkout-timeout",
+            "metric:payment-error-rate"
+          ],
+          "action": "collect_diagnostics",
+          "risk": "read_only"
+        }
+      ]
+    },
+    {
+      "id": "rollback-planner",
+      "name": "Rollback planner",
+      "latencyMs": 25,
+      "outcomes": [
+        {
+          "type": "success",
+          "confidence": 0.99,
+          "evidence": [
+            "deploy:checkout-v42",
+            "metric:checkout-error-rate"
+          ],
+          "action": "rollback_deployment",
+          "risk": "production_write"
+        }
+      ]
+    }
+  ]
+}

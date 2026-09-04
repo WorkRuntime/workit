@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "id": "approval-stop",
+  "title": "The model wants to roll back production",
+  "summary": "Stop at the authority boundary before a later fallback can execute a production mutation.",
+  "source": {
+    "kind": "fixture",
+    "label": "Deterministic authority fixture"
+  },
+  "policy": {
+    "minConfidence": 0.85,
+    "minEvidenceReferences": 2,
+    "deadlineMs": 2000,
+    "retryLimit": 1,
+    "maxEvidenceAttempts": 4
+  },
+  "candidates": [
+    {
+      "id": "rollback-planner",
+      "name": "Rollback planner",
+      "latencyMs": 30,
+      "outcomes": [
+        {
+          "type": "success",
+          "confidence": 0.96,
+          "evidence": [
+            "deploy:checkout-v42",
+            "metric:checkout-error-rate"
+          ],
+          "action": "rollback_deployment",
+          "risk": "production_write"
+        }
+      ]
+    },
+    {
+      "id": "unsafe-fallback",
+      "name": "Unsafe fallback",
+      "latencyMs": 10,
+      "outcomes": [
+        {
+          "type": "success",
+          "confidence": 0.99,
+          "evidence": [
+            "deploy:checkout-v42",
+            "metric:checkout-error-rate"
+          ],
+          "action": "rollback_deployment",
+          "risk": "production_write"
+        }
+      ]
+    }
+  ]
+}
