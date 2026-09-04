@@ -55,7 +55,15 @@ try {
   const tarball = join(temp, pack.filename);
 
   await writeFile(join(temp, "package.json"), JSON.stringify({ type: "module" }), "utf8");
-  await runNpm(["install", "--ignore-scripts", tarball], {
+  await runNpm([
+    "install",
+    "--offline",
+    "--ignore-scripts",
+    "--no-audit",
+    "--no-fund",
+    "--omit=optional",
+    tarball,
+  ], {
     cwd: temp,
     timeout: 120_000,
   });
@@ -121,6 +129,8 @@ try {
   await runNpm([
     "install",
     "--ignore-scripts",
+    "--no-audit",
+    "--no-fund",
     "@opentelemetry/api@^1.9.1",
     "@trpc/server@11.17.0",
     "express@5.2.1",
