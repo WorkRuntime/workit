@@ -33,7 +33,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Verify Node compatibility
         run: npm run check:node-compatibility
@@ -65,10 +65,10 @@ jobs:
           deno-version: "2.2.7"
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Install AI Failure Lab dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
         working-directory: examples/ai-failure-lab
 
       - name: Verify package

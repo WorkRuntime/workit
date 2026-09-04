@@ -51,14 +51,14 @@ jobs:
             examples/ai-failure-lab/package-lock.json
 
       - name: Install root dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Install site dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
         working-directory: apps/use-cases-site
 
       - name: Install AI Failure Lab dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
         working-directory: examples/ai-failure-lab
 
       - name: Test site contracts
