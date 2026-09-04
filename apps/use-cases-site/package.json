@@ -11,7 +11,7 @@
     "runtime": "node server/runtime-server.mjs",
     "generate:evidence": "node scripts/generate-evidence.mjs",
     "smoke:runtime": "node scripts/smoke-runtime.mjs",
-    "test:data": "npm run generate:evidence && node scripts/test-data-contract.mjs && node --test scripts/test-public-data-adapters.mjs",
+    "test:data": "npm run generate:evidence && node scripts/test-data-contract.mjs && node --test scripts/test-public-data-adapters.mjs scripts/test-use-case-routing.mjs",
     "test": "npm run test:data && npm run smoke:runtime",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "npm run generate:evidence && npm run typecheck && vite build",

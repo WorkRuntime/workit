@@ -11,12 +11,19 @@ import { UseCaseRail } from "./components/UseCaseRail";
 import { UseCaseWorkbench } from "./components/UseCaseWorkbench";
 import { defaultUseCase, useCases } from "./data/useCases";
 import { ScenarioStudio } from "./labs/ScenarioStudio";
+import { buildUseCaseRoute, resolveUseCaseId } from "./navigation/useCaseRoute.mjs";
 import { runLiveExample } from "./runtimeApi";
 import type { ExampleRunResult, RunPhase, UseCase } from "./types";
 
+const useCaseIds = Object.freeze(useCases.map(({ id }) => id));
+
+function selectedUseCaseId() {
+  return resolveUseCaseId(window.location.search, useCaseIds, defaultUseCase.id);
+}
+
 /** Render the responsive WorkIt examples workbench. */
 export default function App() {
-  const [selectedId, setSelectedId] = useState(defaultUseCase.id);
+  const [selectedId, setSelectedId] = useState(selectedUseCaseId);
   const [phase, setPhase] = useState<RunPhase>("idle");
   const [runStep, setRunStep] = useState(0);
   const [runResult, setRunResult] = useState<ExampleRunResult | null>(null);
@@ -35,13 +42,19 @@ export default function App() {
     runTimersRef.current = [];
   }
 
-  function selectUseCase(useCase: UseCase) {
+  function resetRunState(useCaseId: string) {
     clearRunTimers();
     runGenerationRef.current++;
-    setSelectedId(useCase.id);
+    setSelectedId(useCaseId);
     setPhase("idle");
     setRunStep(0);
     setRunResult(null);
+  }
+
+  function selectUseCase(useCase: UseCase) {
+    if (useCase.id === selectedId) return;
+    resetRunState(useCase.id);
+    window.history.pushState(null, "", buildUseCaseRoute(window.location.href, useCase.id));
   }
 
   function runScenario() {
@@ -83,7 +96,17 @@ export default function App() {
     setRunResult(null);
   }
 
-  useEffect(() => clearRunTimers, []);
+  useEffect(() => {
+    function restoreUseCaseFromHistory() {
+      resetRunState(selectedUseCaseId());
+    }
+
+    window.addEventListener("popstate", restoreUseCaseFromHistory);
+    return () => {
+      window.removeEventListener("popstate", restoreUseCaseFromHistory);
+      clearRunTimers();
+    };
+  }, []);
 
   async function resolveLiveRun(useCase: UseCase, fallbackPhase: RunPhase, generation: number) {
     const live = await runLiveExample(useCase.id);
