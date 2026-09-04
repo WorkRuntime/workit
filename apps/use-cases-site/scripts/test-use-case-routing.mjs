@@ -43,5 +43,4 @@ test("builds a relative same-origin route and preserves unrelated query state", 
     route,
     `/workit/?source=article&example=incident-decision-gate${USE_CASE_SECTION_HASH}`,
   );
-  assert.equal(route.includes("workruntime.github.io"), false);
 });
