@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "id": "deadline-exhaustion",
+  "title": "Fallback cannot multiply the incident SLO",
+  "summary": "A global deadline stops the chain instead of granting every provider a fresh timeout.",
+  "source": {
+    "kind": "fixture",
+    "label": "Deterministic deadline fixture"
+  },
+  "policy": {
+    "minConfidence": 0.85,
+    "minEvidenceReferences": 2,
+    "deadlineMs": 150,
+    "retryLimit": 0,
+    "maxEvidenceAttempts": 4
+  },
+  "candidates": [
+    {
+      "id": "slow-triage",
+      "name": "Slow triage",
+      "latencyMs": 200,
+      "outcomes": [
+        {
+          "type": "success",
+          "confidence": 0.95,
+          "evidence": [
+            "trace:checkout-timeout",
+            "metric:payment-error-rate"
+          ],
+          "action": "collect_diagnostics",
+          "risk": "read_only"
+        }
+      ]
+    },
+    {
+      "id": "late-fallback",
+      "name": "Late fallback",
+      "latencyMs": 20,
+      "outcomes": [
+        {
+          "type": "success",
+          "confidence": 0.98,
+          "evidence": [
+            "trace:checkout-timeout",
+            "metric:payment-error-rate"
+          ],
+          "action": "collect_diagnostics",
+          "risk": "read_only"
+        }
+      ]
+    }
+  ]
+}

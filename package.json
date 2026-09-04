@@ -46,6 +46,7 @@
     "site:dev": "npm --prefix apps/use-cases-site run dev",
     "site:build": "npm --prefix apps/use-cases-site run build",
     "site:preview": "npm --prefix apps/use-cases-site run preview",
+    "test:failure-lab": "node --test examples/ai-failure-lab/test/*.test.mjs",
     "test:evidence": "npm --workspace @workit/core run test:evidence",
     "test:property": "npm --workspace @workit/core run test:property",
     "pack:dry": "npm --workspace @workit/core run pack:dry",
