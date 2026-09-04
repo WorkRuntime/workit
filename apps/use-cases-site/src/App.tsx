@@ -10,6 +10,7 @@ import { SiteHeader } from "./components/SiteHeader";
 import { UseCaseRail } from "./components/UseCaseRail";
 import { UseCaseWorkbench } from "./components/UseCaseWorkbench";
 import { defaultUseCase, useCases } from "./data/useCases";
+import { ScenarioStudio } from "./labs/ScenarioStudio";
 import { runLiveExample } from "./runtimeApi";
 import type { ExampleRunResult, RunPhase, UseCase } from "./types";
 
@@ -97,6 +98,7 @@ export default function App() {
   return (
     <main className="min-h-screen bg-[#f7f8f4] text-zinc-950">
       <SiteHeader />
+      <ScenarioStudio />
       <section className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
           <div className="order-2 lg:order-1">
