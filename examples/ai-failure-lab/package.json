@@ -1,0 +1,21 @@
+{
+  "name": "@workit/ai-failure-lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Editable incident-policy scenarios executed by the published WorkIt runtime.",
+  "author": "Admilson B. F. Cossa",
+  "license": "Apache-2.0",
+  "scripts": {
+    "start": "node index.mjs grounded-fallback",
+    "run:approval": "node index.mjs approval-stop",
+    "run:deadline": "node index.mjs deadline-exhaustion",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@workit/core": "0.6.1"
+  },
+  "engines": {
+    "node": ">=20.11"
+  }
+}

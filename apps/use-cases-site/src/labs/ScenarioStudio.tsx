@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Braces, FlaskConical, Play, RotateCcw, ShieldCheck } from "lucide-react";
+import { Braces, ExternalLink, FlaskConical, Play, RotateCcw, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { FailureScenario } from "../../../../examples/ai-failure-lab/contract/scenario-contract.mjs";
 import { parseScenarioJson } from "../../../../examples/ai-failure-lab/contract/scenario-contract.mjs";
@@ -16,6 +16,7 @@ import { PreviewResult } from "./PreviewResult";
 import { defaultScenarioPreset, scenarioPresets } from "./scenarioPresets";
 
 const presetById = new Map(scenarioPresets.map((preset) => [preset.id, preset]));
+const stackBlitzUrl = "https://stackblitz.com/fork/github/WorkRuntime/workit/tree/main/examples/ai-failure-lab?startScript=start";
 
 /** Render the public scenario editor and deterministic browser policy model. */
 export function ScenarioStudio() {
@@ -118,10 +119,24 @@ export function ScenarioStudio() {
               </div>
             )}
 
-            <button className="command-button justify-center bg-[#49c995] text-[#06291c]" type="button" onClick={() => preview()}>
-              <Play className="h-4 w-4" aria-hidden="true" />
-              Validate and preview
-            </button>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button className="command-button justify-center bg-[#49c995] text-[#06291c]" type="button" onClick={() => preview()}>
+                <Play className="h-4 w-4" aria-hidden="true" />
+                Validate and preview
+              </button>
+              <a
+                className="command-button justify-center border border-zinc-950 bg-white text-zinc-950 no-underline"
+                href={stackBlitzUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <ExternalLink className="h-4 w-4" aria-hidden="true" />
+                Run real WorkIt
+              </a>
+            </div>
+            <p className="text-xs leading-5 text-zinc-500">
+              Opens an editable Node.js project using the published <code>@workit/core@0.6.1</code>. It starts from the tracked dataset; copy your browser edits manually.
+            </p>
           </section>
 
           <section className="min-w-0 rounded-md border border-zinc-200 bg-white p-4 sm:p-5">
