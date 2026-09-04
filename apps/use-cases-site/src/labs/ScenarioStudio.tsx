@@ -13,6 +13,7 @@ import type { ScenarioPreviewResult } from "../../../../examples/ai-failure-lab/
 import { previewScenario } from "../../../../examples/ai-failure-lab/policy/preview-engine.mjs";
 import { PolicyControls, type EditablePolicyField } from "./PolicyControls";
 import { PreviewResult } from "./PreviewResult";
+import { PublicDataImporters } from "./PublicDataImporters";
 import { defaultScenarioPreset, scenarioPresets } from "./scenarioPresets";
 
 const presetById = new Map(scenarioPresets.map((preset) => [preset.id, preset]));
@@ -55,6 +56,13 @@ export function ScenarioStudio() {
 
   function reset() {
     selectPreset(presetId);
+  }
+
+  function importScenario(scenario: FailureScenario) {
+    const json = JSON.stringify(scenario, null, 2);
+    setDraft(json);
+    setResult(previewScenario(scenario));
+    setError(null);
   }
 
   return (
@@ -101,6 +109,8 @@ export function ScenarioStudio() {
             </div>
 
             <PolicyControls policy={parsedDraft?.policy ?? null} onChange={updatePolicy} />
+
+            <PublicDataImporters onImport={importScenario} />
 
             <label className="grid min-w-0 gap-2 text-xs font-black uppercase tracking-[0.06em] text-zinc-500">
               <span className="flex items-center gap-2"><Braces className="h-4 w-4" aria-hidden="true" /> Editable dataset</span>
