@@ -38,7 +38,7 @@ fixtures:
 
 | Candidate result | Runtime decision |
 |---|---|
-| `200 OK`, confidence `0.97`, no operational evidence | `quality_rejected` |
+| Fulfilled candidate, confidence `0.97`, no operational evidence | `quality_rejected` |
 | Transient provider failure | `retry_same_candidate`, charged to one shared retry budget |
 | Grounded read-only recommendation | `accepted` |
 | Grounded production rollback | `requires_user_input` before the mutation |
@@ -47,6 +47,11 @@ In the authority scenario, the later unsafe fallback is never admitted and the
 recorded number of production changes is zero. The browser labels its immediate
 result as a **policy preview**; it does not claim to execute the Node.js runtime
 or contact an AI provider.
+
+The confidence values and evidence references are deterministic fixture inputs,
+not calibrated model scores or proof of factual truth. WorkIt exposes the
+decision boundary; application authorization and external side effects remain
+caller-owned.
 
 Run the same tracked datasets through the published `@workit/core@0.6.1`
 package in Node.js:
