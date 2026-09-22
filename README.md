@@ -9,16 +9,74 @@ SPDX-License-Identifier: Apache-2.0
 
 # WorkIt
 
-WorkIt is a TypeScript structured concurrency runtime for Node.js server
-runtimes.
+WorkIt gives related asynchronous work one owner. A request, batch, agent run,
+provider chain, or background operation can share cancellation, deadlines,
+retry budgets, cleanup, context, and lifecycle evidence instead of rebuilding
+those contracts around disconnected promises.
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![npm](https://img.shields.io/npm/v/@workit/core?label=npm)](https://www.npmjs.com/package/@workit/core)
 [![Node](https://img.shields.io/badge/node-%3E%3D20.11-brightgreen)](packages/core/package.json)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12807/badge)](https://www.bestpractices.dev/projects/12807)
 
-WorkIt owns related async work through scope, cancellation, cleanup, context,
-events, and child task lifecycles.
+Native `Promise` remains the right primitive for one asynchronous value. WorkIt
+is for the point where several values must start, fail, stop, and clean up as
+one operation.
+
+[**Try the AI Failure Lab**](https://workruntime.github.io/workit/?example=incident-decision-gate&scenario=approval-stop#failure-lab)
+· [Technical documentation](packages/core/README.md)
+· [npm package](https://www.npmjs.com/package/@workit/core)
+
+<p align="center">
+  <img src="assets/readme/incident-authority-lab.png" alt="WorkIt AI Failure Lab stopping a production rollback with requires_user_input before the mutation" width="960">
+</p>
+
+## Success Is Not Acceptance. Acceptance Is Not Authority.
+
+The AI Failure Lab makes that boundary executable with deterministic incident
+fixtures:
+
+| Candidate result | Runtime decision |
+|---|---|
+| `200 OK`, confidence `0.97`, no operational evidence | `quality_rejected` |
+| Transient provider failure | `retry_same_candidate`, charged to one shared retry budget |
+| Grounded read-only recommendation | `accepted` |
+| Grounded production rollback | `requires_user_input` before the mutation |
+
+In the authority scenario, the later unsafe fallback is never admitted and the
+recorded number of production changes is zero. The browser labels its immediate
+result as a **policy preview**; it does not claim to execute the Node.js runtime
+or contact an AI provider.
+
+Run the same tracked datasets through the published `@workit/core@0.6.1`
+package in Node.js:
+
+```sh
+git clone https://github.com/WorkRuntime/workit.git
+cd workit/examples/ai-failure-lab
+npm ci --no-audit --no-fund
+npm test
+npm start
+```
+
+The scenario contract, deterministic preview, real runtime path, and parity
+tests live in [`examples/ai-failure-lab`](examples/ai-failure-lab). The
+production-shaped WorkIt sample is
+[`incident-decision-gate.sample.js`](packages/core/samples/incident-decision-gate.sample.js).
+
+## What WorkIt Owns
+
+- scope trees and child task lifecycles;
+- typed cancellation propagation and cancel-aware backoff;
+- cleanup ordering through defer and bracket boundaries;
+- bounded parallelism and backpressured streams;
+- aggregate deadlines, retries, and caller-defined budgets;
+- candidate quality, failure disposition, and human-input stops;
+- bounded lifecycle events, receipts, diagnostics, and OpenTelemetry bridges.
+
+The complete API, examples, explicit limitations, bundle measurements, and
+evidence commands are maintained in the
+[`@workit/core` README](packages/core/README.md).
 
 ## Install
 
@@ -34,11 +92,19 @@ WorkIt is Apache-2.0 licensed. Contributions are welcome through issues and
 pull requests; please follow [`CONTRIBUTING.md`](CONTRIBUTING.md) and
 [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
 
-Live examples: <https://workruntime.github.io/workit/>
+## Runtime Boundaries
 
-npm package: <https://www.npmjs.com/package/@workit/core>
-
-Changelog: [CHANGELOG.md](CHANGELOG.md)
+- WorkIt currently targets Node.js server runtimes (`>=20.11`). Browser and
+  edge imports resolve to an explicit unsupported-runtime boundary.
+- Cancellation is cooperative. Task bodies and providers must observe the
+  supplied `AbortSignal`; WorkIt does not forcibly terminate arbitrary code.
+- Browser lab results are deterministic previews. The standalone Node project
+  is the real WorkIt execution path.
+- Candidate evidence is bounded and redacted, but WorkIt is not a security
+  sandbox. Provider credentials and arbitrary side effects remain application
+  responsibilities.
+- Terminal activity replay does not resume an in-flight workflow, and candidate
+  execution does not provide durable idempotency for external side effects.
 
 ## Versioning
 
