@@ -6,7 +6,7 @@
  */
 
 import { Braces, ExternalLink, FlaskConical, Play, RotateCcw, ShieldCheck } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FailureScenario } from "../../../../examples/ai-failure-lab/contract/scenario-contract.mjs";
 import { parseScenarioJson } from "../../../../examples/ai-failure-lab/contract/scenario-contract.mjs";
 import {
@@ -15,28 +15,53 @@ import {
 } from "../../../../examples/ai-failure-lab/launch-targets.mjs";
 import type { ScenarioPreviewResult } from "../../../../examples/ai-failure-lab/policy/preview-engine.mjs";
 import { previewScenario } from "../../../../examples/ai-failure-lab/policy/preview-engine.mjs";
+import { buildScenarioRoute, resolveScenarioId } from "../navigation/scenarioRoute.mjs";
 import { PolicyControls, type EditablePolicyField } from "./PolicyControls";
 import { PreviewResult } from "./PreviewResult";
 import { PublicDataImporters } from "./PublicDataImporters";
 import { defaultScenarioPreset, scenarioPresets } from "./scenarioPresets";
 
 const presetById = new Map(scenarioPresets.map((preset) => [preset.id, preset]));
+const presetIds = Object.freeze(scenarioPresets.map(({ id }) => id));
 
 /** Render the public scenario editor and deterministic browser policy model. */
 export function ScenarioStudio() {
-  const [presetId, setPresetId] = useState(defaultScenarioPreset.id);
-  const [draft, setDraft] = useState(() => normalizeJson(defaultScenarioPreset.json));
-  const [result, setResult] = useState<ScenarioPreviewResult>(() => previewScenario(parseScenarioJson(defaultScenarioPreset.json)));
+  const initialPreset = selectedScenarioPreset();
+  const [presetId, setPresetId] = useState(initialPreset.id);
+  const [draft, setDraft] = useState(() => normalizeJson(initialPreset.json));
+  const [result, setResult] = useState<ScenarioPreviewResult>(() => previewScenario(parseScenarioJson(initialPreset.json)));
   const [error, setError] = useState<string | null>(null);
   const parsedDraft = useMemo(() => safelyParse(draft), [draft]);
 
-  function selectPreset(id: string) {
+  const preview = useCallback((json: string) => {
+    try {
+      const scenario = parseScenarioJson(json);
+      setResult(previewScenario(scenario));
+      setError(null);
+    } catch (caught) {
+      setError(readError(caught));
+    }
+  }, []);
+
+  const selectPreset = useCallback((id: string, updateRoute = false) => {
     const preset = presetById.get(id) ?? defaultScenarioPreset;
     const normalized = normalizeJson(preset.json);
     setPresetId(preset.id);
     setDraft(normalized);
     preview(normalized);
-  }
+    if (updateRoute) {
+      window.history.pushState(null, "", buildScenarioRoute(window.location.href, preset.id));
+    }
+  }, [preview]);
+
+  useEffect(() => {
+    function restoreScenarioFromHistory() {
+      selectPreset(selectedScenarioPreset().id);
+    }
+
+    window.addEventListener("popstate", restoreScenarioFromHistory);
+    return () => window.removeEventListener("popstate", restoreScenarioFromHistory);
+  }, [selectPreset]);
 
   function updatePolicy(field: EditablePolicyField, value: number) {
     if (parsedDraft === null) return;
@@ -45,16 +70,6 @@ export function ScenarioStudio() {
     const nextDraft = JSON.stringify(mutable, null, 2);
     setDraft(nextDraft);
     preview(nextDraft);
-  }
-
-  function preview(json = draft) {
-    try {
-      const scenario = parseScenarioJson(json);
-      setResult(previewScenario(scenario));
-      setError(null);
-    } catch (caught) {
-      setError(readError(caught));
-    }
   }
 
   function reset() {
@@ -98,7 +113,7 @@ export function ScenarioStudio() {
                 <select
                   className="h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm font-bold text-zinc-950"
                   value={presetId}
-                  onChange={(event) => selectPreset(event.target.value)}
+                  onChange={(event) => selectPreset(event.target.value, true)}
                 >
                   {scenarioPresets.map((preset) => (
                     <option key={preset.id} value={preset.id}>{preset.label}</option>
@@ -133,7 +148,7 @@ export function ScenarioStudio() {
             )}
 
             <div className="grid gap-2 sm:grid-cols-2">
-              <button className="command-button justify-center bg-[#49c995] text-[#06291c]" type="button" onClick={() => preview()}>
+              <button className="command-button justify-center bg-[#49c995] text-[#06291c]" type="button" onClick={() => preview(draft)}>
                 <Play className="h-4 w-4" aria-hidden="true" />
                 Validate and preview
               </button>
@@ -186,4 +201,9 @@ function safelyParse(json: string): FailureScenario | null {
 
 function readError(value: unknown): string {
   return value instanceof Error ? value.message : "Scenario validation failed.";
+}
+
+function selectedScenarioPreset() {
+  const id = resolveScenarioId(window.location.search, presetIds, defaultScenarioPreset.id);
+  return presetById.get(id) ?? defaultScenarioPreset;
 }
