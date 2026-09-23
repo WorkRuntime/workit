@@ -35,6 +35,7 @@ export const evidenceProofs = Object.freeze([
   proof("release/one-zero-contracts.mjs"),
   proof("release/external-consumer-canary-0.6.0.mjs"),
   proof("release/external-consumer-canary-0.6.1.mjs"),
+  proof("release/external-consumer-canary-1.0.0.mjs"),
   proof("release/release-integrity.mjs"),
   proof("release/receipt-ledger.mjs"),
   proof("release/sql-receipt-ledger.mjs"),

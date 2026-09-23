@@ -605,14 +605,14 @@
       "id": "REL-015",
       "title": "external-consumer packed-artifact canary gates the 1.0.0 publication",
       "class": "release",
-      "status": "environment-blocked",
+      "status": "proven",
       "releaseBlocking": true,
-      "proof": "README.md",
-      "command": "Run an external-consumer release canary against the final 1.0.0 tarball and record its sanitized receipt",
+      "proof": "tests/evidence/release/external-consumer-canary-1.0.0.mjs",
+      "command": "npm run test:evidence",
       "expectedInvariant": "an external consumer exercises the final packed 1.0.0 artifact across real provider and durable-receipt boundaries before the release tag is created",
-      "limitations": "The final 1.0.0 tarball was installed in the external consumer and all WorkIt-controlled boundary scenarios passed, but every candidate on the configured real-provider route returned HTTP 402. Real quality fallback therefore remains unproven for this artifact until a funded or otherwise usable provider route completes.",
+      "limitations": "One local external-consumer canary crossed a real provider boundary and durable receipt store. Both candidate strategies used the same provider, so this proves sequential semantic fallback but not multi-provider redundancy; a separately authorized provider route was environment-blocked and excluded from the passing assertion.",
       "verifiedFor": "1.0.0",
-      "ledgerNote": "Blocked on 2026-09-23 by the external provider environment. The attempted canary used tarball SHA-256 3d4fb4b4343295d535918a6dcd8bf7cec5abd878ebc4eaa748e4ea8e97519c79. No consumer identity, route, model, response body, credential, or local address is retained here."
+      "ledgerNote": "Resolved by the sanitized receipt in evidence/external-consumer-canary.v1.0.0.json, bound to WorkIt source commit 64e7199 and tarball SHA-256 c97f40318a7649d8a6c1fc428ca47ebe3bedc09606a7bea32147e08e09e28a0c. No consumer identity, route, provider, model, response body, credential, or local address is retained."
     },
     {
       "id": "PERF-001",

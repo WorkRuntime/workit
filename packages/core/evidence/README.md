@@ -76,11 +76,12 @@ as backfills in the ledger.
 
 ## External-Consumer Canaries
 
-`external-consumer-canary.v0.6.0.json` and
-`external-consumer-canary.v0.6.1.json` are sanitized packed-artifact receipts for
-`REL-011` and `REL-013`. They bind the WorkIt release commit and tarball hash to
-real provider quality fallback, durable receipt replay, bounded redaction,
-retry-budget, aggregate-deadline, and user-input-stop assertions.
+`external-consumer-canary.v0.6.0.json`,
+`external-consumer-canary.v0.6.1.json`, and
+`external-consumer-canary.v1.0.0.json` are sanitized packed-artifact receipts for
+`REL-011`, `REL-013`, and `REL-015`. They bind the WorkIt release commit and
+tarball hash to real provider quality fallback, durable receipt replay, bounded
+redaction, retry-budget, aggregate-deadline, and user-input-stop assertions.
 
 The public receipts intentionally exclude the consumer identity, repository,
 routes, provider and model names, response bodies, credentials, local addresses,

@@ -18,6 +18,7 @@ const EVIDENCE_SOURCE_PATHS = Object.freeze([
   "evidence/claims.json",
   "evidence/external-consumer-canary.v0.6.0.json",
   "evidence/external-consumer-canary.v0.6.1.json",
+  "evidence/external-consumer-canary.v1.0.0.json",
   "package.json",
   "samples",
   "scripts",

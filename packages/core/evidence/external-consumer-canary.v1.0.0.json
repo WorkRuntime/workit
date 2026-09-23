@@ -1,0 +1,99 @@
+{
+  "artifact": "workit-external-consumer-canary",
+  "schemaVersion": 1,
+  "release": "1.0.0",
+  "capturedAt": "2026-09-23T08:38:43.578Z",
+  "source": {
+    "workitCommit": "64e7199633353aed3cb93e6083c7e3108d1ceac7",
+    "workitTarball": {
+      "file": "workit-core-1.0.0.tgz",
+      "sha256": "c97f40318a7649d8a6c1fc428ca47ebe3bedc09606a7bea32147e08e09e28a0c"
+    },
+    "externalHarnessSha256": "5d7a05e4bf1996a48e60e93ef4227a49962e990d35bf622653ee310ff3b56e87",
+    "externalManifestSha256": "bdb82ebe194b2fd7eef48e9edd179c36c51a438b32f41ea610a3d6b26ca056ca",
+    "externalLockfileSha256": "414648d0bfad44d9358c1ecd39d280e9323db65271e4f77893900e5215d1fc97"
+  },
+  "toolchain": {
+    "node": "24.19.0",
+    "pnpm": "10.27.0",
+    "platform": "win32"
+  },
+  "environment": {
+    "externalConsumer": true,
+    "syntheticProvider": false,
+    "durableReceiptStore": true,
+    "credentialMaterialRecorded": false
+  },
+  "liveProviderBoundary": {
+    "providerCalls": 2,
+    "candidateStrategies": 2,
+    "acceptedCandidateIndex": 1,
+    "sameProviderBoundary": true,
+    "decisions": [
+      {
+        "candidateIndex": 0,
+        "attempt": 1,
+        "outcome": "succeeded",
+        "decision": "quality_rejected",
+        "reasonCode": "canary_quality_ordinal_mismatch",
+        "metadataRedacted": true
+      },
+      {
+        "candidateIndex": 1,
+        "attempt": 1,
+        "outcome": "succeeded",
+        "decision": "accepted",
+        "reasonCode": null,
+        "metadataRedacted": true
+      }
+    ],
+    "evidenceLimit": 4,
+    "droppedEvidence": 0
+  },
+  "durableReplay": {
+    "recreatedRuntime": true,
+    "replayOperationCalls": 0,
+    "providerCallsAfterLiveExecution": 2,
+    "providerCallsAfterReplay": 2,
+    "receiptRoundTrip": true,
+    "receiptIdentityStable": true
+  },
+  "controlledBoundaryScenarios": {
+    "sharedRetryBudget": {
+      "status": "accepted",
+      "attempts": 2,
+      "spent": 1,
+      "limit": 1
+    },
+    "aggregateDeadline": {
+      "status": "terminal",
+      "reasonCode": "workit_timeout",
+      "elapsedMs": 28,
+      "configuredMs": 25
+    },
+    "requiresUserInput": {
+      "status": "requires_user_input",
+      "reasonCode": "provider_credential_required",
+      "candidateCalls": 1,
+      "fallbackStopped": true
+    }
+  },
+  "assertions": {
+    "liveAcceptedAfterQualityFallback": true,
+    "evidenceBounded": true,
+    "evidenceRedacted": true,
+    "durableReplaySkippedProvider": true,
+    "receiptRoundTrip": true,
+    "sharedRetryBudgetChargedOnce": true,
+    "aggregateDeadlineStoppedWork": true,
+    "userInputStoppedFallback": true,
+    "noUnhandledProcessFailure": true
+  },
+  "unexpectedProcessFailures": [],
+  "limitations": [
+    "This is one local external-consumer canary, not a production-load, multi-host, or long-duration soak result.",
+    "Two candidate strategies crossed the same real provider boundary. This proves sequential semantic fallback, not multi-provider redundancy.",
+    "A separately authorized provider route was environment-blocked and is excluded from the passing assertion.",
+    "The receipt intentionally excludes the consumer identity, repository details, routes, provider names, model names, response bodies, credentials, local addresses, and consumer-specific warnings."
+  ]
+}
