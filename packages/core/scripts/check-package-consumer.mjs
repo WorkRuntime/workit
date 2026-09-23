@@ -16,6 +16,7 @@ import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { build } from "esbuild";
+import { parseSingleNpmPackResult } from "./npm-pack-result.mjs";
 
 const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
@@ -51,7 +52,7 @@ try {
     cwd: ROOT,
     timeout: 120_000,
   });
-  const [pack] = JSON.parse(stdout);
+  const pack = parseSingleNpmPackResult(stdout);
   const tarball = join(temp, pack.filename);
 
   await writeFile(join(temp, "package.json"), JSON.stringify({ type: "module" }), "utf8");

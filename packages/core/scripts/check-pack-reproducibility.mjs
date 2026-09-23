@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { parseSingleNpmPackResult } from "./npm-pack-result.mjs";
 
 const PACKAGE_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const execFileAsync = promisify(execFile);
@@ -36,7 +37,7 @@ async function buildAndPack(destination) {
   await mkdir(destination, { recursive: true });
   await runNpm(["run", "build"]);
   const { stdout } = await runNpm(["pack", "--json", "--pack-destination", destination]);
-  const [result] = JSON.parse(stdout);
+  const result = parseSingleNpmPackResult(stdout);
   const bytes = await readFile(join(destination, result.filename));
   return {
     filename: result.filename,
