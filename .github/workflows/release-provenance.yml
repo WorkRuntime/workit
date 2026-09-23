@@ -108,9 +108,16 @@ jobs:
           test "$GITHUB_REF_NAME" = "v$package_version"
           git tag -v "$GITHUB_REF_NAME"
 
+      - name: Prepare ephemeral dry-run version
+        if: inputs.dry_run == 'true'
+        shell: bash
+        run: |
+          dry_run_version="0.0.0-dry-run.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}"
+          npm pkg set "version=$dry_run_version" --workspace @workit/core
+
       - name: Publish dry run
         if: inputs.dry_run == 'true'
-        run: npm publish --workspace @workit/core --provenance --access public --dry-run
+        run: npm publish --workspace @workit/core --provenance --access public --tag dry-run --dry-run
 
       - name: Publish
         if: inputs.dry_run == 'false'
