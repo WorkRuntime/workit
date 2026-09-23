@@ -85,6 +85,21 @@ assert.match(
   /npm run check:release-readiness/u,
   "release workflow must reject unresolved release-blocking evidence"
 );
+assert.match(
+  workflow,
+  /dry_run_version="0\.0\.0-dry-run\.\$\{GITHUB_RUN_ID\}\.\$\{GITHUB_RUN_ATTEMPT\}"/u,
+  "release dry runs must use a unique ephemeral version instead of colliding with a published version"
+);
+assert.match(
+  workflow,
+  /npm pkg set "version=\$dry_run_version" --workspace @workit\/core/u,
+  "the ephemeral dry-run version must be scoped to @workit/core"
+);
+assert.match(
+  workflow,
+  /npm publish --workspace @workit\/core --provenance --access public --tag dry-run --dry-run/u,
+  "release dry runs must use a non-latest prerelease tag"
+);
 assert.match(workflow, /gpg\.ssh\.allowedSignersFile/u, "release workflow must configure SSH allowed signers before tag verification");
 assert.match(workflow, /fetch-depth:\s*0/u, "release workflow must fetch signed tag objects and release history");
 assert.ok(
