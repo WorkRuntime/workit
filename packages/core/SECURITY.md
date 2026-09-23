@@ -65,8 +65,17 @@ npm pack --dry-run --json
 
 The provenance workflow is defined in `.github/workflows/release-provenance.yml`.
 Registry dry-runs and real publication must be triggered only from a signed
-release tag after the scoped release commit is clean and verified. The publish
-step runs:
+release tag after the scoped release commit is clean and verified.
+
+Registry authentication uses npm Trusted Publishing. The npm package is bound
+to the `WorkRuntime/workit` repository and the `release-provenance.yml`
+workflow; GitHub Actions exchanges its short-lived OIDC identity directly with
+npm. The workflow must not contain an npm publication token or expose
+`NPM_TOKEN`/`NODE_AUTH_TOKEN`. Its publication job pins an npm CLI release that
+supports Trusted Publishing and fails closed when the GitHub OIDC request
+environment is unavailable.
+
+The publish step runs:
 
 ```sh
 npm publish --provenance --access public --dry-run
