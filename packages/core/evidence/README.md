@@ -74,22 +74,16 @@ or lifecycle proof.
 Historical tags are never rewritten: later backfills remain explicitly labeled
 as backfills in the ledger.
 
-## Oryn 0.6.0 Canary
+## External-Consumer Canaries
 
-`oryn-candidate-canary.v0.6.0.json` is the redacted external-integration receipt
-for `REL-011`. It binds the packed `0.6.0` tarball hash, WorkIt and Oryn commits,
-real provider routing decisions, daemon-backed receipt round-trip, durable replay,
-and controlled retry-budget, deadline, and user-input-stop scenarios. The receipt
-retains environment warnings and limitations; it contains neither provider response
-bodies nor credentials. `release/oryn-candidate-canary.mjs` validates this receipt
-as part of `test:evidence`, and the evidence-source digest includes the receipt.
+`external-consumer-canary.v0.6.0.json` and
+`external-consumer-canary.v0.6.1.json` are sanitized packed-artifact receipts for
+`REL-011` and `REL-013`. They bind the WorkIt release commit and tarball hash to
+real provider quality fallback, durable receipt replay, bounded redaction,
+retry-budget, aggregate-deadline, and user-input-stop assertions.
 
-## Oryn 0.6.1 Hardening Canary
-
-`oryn-hardening-canary.v0.6.1.json` is the redacted packed-artifact receipt for
-`REL-013`. It binds the deterministic `0.6.1` tarball to the WorkIt release
-commit, Oryn base commit, canary script, package manifest, and lockfile hashes.
-The real provider quality fallback and daemon-backed durable replay passed,
-along with controlled retry-budget, aggregate-deadline, and user-input-stop
-scenarios. `release/oryn-hardening-canary.mjs` validates the receipt during
-`test:evidence`.
+The public receipts intentionally exclude the consumer identity, repository,
+routes, provider and model names, response bodies, credentials, local addresses,
+and consumer-specific warnings. The corresponding `release/external-consumer-*`
+proofs validate both the runtime invariants and that those identifying fields do
+not reappear.

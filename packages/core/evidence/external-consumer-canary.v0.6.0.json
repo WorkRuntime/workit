@@ -1,0 +1,94 @@
+{
+  "artifact": "workit-external-consumer-canary",
+  "schemaVersion": 1,
+  "release": "0.6.0",
+  "capturedAt": "2026-08-17T19:00:29.581Z",
+  "source": {
+    "workitCommit": "077b5b138a591bb30218fb3e961a911e3bc74276",
+    "workitTarball": {
+      "file": "workit-core-0.6.0.tgz",
+      "sha256": "944746fd62814229401502b9e0c6003f126932ace31e0fd7fae45eda4f0e3256"
+    },
+    "externalHarnessSha256": "b0570f2a22ee2dfe12dd5a2e8e0c055c4a3b828bd730be49fe079b01d0af2846"
+  },
+  "toolchain": {
+    "node": "24.19.0",
+    "pnpm": "10.27.0",
+    "platform": "win32"
+  },
+  "environment": {
+    "externalConsumer": true,
+    "syntheticProvider": false,
+    "durableReceiptStore": true,
+    "credentialMaterialRecorded": false
+  },
+  "liveProviderBoundary": {
+    "providerCalls": 2,
+    "acceptedCandidateIndex": 1,
+    "decisions": [
+      {
+        "candidateIndex": 0,
+        "attempt": 1,
+        "outcome": "succeeded",
+        "decision": "quality_rejected",
+        "reasonCode": "canary_quality_ordinal_mismatch",
+        "metadataRedacted": true
+      },
+      {
+        "candidateIndex": 1,
+        "attempt": 1,
+        "outcome": "succeeded",
+        "decision": "accepted",
+        "reasonCode": null,
+        "metadataRedacted": true
+      }
+    ],
+    "evidenceLimit": 4,
+    "droppedEvidence": 0
+  },
+  "durableReplay": {
+    "recreatedRuntime": true,
+    "replayOperationCalls": 0,
+    "providerCallsAfterLiveExecution": 2,
+    "providerCallsAfterReplay": 2,
+    "receiptRoundTrip": true,
+    "receiptIdentityStable": true
+  },
+  "controlledBoundaryScenarios": {
+    "sharedRetryBudget": {
+      "status": "accepted",
+      "attempts": 2,
+      "spent": 1,
+      "limit": 1
+    },
+    "aggregateDeadline": {
+      "status": "terminal",
+      "reasonCode": "workit_timeout",
+      "elapsedMs": 32,
+      "configuredMs": 25
+    },
+    "requiresUserInput": {
+      "status": "requires_user_input",
+      "reasonCode": "provider_credential_required",
+      "candidateCalls": 1,
+      "fallbackStopped": true
+    }
+  },
+  "assertions": {
+    "liveAcceptedAfterQualityFallback": true,
+    "evidenceBounded": true,
+    "evidenceRedacted": true,
+    "durableReplaySkippedProvider": true,
+    "receiptRoundTrip": true,
+    "sharedRetryBudgetChargedOnce": true,
+    "aggregateDeadlineStoppedWork": true,
+    "userInputStoppedFallback": true,
+    "noUnhandledProcessFailure": true
+  },
+  "unexpectedProcessFailures": [],
+  "limitations": [
+    "This is one local external-consumer canary, not a production-load, multi-host, or long-duration soak result.",
+    "The receipt intentionally excludes the consumer identity, repository details, routes, provider names, model names, response bodies, credentials, and local service addresses.",
+    "Retry-budget, deadline, and requires-user-input faults are controlled boundary scenarios; provider quality fallback and durable replay crossed real external boundaries."
+  ]
+}

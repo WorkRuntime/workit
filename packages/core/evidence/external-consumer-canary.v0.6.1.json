@@ -1,0 +1,96 @@
+{
+  "artifact": "workit-external-consumer-canary",
+  "schemaVersion": 1,
+  "release": "0.6.1",
+  "capturedAt": "2026-08-28T08:00:37.846Z",
+  "source": {
+    "workitCommit": "a0bed6f1cc9a81cb309ea86c0cfcd151c2cffd87",
+    "workitTarball": {
+      "file": "workit-core-0.6.1.tgz",
+      "sha256": "3e0b385a8342df95fb638788d1bc333d4e1efc8b85e7a71839d6e0c0ee84a699"
+    },
+    "externalHarnessSha256": "b27af0667b048b28e0d5bbf93a3ab650058fd3e2b22503ea243c384d501ab33a",
+    "externalManifestSha256": "19d865ebad695ecf599104f50626709b10d503bb5b519c8e8fa198ad06e7e973",
+    "externalLockfileSha256": "db473fb8ffe73f50ca699a8a6171f5bc3133206a9b26958e11f6a335ebfa9393"
+  },
+  "toolchain": {
+    "node": "24.19.0",
+    "pnpm": "10.27.0",
+    "platform": "win32"
+  },
+  "environment": {
+    "externalConsumer": true,
+    "syntheticProvider": false,
+    "durableReceiptStore": true,
+    "credentialMaterialRecorded": false
+  },
+  "liveProviderBoundary": {
+    "providerCalls": 2,
+    "acceptedCandidateIndex": 1,
+    "decisions": [
+      {
+        "candidateIndex": 0,
+        "attempt": 1,
+        "outcome": "succeeded",
+        "decision": "quality_rejected",
+        "reasonCode": "canary_quality_ordinal_mismatch",
+        "metadataRedacted": true
+      },
+      {
+        "candidateIndex": 1,
+        "attempt": 1,
+        "outcome": "succeeded",
+        "decision": "accepted",
+        "reasonCode": null,
+        "metadataRedacted": true
+      }
+    ],
+    "evidenceLimit": 4,
+    "droppedEvidence": 0
+  },
+  "durableReplay": {
+    "recreatedRuntime": true,
+    "replayOperationCalls": 0,
+    "providerCallsAfterLiveExecution": 2,
+    "providerCallsAfterReplay": 2,
+    "receiptRoundTrip": true,
+    "receiptIdentityStable": true
+  },
+  "controlledBoundaryScenarios": {
+    "sharedRetryBudget": {
+      "status": "accepted",
+      "attempts": 2,
+      "spent": 1,
+      "limit": 1
+    },
+    "aggregateDeadline": {
+      "status": "terminal",
+      "reasonCode": "workit_timeout",
+      "elapsedMs": 31,
+      "configuredMs": 25
+    },
+    "requiresUserInput": {
+      "status": "requires_user_input",
+      "reasonCode": "provider_credential_required",
+      "candidateCalls": 1,
+      "fallbackStopped": true
+    }
+  },
+  "assertions": {
+    "liveAcceptedAfterQualityFallback": true,
+    "evidenceBounded": true,
+    "evidenceRedacted": true,
+    "durableReplaySkippedProvider": true,
+    "receiptRoundTrip": true,
+    "sharedRetryBudgetChargedOnce": true,
+    "aggregateDeadlineStoppedWork": true,
+    "userInputStoppedFallback": true,
+    "noUnhandledProcessFailure": true
+  },
+  "unexpectedProcessFailures": [],
+  "limitations": [
+    "This is one local external-consumer canary, not a production-load, multi-host, or long-duration soak result.",
+    "The receipt intentionally excludes the consumer identity, repository details, routes, provider names, model names, response bodies, credentials, and local service addresses.",
+    "Retry-budget, deadline, and requires-user-input faults are controlled boundary scenarios; provider quality fallback and durable replay crossed real external boundaries."
+  ]
+}

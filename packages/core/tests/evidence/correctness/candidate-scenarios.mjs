@@ -25,7 +25,7 @@ await suite.proof(
     return {
       ok: reports.every((report) => report.status === "pass"),
       reports,
-      limitation: "These are bounded in-process operational fixtures, not a provider, durable-store, or Oryn production canary.",
+      limitation: "These are bounded in-process operational fixtures, not a provider, durable-store, distributed-system, or production canary.",
     };
   },
 );
