@@ -10,6 +10,8 @@ import { createSuite } from "../harness.mjs";
 
 const suite = createSuite("release");
 const root = new URL("../../../", import.meta.url);
+const HARDENED_RELEASE_VERSIONS = new Set(["0.6.1", "1.0.0"]);
+const COMPATIBILITY_BASELINES = new Set(["0.6.0", "0.6.1"]);
 
 await suite.proof(
   "REL-012",
@@ -39,11 +41,15 @@ await suite.proof(
       (fixture) => fixture.id === "slow-consumer-stream-memory",
     );
 
+    const compatibilityBaseline = compatibilityGate.match(
+      /BASELINE_VERSION = "(?<version>[^"]+)"/u,
+    )?.groups?.version;
+
     return {
-      ok: packageJson.version === "0.6.1"
+      ok: HARDENED_RELEASE_VERSIONS.has(packageJson.version)
         && snapshot.files?.length === 31
         && declarationGate.includes("public-declarations.snapshot.json")
-        && compatibilityGate.includes('BASELINE_VERSION = "0.6.0"')
+        && COMPATIBILITY_BASELINES.has(compatibilityBaseline)
         && reproducibilityGate.includes("two clean builds produced different package bytes")
         && ci.includes('node-version: ["20.11.1", "22.x", "24.x"]')
         && logicalFixture?.minimumLogicalItemsPerSecond === 50_000_000
@@ -54,7 +60,7 @@ await suite.proof(
         && nightlyProperty.includes('WORKIT_PROPERTY_SEED_OFFSET: ${{ github.run_number }}'),
       version: packageJson.version,
       declarationFiles: snapshot.files?.length,
-      compatibilityBaseline: "0.6.0",
+      compatibilityBaseline,
       nodeMatrix: ["20.11.1", "22.x", "24.x"],
       minimumLogicalItemsPerSecond: logicalFixture?.minimumLogicalItemsPerSecond,
       maximumHeapGrowthBytes: streamFixture?.maximumHeapGrowthBytes,

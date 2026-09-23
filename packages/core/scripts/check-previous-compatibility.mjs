@@ -14,11 +14,11 @@ import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-const BASELINE_VERSION = "0.6.0";
+const BASELINE_VERSION = "0.6.1";
 const OPENTELEMETRY_VERSION = "1.9.1";
 const PACKAGE_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const FIXTURE_PATH = fileURLToPath(
-  new URL("./compatibility-fixtures/v0.6.0-consumer.ts", import.meta.url),
+  new URL(`./compatibility-fixtures/v${BASELINE_VERSION}-consumer.ts`, import.meta.url),
 );
 const require = createRequire(import.meta.url);
 const TYPESCRIPT_CLI = require.resolve("typescript/bin/tsc");
@@ -57,9 +57,21 @@ try {
   );
   const current = await installAndInspect(join(tempRoot, "current"), currentTarball);
 
-  assert.deepEqual(current.esmExports, previous.esmExports, "ESM runtime exports changed from 0.6.0");
-  assert.deepEqual(current.cjsExports, previous.cjsExports, "CommonJS runtime exports changed from 0.6.0");
-  assert.deepEqual(current.declarations, previous.declarations, "TypeScript declarations changed from 0.6.0");
+  assert.deepEqual(
+    current.esmExports,
+    previous.esmExports,
+    `ESM runtime exports changed from ${BASELINE_VERSION}`,
+  );
+  assert.deepEqual(
+    current.cjsExports,
+    previous.cjsExports,
+    `CommonJS runtime exports changed from ${BASELINE_VERSION}`,
+  );
+  assert.deepEqual(
+    current.declarations,
+    previous.declarations,
+    `TypeScript declarations changed from ${BASELINE_VERSION}`,
+  );
 
   process.stdout.write(JSON.stringify({
     previousCompatibility: "ok",

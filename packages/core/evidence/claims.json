@@ -427,7 +427,7 @@
       "proof": "tests/evidence/correctness/candidate-scenarios.mjs",
       "command": "npm run test:evidence",
       "expectedInvariant": "quality fallback, caller-owned idempotency, user-input stops, and cooperative cancellation preserve their declared boundaries",
-      "limitations": "These are bounded in-process fixtures, not a real provider, durable-store, distributed-system, or Oryn production canary."
+      "limitations": "These are bounded in-process fixtures, not a real provider, durable-store, distributed-system, or production canary."
     },
     {
       "id": "SEC-001",
@@ -555,16 +555,16 @@
     },
     {
       "id": "REL-011",
-      "title": "Oryn real integration canary gates the 0.6.0 publication",
+      "title": "external-consumer canary gates the 0.6.0 publication",
       "class": "release",
       "status": "proven",
       "releaseBlocking": true,
-      "proof": "tests/evidence/release/oryn-candidate-canary.mjs",
+      "proof": "tests/evidence/release/external-consumer-canary-0.6.0.mjs",
       "command": "npm run test:evidence",
-      "expectedInvariant": "Oryn exercises firstAcceptable against its real provider boundary and caller-owned durable idempotency, preserving quality fallback, retry budget, aggregate deadline, cancellation, user-input stop, and bounded redacted evidence before v0.6.0 is tagged",
-      "limitations": "One local Oryn edge/daemon canary crossed real Ollama provider and daemon receipt boundaries. It is not a production-load, multi-host, or long-duration soak result; retry-budget, deadline, and requires-user-input faults remain controlled boundary scenarios.",
+      "expectedInvariant": "an external consumer exercises firstAcceptable against a real provider boundary and caller-owned durable idempotency, preserving quality fallback, retry budget, aggregate deadline, cancellation, user-input stop, and bounded redacted evidence before v0.6.0 is tagged",
+      "limitations": "One local external-consumer canary crossed real provider and durable-receipt boundaries. It is not a production-load, multi-host, or long-duration soak result; retry-budget, deadline, and requires-user-input faults remain controlled boundary scenarios.",
       "verifiedFor": "0.6.0",
-      "ledgerNote": "Resolved by the redacted receipt in evidence/oryn-candidate-canary.v0.6.0.json, bound to WorkIt commit 077b5b1, Oryn commit 2e8c7b2, and the packed tarball SHA-256."
+      "ledgerNote": "Resolved by the sanitized receipt in evidence/external-consumer-canary.v0.6.0.json, bound to WorkIt commit 077b5b1 and the packed tarball SHA-256. Consumer identity and implementation details are intentionally excluded."
     },
     {
       "id": "REL-012",
@@ -579,16 +579,40 @@
     },
     {
       "id": "REL-013",
-      "title": "Oryn real integration canary gates the 0.6.1 publication",
+      "title": "external-consumer canary gates the 0.6.1 publication",
       "class": "release",
       "status": "proven",
       "releaseBlocking": true,
-      "proof": "tests/evidence/release/oryn-hardening-canary.mjs",
+      "proof": "tests/evidence/release/external-consumer-canary-0.6.1.mjs",
       "command": "npm run test:evidence",
-      "expectedInvariant": "Oryn exercises the packed 0.6.1 artifact against its real provider and daemon boundaries while preserving quality fallback, durable replay, retry budget, aggregate deadline, user-input stop, and bounded redacted evidence",
-      "limitations": "One local Oryn edge/daemon canary crossed real Ollama provider and daemon receipt boundaries. It is not a production-load, multi-host, or long-duration soak result; retry-budget, deadline, and requires-user-input faults remain controlled boundary scenarios.",
+      "expectedInvariant": "an external consumer exercises the packed 0.6.1 artifact against real provider and durable-receipt boundaries while preserving quality fallback, durable replay, retry budget, aggregate deadline, user-input stop, and bounded redacted evidence",
+      "limitations": "One local external-consumer canary crossed real provider and durable-receipt boundaries. It is not a production-load, multi-host, or long-duration soak result; retry-budget, deadline, and requires-user-input faults remain controlled boundary scenarios.",
       "verifiedFor": "0.6.1",
-      "ledgerNote": "Resolved by the redacted receipt in evidence/oryn-hardening-canary.v0.6.1.json, bound to WorkIt commit a0bed6f, Oryn base commit 2e8c7b2, the canary dependency files, script, and packed tarball SHA-256."
+      "ledgerNote": "Resolved by the sanitized receipt in evidence/external-consumer-canary.v0.6.1.json, bound to WorkIt commit a0bed6f, the external harness inputs, and the packed tarball SHA-256. Consumer identity and implementation details are intentionally excluded."
+    },
+    {
+      "id": "REL-014",
+      "title": "1.0 freezes the documented package surface",
+      "class": "release",
+      "status": "proven",
+      "proof": "tests/evidence/release/one-zero-contracts.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "the 1.0 package declares all 16 entrypoints stable and checks runtime exports and declarations against 0.6.1",
+      "limitations": "The compatibility gate proves the published JavaScript exports and generated declarations are unchanged from 0.6.1. Behavioral compatibility remains bounded by the documented contracts and executable consumer fixtures.",
+      "verifiedFor": "1.0.0"
+    },
+    {
+      "id": "REL-015",
+      "title": "external-consumer packed-artifact canary gates the 1.0.0 publication",
+      "class": "release",
+      "status": "proven",
+      "releaseBlocking": true,
+      "proof": "tests/evidence/release/external-consumer-canary-1.0.0.mjs",
+      "command": "npm run test:evidence",
+      "expectedInvariant": "an external consumer exercises the final packed 1.0.0 artifact across real provider and durable-receipt boundaries before the release tag is created",
+      "limitations": "One local external-consumer canary crossed a real provider boundary and durable receipt store. Both candidate strategies used the same provider, so this proves sequential semantic fallback but not multi-provider redundancy; a separately authorized provider route was environment-blocked and excluded from the passing assertion.",
+      "verifiedFor": "1.0.0",
+      "ledgerNote": "Resolved by the sanitized receipt in evidence/external-consumer-canary.v1.0.0.json, bound to WorkIt source commit 64e7199 and tarball SHA-256 c97f40318a7649d8a6c1fc428ca47ebe3bedc09606a7bea32147e08e09e28a0c. No consumer identity, route, provider, model, response body, credential, or local address is retained."
     },
     {
       "id": "PERF-001",

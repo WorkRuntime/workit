@@ -327,9 +327,11 @@ ownership helpers live behind explicit subpaths.
 
 ### Public Stability Contract
 
-The `0.6.1` hardening release freezes all currently published paths for the 1.0
-contract. Stability covers their documented public declarations and runtime
-exports; it does not expand the explicit boundaries below.
+The `1.0.0` release freezes all currently published paths. Stability covers
+their documented public declarations and runtime exports; it does not expand
+the explicit boundaries below. Patch releases preserve this public contract,
+minor releases add backward-compatible capabilities, and breaking public API
+changes require a new major release.
 
 | Public path | 1.0 classification | Explicit boundary |
 |---|---|---|
@@ -377,8 +379,9 @@ mutable service container or process-global registry.
 
 ### Candidate Selection
 
-> Available since `0.6.0`. Its release evidence includes the real Oryn provider
-> and durable-idempotency boundary canary recorded by claim `REL-011`.
+> Available since `0.6.0`. Its release evidence includes a redacted external-
+> consumer provider and durable-idempotency boundary canary recorded by claim
+> `REL-011`; the consumer identity and implementation details are not published.
 
 `@workit/core/candidates` separates transport success, semantic quality, and
 failure policy. Candidates run sequentially in caller order. WorkIt's built-in
@@ -800,9 +803,9 @@ thresholds, not exact milliseconds.
 
 | Evidence | Current result |
 |---|---:|
-| Unit and property tests | 410 passing in the 0.6.1 release verification |
-| Coverage gate | 100% statements (2,917/2,917), branches (1,847/1,847), functions (692/692), lines (2,811/2,811) |
-| Claim ledger | 59 proven claims / 2 recorded product decisions |
+| Unit and property tests | 417 passing in the 1.0.0 release verification |
+| Coverage gate | 100% statements (2,960/2,960), branches (1,869/1,869), functions (702/702), lines (2,849/2,849) |
+| Claim ledger | 61 proven claims / 2 recorded product decisions |
 | Runtime dependencies | 0 |
 | Article benchmark suite | 19/19 passing |
 | Core group import | 13,807 B minified / 4,842 B gzip |
@@ -990,9 +993,9 @@ WorkIt follows semver with a stricter release discipline:
   documentation.
 - The root `@workit/core` import remains size-disciplined. New heavier
   capabilities should live in subpaths or companion packages.
-- `1.0.0` will mark a frozen public API and long-term compatibility policy, not
-  a shortcut for credibility. Current `0.x` releases are validated and usable,
-  with changes managed through semver and release notes.
+- `1.0.0` freezes the documented public API. Patch releases preserve the public
+  contract, minor releases add backward-compatible capabilities, and breaking
+  public API changes require a new major release.
 
 ## Citation
 
@@ -1005,7 +1008,7 @@ cite the software release you used:
   title = {WorkIt: A TypeScript Structured Concurrency Runtime for Node.js Server Runtimes},
   year = {2026},
   url = {https://github.com/WorkRuntime/workit},
-  version = {0.6.1},
+  version = {1.0.0},
   license = {Apache-2.0}
 }
 ```

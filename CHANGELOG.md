@@ -7,6 +7,24 @@ SPDX-License-Identifier: Apache-2.0
 
 ## Unreleased
 
+## 1.0.0
+
+- Freeze the 16 documented package entrypoints and their public TypeScript and
+  runtime export surface without adding a new feature family after `0.6.1`.
+- Establish the long-term semver contract: patches preserve public behavior,
+  minors add backward-compatible capabilities, and breaking public API changes
+  require a new major release.
+- Verify the packed package against the immediate `0.6.1` predecessor across
+  ESM, CommonJS, strict TypeScript declarations, supported Node release lines,
+  framework consumers, and deterministic packaging.
+- Publish every entrypoint with an explicit stability classification and keep
+  browser/edge execution, unbounded channels, worker pooling, durable in-flight
+  resume, workflow DSLs, and distributed queues outside the 1.0 contract.
+- Add the executable AI Failure Lab and incident decision gate while keeping
+  the published runtime implementation unchanged from `0.6.1`.
+- Keep release evidence, vulnerability checks, SBOM validation, signed tags,
+  and npm provenance as mandatory publication gates.
+
 ## 0.6.1
 
 - Correct public documentation that still described the already-published

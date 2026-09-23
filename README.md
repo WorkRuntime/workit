@@ -123,9 +123,9 @@ WorkIt follows semver with a stricter release discipline:
   documentation.
 - The root `@workit/core` import remains size-disciplined. New heavier
   capabilities should live in subpaths or companion packages.
-- `1.0.0` will mark a frozen public API and long-term compatibility policy, not
-  a shortcut for credibility. Current `0.x` releases are validated and usable,
-  with changes managed through semver and release notes.
+- `1.0.0` freezes the documented public API. Patch releases preserve the public
+  contract, minor releases add backward-compatible capabilities, and breaking
+  public API changes require a new major release.
 
 ## Citation
 
@@ -138,7 +138,7 @@ cite the software release you used:
   title = {WorkIt: A TypeScript Structured Concurrency Runtime for Node.js Server Runtimes},
   year = {2026},
   url = {https://github.com/WorkRuntime/workit},
-  version = {0.6.1},
+  version = {1.0.0},
   license = {Apache-2.0}
 }
 ```
