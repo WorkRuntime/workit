@@ -49,6 +49,8 @@ jobs:
     name: Verify and publish
     runs-on: ubuntu-latest
     needs: node-compatibility
+    env:
+      TRUSTED_PUBLISHING_NPM_VERSION: "12.1.0"
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
@@ -60,7 +62,17 @@ jobs:
         with:
           node-version: "22.x"
           registry-url: https://registry.npmjs.org
-          cache: npm
+
+      - name: Install trusted-publishing npm client
+        shell: bash
+        run: npm install --global "npm@$TRUSTED_PUBLISHING_NPM_VERSION"
+
+      - name: Verify trusted-publishing environment
+        shell: bash
+        run: |
+          test "$(npm --version)" = "$TRUSTED_PUBLISHING_NPM_VERSION"
+          test -n "$ACTIONS_ID_TOKEN_REQUEST_URL"
+          test -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
@@ -99,11 +111,7 @@ jobs:
       - name: Publish dry run
         if: inputs.dry_run == 'true'
         run: npm publish --workspace @workit/core --provenance --access public --dry-run
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish
         if: inputs.dry_run == 'false'
         run: npm publish --workspace @workit/core --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

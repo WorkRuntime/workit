@@ -52,6 +52,31 @@ assert.ok(packageJson.files.includes("SECURITY.md"), "published package must inc
 assert.ok(packageJson.files.includes("CONTRIBUTING.md"), "published package must include CONTRIBUTING.md");
 assert.match(workflow, /id-token:\s*write/u, "release workflow must allow OIDC id-token provenance");
 assert.match(workflow, /attestations:\s*write/u, "release workflow must allow GitHub artifact attestations");
+assert.doesNotMatch(
+  workflow,
+  /(?:NPM_TOKEN|NODE_AUTH_TOKEN|secrets\.[A-Z0-9_]*NPM[A-Z0-9_]*)/u,
+  "release workflow must use npm Trusted Publishing instead of persistent npm credentials"
+);
+const trustedPublishingNpmVersion = readPinnedNpmVersion(workflow);
+assert.ok(
+  compareVersions(trustedPublishingNpmVersion, "11.5.1") >= 0,
+  `npm Trusted Publishing requires npm >=11.5.1, found ${trustedPublishingNpmVersion}`
+);
+assert.match(
+  workflow,
+  /npm install --global "npm@\$TRUSTED_PUBLISHING_NPM_VERSION"/u,
+  "release workflow must install the pinned Trusted Publishing npm client"
+);
+assert.match(
+  workflow,
+  /test -n "\$ACTIONS_ID_TOKEN_REQUEST_URL"/u,
+  "release workflow must fail closed when the GitHub OIDC request URL is unavailable"
+);
+assert.match(
+  workflow,
+  /test -n "\$ACTIONS_ID_TOKEN_REQUEST_TOKEN"/u,
+  "release workflow must fail closed when the GitHub OIDC request token is unavailable"
+);
 assert.match(workflow, /npm publish --workspace @workit\/core --provenance --access public/u, "release workflow must publish @workit/core with npm provenance");
 assert.match(workflow, /npm run verify/u, "release workflow must run full verification before publish");
 assert.match(workflow, /npm run test:coverage/u, "release workflow must run coverage before publish");
@@ -118,6 +143,22 @@ function assertShaPinnedActions(path, text) {
       `${path} must pin ${match[1]} to a full commit SHA, found ${match[2]}`
     );
   }
+}
+
+function readPinnedNpmVersion(text) {
+  const match = text.match(/TRUSTED_PUBLISHING_NPM_VERSION:\s*"(?<version>\d+\.\d+\.\d+)"/u);
+  assert.ok(match?.groups?.version, "release workflow must pin the npm Trusted Publishing client");
+  return match.groups.version;
+}
+
+function compareVersions(left, right) {
+  const leftParts = left.split(".").map(Number);
+  const rightParts = right.split(".").map(Number);
+  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (difference !== 0) return Math.sign(difference);
+  }
+  return 0;
 }
 
 async function assertExistingTagsAreSigned() {
