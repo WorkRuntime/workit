@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { parseSingleNpmPackResult } from "./npm-pack-result.mjs";
 
 const BASELINE_VERSION = "0.6.1";
 const OPENTELEMETRY_VERSION = "1.9.1";
@@ -48,7 +49,7 @@ try {
   const packDirectory = join(tempRoot, "package");
   await mkdir(packDirectory, { recursive: true });
   const { stdout } = await runNpm(["pack", "--json", "--pack-destination", packDirectory], PACKAGE_ROOT);
-  const [pack] = JSON.parse(stdout);
+  const pack = parseSingleNpmPackResult(stdout);
   const currentTarball = join(packDirectory, pack.filename);
 
   const previous = await installAndInspect(
