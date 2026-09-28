@@ -210,6 +210,7 @@
     "sample:no-orphan": "npm run build && node samples/no-orphan.sample.js",
     "sample:all": "npm run build && node samples/safer-promise-all.sample.js",
     "sample:agent": "npm run build && node samples/agent-tree-cancel.sample.js",
+    "sample:agent-tool-budget": "npm run build && node samples/agent-tool-loop-budget.sample.js",
     "sample:race": "npm run build && node samples/race-providers.sample.js",
     "sample:incident-gate": "npm run build && node samples/incident-decision-gate.sample.js",
     "sample:rag": "npm run build && node samples/budget-rag.sample.js",

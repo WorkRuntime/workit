@@ -59,6 +59,7 @@
     "sample:no-orphan": "npm --workspace @workit/core run sample:no-orphan",
     "sample:all": "npm --workspace @workit/core run sample:all",
     "sample:agent": "npm --workspace @workit/core run sample:agent",
+    "sample:agent-tool-budget": "npm --workspace @workit/core run sample:agent-tool-budget",
     "sample:race": "npm --workspace @workit/core run sample:race",
     "sample:incident-gate": "npm --workspace @workit/core run sample:incident-gate",
     "sample:rag": "npm --workspace @workit/core run sample:rag",
