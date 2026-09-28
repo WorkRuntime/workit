@@ -53,7 +53,7 @@ not calibrated model scores or proof of factual truth. WorkIt exposes the
 decision boundary; application authorization and external side effects remain
 caller-owned.
 
-Run the same tracked datasets through the published `@workit/core@0.6.1`
+Run the same tracked datasets through the published `@workit/core@1.0.0`
 package in Node.js:
 
 ```sh

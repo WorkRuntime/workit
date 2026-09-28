@@ -6,7 +6,7 @@
  */
 
 export const LAB_DEVCONTAINER_PATH = "examples/ai-failure-lab/.devcontainer/devcontainer.json";
-export const WORKIT_RUNTIME_VERSION = "0.6.1";
+export const WORKIT_RUNTIME_VERSION = "1.0.0";
 
 const codespacesUrl = new URL("https://codespaces.new/WorkRuntime/workit");
 codespacesUrl.searchParams.set("devcontainer_path", LAB_DEVCONTAINER_PATH);
