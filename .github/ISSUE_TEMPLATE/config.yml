@@ -1,0 +1,8 @@
+# Author: Admilson B. F. Cossa
+# SPDX-License-Identifier: Apache-2.0
+
+blank_issues_enabled: false
+contact_links:
+  - name: Private security report
+    url: https://github.com/WorkRuntime/workit/blob/main/SECURITY.md
+    about: Do not disclose vulnerabilities, credentials, or tenant-sensitive evidence in a public issue.

@@ -1,0 +1,73 @@
+# Author: Admilson B. F. Cossa
+# SPDX-License-Identifier: Apache-2.0
+
+name: Bug report
+description: Report a reproducible WorkIt runtime, packaging, or documentation defect.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report security vulnerabilities here. Follow `SECURITY.md` for private disclosure.
+
+  - type: input
+    id: version
+    attributes:
+      label: WorkIt version or commit
+      placeholder: "@workit/core@1.0.0 or commit SHA"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Runtime environment
+      description: Include Node.js version, operating system, architecture, and package entrypoint.
+      placeholder: "Node 24.x, Windows x64, @workit/core/candidates"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Provide the smallest runnable example and exact command. Remove credentials and private data.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+      description: Include the terminal outcome, cancellation reason, cleanup result, or package error.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected invariant
+      description: State the runtime or package contract you expected to hold.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Redacted evidence
+      description: Add relevant receipts, events, stack traces, or benchmark output without secrets or payload bodies.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Reporter checks
+      options:
+        - label: I searched existing issues and release notes.
+          required: true
+        - label: This report contains no credentials, tokens, or tenant-sensitive data.
+          required: true
+        - label: This is not a private security disclosure.
+          required: true
