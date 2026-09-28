@@ -1,0 +1,65 @@
+# Author: Admilson B. F. Cossa
+# SPDX-License-Identifier: Apache-2.0
+
+name: Feature proposal
+description: Propose a bounded capability with an explicit owner and evidence plan.
+title: "proposal: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: Describe the concrete failure mode or integration gap without prescribing an API first.
+    validations:
+      required: true
+
+  - type: textarea
+    id: current_owner
+    attributes:
+      label: Existing owner
+      description: Explain which current WorkIt surface is closest and why it cannot own the complete behavior.
+      placeholder: "./resources, ./activity, ./candidates, work(), runAgent(), or none"
+    validations:
+      required: true
+
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Proposed boundary
+      description: State whether this belongs in an existing subpath, an additive subpath, or a companion package.
+    validations:
+      required: true
+
+  - type: textarea
+    id: lifecycle
+    attributes:
+      label: Lifecycle semantics
+      description: Describe ownership, cancellation, cleanup, retries, deadlines, budgets, and terminal outcomes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility and cost
+      description: Describe public API, root size, runtime dependencies, platform support, and migration impact.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence plan
+      description: List the unit, property, fault, installed-package, performance, and real-world checks required before release.
+    validations:
+      required: true
+
+  - type: textarea
+    id: limitations
+    attributes:
+      label: Explicit non-goals
+      description: State what the proposal will not prove or support.
+    validations:
+      required: true
