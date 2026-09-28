@@ -24,6 +24,16 @@ interface AgentTreeCancelResult {
   cleanups: string[];
 }
 
+interface AgentToolLoopBudgetResult {
+  sample: "agent-tool-loop-budget";
+  requestedToolCalls: number;
+  admittedToolCalls: number;
+  stoppedBeforeCall: number;
+  budget: { spent: number; limit: number; unit: string };
+  terminalReason: string;
+  eventTypes: string[];
+}
+
 interface ConversationAgentResult {
   sample: "conversation-agent";
   tokens: string[];
@@ -79,6 +89,7 @@ function sample<T>(id: string): SampleSnapshot<T> {
   return snapshot as SampleSnapshot<T>;
 }
 
+const toolLoopEvidence = sample<AgentToolLoopBudgetResult>("agent-tool-loop-budget");
 const agentEvidence = sample<AgentTreeCancelResult>("agent-tree-cancel");
 const conversationEvidence = sample<ConversationAgentResult>("conversation-agent");
 const raceEvidence = sample<RaceProvidersResult>("race-providers");
@@ -95,10 +106,124 @@ function sampleEvents(snapshot: SampleSnapshot<{ sample: string }>, fields: stri
 
 export const useCases: UseCase[] = [
   {
+    id: "agent-tool-loop-budget",
+    title: "The agent called the same tool again. And again.",
+    audience: "Agents and coding tools",
+    summary: "The model requests six searches. WorkIt admits three and blocks the fourth before the tool body runs.",
+    pain: "A prompt can ask a model to stop repeating a tool, but a prompt is not an execution limit. A stuck loop can continue spending tokens, making requests, and repeating side effects.",
+    answer: "Charge each admitted tool call against the agent scope. When the shared limit is exhausted, WorkIt cancels the owner before another tool body executes.",
+    primarySample: toolLoopEvidence.path,
+    features: [
+      { label: "tool-call budget", reason: "The limit lives at the execution boundary, not inside the prompt.", tone: "amber" },
+      { label: "pre-execution admission", reason: "The fourth tool body never starts.", tone: "coral" },
+      { label: "typed cancellation", reason: "The terminal reason identifies the exhausted budget.", tone: "emerald" },
+      { label: "bounded evidence", reason: "Requested, admitted, and rejected calls remain explicit.", tone: "cobalt" },
+    ],
+    flow: [
+      { userAction: "The agent plans six identical searches", runtimeOwner: "agent.loop", feature: "untrusted model intent" },
+      { userAction: "Search calls 1-3 request admission", runtimeOwner: "AgentToolCalls", feature: "atomic budget charge" },
+      { userAction: "Three tool bodies execute", runtimeOwner: "search_documentation", feature: "admitted work" },
+      { userAction: "Search call 4 exceeds the limit", runtimeOwner: "AgentToolCalls", feature: "budget cancellation" },
+      { userAction: "Calls 4-6 perform no tool work", runtimeOwner: "agent.loop", feature: "bounded terminal outcome" },
+    ],
+    runtimeTree: [
+      {
+        id: "tool-loop",
+        label: "agent.loop",
+        kind: "scope",
+        statusByPhase: { idle: "waiting", running: "running", completed: "cancelled", aborted: "cancelled" },
+        children: [
+          {
+            id: "tool-call-1",
+            label: "search.call.1",
+            kind: "tool",
+            statusByPhase: { idle: "waiting", running: "done", completed: "done", aborted: "done" },
+          },
+          {
+            id: "tool-call-2",
+            label: "search.call.2",
+            kind: "tool",
+            statusByPhase: { idle: "waiting", running: "done", completed: "done", aborted: "done" },
+          },
+          {
+            id: "tool-call-3",
+            label: "search.call.3",
+            kind: "tool",
+            statusByPhase: { idle: "waiting", running: "done", completed: "done", aborted: "done" },
+          },
+          {
+            id: "tool-call-4",
+            label: "search.call.4",
+            kind: "tool",
+            statusByPhase: { idle: "waiting", running: "running", completed: "cancelled", aborted: "cancelled" },
+          },
+          {
+            id: "tool-budget",
+            label: "tool.calls 3/3",
+            kind: "budget",
+            statusByPhase: { idle: "waiting", running: "running", completed: "cancelled", aborted: "cancelled" },
+          },
+        ],
+      },
+    ],
+    events: {
+      idle: sampleEvents(toolLoopEvidence, ["status: ready"]),
+      running: sampleEvents(toolLoopEvidence, [
+        `requestedToolCalls: ${toolLoopEvidence.result.requestedToolCalls}`,
+        `admittedToolCalls: ${toolLoopEvidence.result.admittedToolCalls}`,
+        `stoppedBeforeCall: ${toolLoopEvidence.result.stoppedBeforeCall}`,
+      ]),
+      completed: sampleEvents(toolLoopEvidence, [
+        `requestedToolCalls: ${toolLoopEvidence.result.requestedToolCalls}`,
+        `admittedToolCalls: ${toolLoopEvidence.result.admittedToolCalls}`,
+        `stoppedBeforeCall: ${toolLoopEvidence.result.stoppedBeforeCall}`,
+        `terminalReason: ${toolLoopEvidence.result.terminalReason}`,
+      ]),
+      aborted: sampleEvents(toolLoopEvidence, [
+        `admittedToolCalls: ${toolLoopEvidence.result.admittedToolCalls}`,
+        `terminalReason: ${toolLoopEvidence.result.terminalReason}`,
+      ]),
+    },
+    receipt: {
+      idle: [`sample: ${toolLoopEvidence.result.sample}`, `source: ${toolLoopEvidence.path}`],
+      running: [
+        `budget: ${toolLoopEvidence.result.budget.spent}/${toolLoopEvidence.result.budget.limit}`,
+        `admittedToolCalls: ${toolLoopEvidence.result.admittedToolCalls}`,
+      ],
+      completed: [
+        `requestedToolCalls: ${toolLoopEvidence.result.requestedToolCalls}`,
+        `admittedToolCalls: ${toolLoopEvidence.result.admittedToolCalls}`,
+        `stoppedBeforeCall: ${toolLoopEvidence.result.stoppedBeforeCall}`,
+        `budget: ${toolLoopEvidence.result.budget.spent}/${toolLoopEvidence.result.budget.limit}`,
+        `terminalReason: ${toolLoopEvidence.result.terminalReason}`,
+      ],
+      aborted: [
+        `admittedToolCalls: ${toolLoopEvidence.result.admittedToolCalls}`,
+        `budget: ${toolLoopEvidence.result.budget.spent}/${toolLoopEvidence.result.budget.limit}`,
+        `terminalReason: ${toolLoopEvidence.result.terminalReason}`,
+      ],
+    },
+    evidence: [
+      {
+        claim: "A repeated agent tool loop stops at its caller-owned limit.",
+        path: "packages/core/samples/agent-tool-loop-budget.sample.js",
+        invariant: "six calls are requested, three execute, and the fourth body is never admitted.",
+        status: "tracked",
+      },
+      {
+        claim: "Agent tool budgets are charged before execution.",
+        path: "packages/core/tests/unit/ai.test.js",
+        invariant: "runAgent consumes the AgentToolCalls budget through the owning context.",
+        status: "tracked",
+      },
+    ],
+    code: toolLoopEvidence.source,
+  },
+  {
     id: "vibe-coding-agent",
-    title: "Vibe coding agent",
-    audience: "AI coding tools",
-    summary: "A user changes direction while the agent is editing, testing, and analyzing the repo.",
+    title: "You clicked Stop. The coding agent kept working.",
+    audience: "Coding agents",
+    summary: "One cancellation reaches search, browser, and code tools, then waits for their cleanup.",
     pain: "A coding turn is a tree of searches, edits, shell commands, LLM calls, and cleanup. Without one owner, old work can keep running after the user redirects.",
     answer: "Run each turn inside one WorkIt scope. Child tasks inherit cancellation, cleanup, context, and diagnostics from the turn owner.",
     primarySample: agentEvidence.path,
@@ -206,7 +331,7 @@ export const useCases: UseCase[] = [
   },
   {
     id: "conversation-agent",
-    title: "Conversation agent",
+    title: "The reply finished. Are its tools still running?",
     audience: "LLM chat runtimes",
     summary: "A chat turn streams tokens, calls tools, stores memory, and must stop when the next turn supersedes it.",
     pain: "Most chat code treats a turn like one promise, but real turns contain streaming, tool fanout, memory writes, and cleanup.",
@@ -319,7 +444,7 @@ export const useCases: UseCase[] = [
   },
   {
     id: "provider-fallback",
-    title: "LLM provider fallback",
+    title: "One provider won. The others kept billing.",
     audience: "AI platform teams",
     summary: "Race providers for latency while making sure losing requests do not keep burning tokens.",
     pain: "Promise.race returns the first result, but the slower provider calls may still run unless every adapter cooperates manually.",
@@ -410,7 +535,7 @@ export const useCases: UseCase[] = [
   },
   {
     id: "incident-decision-gate",
-    title: "Auditable incident decision gate",
+    title: "The model wants to roll back production.",
     audience: "AI platform and SRE teams",
     summary: "Select a grounded incident recommendation, bound retries, and stop production mutations for operator authority.",
     pain: "A model can return a plausible 200 OK diagnosis with no supporting telemetry, while an automatic fallback may propose a dangerous production change. Transport success alone cannot authorize incident response.",
@@ -525,7 +650,7 @@ export const useCases: UseCase[] = [
   },
   {
     id: "rag-pipeline",
-    title: "RAG answer pipeline",
+    title: "A RAG answer should not have a blank check.",
     audience: "Knowledge systems",
     summary: "Rewrite, embed, retrieve, rerank, synthesize, and audit under one bounded request owner.",
     pain: "RAG often combines unrelated async work with different costs, latencies, and cleanup obligations.",

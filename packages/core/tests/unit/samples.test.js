@@ -101,6 +101,19 @@ test("sample: agent tree cancellation cancels every tool and runs cleanup", asyn
   assert.equal(result.reason.tag, "user_stopped_agent");
 });
 
+test("sample: agent tool budget stops the loop before excess tool work", async () => {
+  const result = await runSample("samples/agent-tool-loop-budget.sample.js");
+
+  assert.equal(result.sample, "agent-tool-loop-budget");
+  assert.equal(result.requestedToolCalls, 6);
+  assert.equal(result.admittedToolCalls, 3);
+  assert.equal(result.stoppedBeforeCall, 4);
+  assert.deepEqual(result.budget, { spent: 3, limit: 3, unit: "tool_calls" });
+  assert.equal(result.terminalReason, "budget_exceeded");
+  assert.equal(result.eventTypes.filter((type) => type === "agent:tool_succeeded").length, 3);
+  assert.equal(result.eventTypes.at(-1), "agent:failed");
+});
+
 test("sample: provider race returns winner and cancels losers", async () => {
   const result = await runSample("samples/race-providers.sample.js");
 

@@ -21,6 +21,26 @@ const snapshotsPath = resolve(siteRoot, "src", "data", "generated", "evidence-sn
 
 const exampleContracts = [
   {
+    id: "agent-tool-loop-budget",
+    sampleId: "agent-tool-loop-budget",
+    samplePath: "packages/core/samples/agent-tool-loop-budget.sample.js",
+    liveReceipt: [
+      "runtime: @workit/core",
+      "sample: agent-tool-loop-budget",
+      "requestedToolCalls: 6",
+      "admittedToolCalls: 3",
+      "stoppedBeforeCall: 4",
+      "budget: 3/3",
+      "terminalReason: budget_exceeded",
+    ],
+    liveEvents: [
+      "requestedToolCalls: 6",
+      "admittedToolCalls: 3",
+      "stoppedBeforeCall: 4",
+      "terminalReason: budget_exceeded",
+    ],
+  },
+  {
     id: "vibe-coding-agent",
     sampleId: "agent-tree-cancel",
     samplePath: "packages/core/samples/agent-tree-cancel.sample.js",
@@ -193,6 +213,32 @@ async function assertRuntimeApiUsesStaticFallbackOnPublicPages() {
   }
 }
 
+async function assertUseCaseDeepLinksAreStable() {
+  const { buildUseCaseRoute, resolveUseCaseId } = await import("../src/navigation/useCaseRoute.mjs");
+  const ids = exampleContracts.map(({ id }) => id);
+
+  assert.equal(
+    resolveUseCaseId("?example=incident-decision-gate", ids, "vibe-coding-agent"),
+    "incident-decision-gate",
+  );
+  assert.equal(
+    resolveUseCaseId("?example=unknown", ids, "vibe-coding-agent"),
+    "vibe-coding-agent",
+  );
+  assert.equal(
+    resolveUseCaseId("", ids, "vibe-coding-agent"),
+    "vibe-coding-agent",
+  );
+
+  const url = new URL(buildUseCaseRoute(
+    "https://workruntime.github.io/workit/?ref=article#use-cases",
+    "rag-pipeline",
+  ), "https://workruntime.github.io");
+  assert.equal(url.searchParams.get("example"), "rag-pipeline");
+  assert.equal(url.searchParams.get("ref"), "article");
+  assert.equal(url.hash, "#use-cases");
+}
+
 function assertUseCaseLinesMatchSnapshot(useCase, result) {
   const rendered = [
     ...Object.values(useCase.events).flat(),
@@ -207,6 +253,13 @@ function assertUseCaseLinesMatchSnapshot(useCase, result) {
 }
 
 const SAMPLE_ASSERTIONS = Object.freeze({
+  "agent-tool-loop-budget": (rendered, result, id) => {
+    assertLine(rendered, `requestedToolCalls: ${result.requestedToolCalls}`, `${id} rendered lines`);
+    assertLine(rendered, `admittedToolCalls: ${result.admittedToolCalls}`, `${id} rendered lines`);
+    assertLine(rendered, `stoppedBeforeCall: ${result.stoppedBeforeCall}`, `${id} rendered lines`);
+    assertLine(rendered, `budget: ${result.budget.spent}/${result.budget.limit}`, `${id} rendered lines`);
+    assertLine(rendered, `terminalReason: ${result.terminalReason}`, `${id} rendered lines`);
+  },
   "agent-tree-cancel": (rendered, result, id) => {
     assertLine(rendered, `reason.tag: ${result.reason.tag}`, `${id} rendered lines`);
     assertLine(rendered, `cleanups.count: ${result.cleanups.length}`, `${id} rendered lines`);
@@ -307,4 +360,5 @@ function readJson(path) {
 await assertUseCasesMatchExecutableSamples();
 await assertLiveRunnersMatchUseCaseContracts();
 await assertRuntimeApiUsesStaticFallbackOnPublicPages();
+await assertUseCaseDeepLinksAreStable();
 process.stdout.write("site-data-contract: passed\n");

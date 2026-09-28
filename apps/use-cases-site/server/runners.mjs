@@ -14,15 +14,41 @@ import { CancellationError, ContextBagImpl, CostBudget, group, run } from "@work
 
 const repoRoot = resolve(fileURLToPath(new URL("../../../", import.meta.url)));
 const executeFile = promisify(execFile);
+const AGENT_TOOL_LOOP_SAMPLE_PATH = "packages/core/samples/agent-tool-loop-budget.sample.js";
 const INCIDENT_GATE_SAMPLE_PATH = "packages/core/samples/incident-decision-gate.sample.js";
 
 export const runners = {
+  "agent-tool-loop-budget": runAgentToolLoopBudget,
   "vibe-coding-agent": runAgentTree,
   "conversation-agent": runConversationAgent,
   "provider-fallback": runProviderFallback,
   "incident-decision-gate": runIncidentDecisionGate,
   "rag-pipeline": runRagPipeline,
 };
+
+async function runAgentToolLoopBudget() {
+  const result = await runJsonSample(AGENT_TOOL_LOOP_SAMPLE_PATH);
+
+  return {
+    sample: result.sample,
+    events: [
+      `requestedToolCalls: ${result.requestedToolCalls}`,
+      `admittedToolCalls: ${result.admittedToolCalls}`,
+      `stoppedBeforeCall: ${result.stoppedBeforeCall}`,
+      `terminalReason: ${result.terminalReason}`,
+    ],
+    receipt: [
+      "runtime: @workit/core",
+      `sample: ${result.sample}`,
+      `requestedToolCalls: ${result.requestedToolCalls}`,
+      `admittedToolCalls: ${result.admittedToolCalls}`,
+      `stoppedBeforeCall: ${result.stoppedBeforeCall}`,
+      `budget: ${result.budget.spent}/${result.budget.limit}`,
+      `terminalReason: ${result.terminalReason}`,
+    ],
+    code: await readSample(AGENT_TOOL_LOOP_SAMPLE_PATH),
+  };
+}
 
 async function runAgentTree() {
   const events = [];
