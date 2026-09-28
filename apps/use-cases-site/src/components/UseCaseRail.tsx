@@ -35,7 +35,7 @@ export function UseCaseRail({ selectedId, onSelect }: UseCaseRailProps) {
             onClick={() => onSelect(useCase)}
           >
             <span className="min-w-0">
-              <span className="block truncate font-bold">{useCase.title}</span>
+              <span className="block font-bold leading-5">{useCase.title}</span>
               <span className={clsx("mt-1 block text-sm", selectedId === useCase.id ? "text-zinc-300" : "text-zinc-500")}>
                 {useCase.audience}
               </span>

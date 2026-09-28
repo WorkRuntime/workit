@@ -18,7 +18,7 @@ export function SiteHeader() {
         <div className="flex min-w-0 items-center gap-5">
           <img className="h-10 w-auto shrink-0" src={workitWordmarkUrl} alt="WorkIt" />
           <div className="hidden max-w-[19rem] border-l border-zinc-300 pl-5 text-[0.8rem] font-semibold leading-5 text-zinc-600 sm:block">
-            Structured concurrency runtime for TypeScript
+            Execution layer for AI and backend work in TypeScript
           </div>
         </div>
         <nav className="hidden items-center gap-1 md:flex" aria-label="Primary">

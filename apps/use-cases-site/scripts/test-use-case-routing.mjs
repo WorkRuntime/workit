@@ -15,6 +15,7 @@ import {
 
 const USE_CASE_IDS = Object.freeze([
   "vibe-coding-agent",
+  "agent-tool-loop-budget",
   "conversation-agent",
   "provider-fallback",
   "incident-decision-gate",

@@ -2,6 +2,34 @@
   "schemaVersion": 1,
   "generatedBy": "apps/use-cases-site/scripts/generate-evidence.mjs",
   "samples": {
+    "agent-tool-loop-budget": {
+      "path": "packages/core/samples/agent-tool-loop-budget.sample.js",
+      "result": {
+        "sample": "agent-tool-loop-budget",
+        "requestedToolCalls": 6,
+        "admittedToolCalls": 3,
+        "stoppedBeforeCall": 4,
+        "budget": {
+          "spent": 3,
+          "limit": 3,
+          "unit": "tool_calls"
+        },
+        "terminalReason": "budget_exceeded",
+        "eventTypes": [
+          "agent:started",
+          "agent:tool_started",
+          "agent:tool_succeeded",
+          "agent:tool_started",
+          "agent:tool_succeeded",
+          "agent:tool_started",
+          "agent:tool_succeeded",
+          "agent:tool_started",
+          "agent:tool_cancelled",
+          "agent:failed"
+        ]
+      },
+      "source": "/**\n * Bounded agent tool-loop sample.\n *\n * @author Admilson B. F. Cossa\n * SPDX-License-Identifier: Apache-2.0\n *\n * Demonstrates that a prompt cannot be trusted to stop repeated tool calls.\n * The runtime charges each admitted tool call and cancels the owning agent\n * scope before the fourth tool body can execute.\n */\n\nimport assert from \"node:assert/strict\";\nimport {\n  BudgetExceededError,\n  ContextBagImpl,\n  group,\n} from \"@workit/core\";\nimport {\n  AgentToolCalls,\n  runAgent,\n} from \"@workit/core/ai\";\n\nconst REQUESTED_TOOL_CALLS = 6;\nconst TOOL_CALL_LIMIT = 3;\nconst TOOL_CALL_UNIT = \"tool_calls\";\n\nconst context = new ContextBagImpl().with(AgentToolCalls, {\n  spent: 0,\n  limit: TOOL_CALL_LIMIT,\n  unit: TOOL_CALL_UNIT,\n});\n\nlet executedToolCalls = 0;\nlet observedEvents = [];\nlet stoppedAtCall;\n\nawait assert.rejects(\n  group(async () => runAgent(async (agent) => {\n    observedEvents = agent.events;\n\n    for (let call = 1; call <= REQUESTED_TOOL_CALLS; call++) {\n      try {\n        await agent.tool(\n          \"search_documentation\",\n          { call },\n          async ({ call: admittedCall }) => {\n            executedToolCalls++;\n            return { admittedCall, result: \"same-candidate-set\" };\n          },\n          { toolCalls: 1 },\n        );\n      } catch (error) {\n        if (error instanceof BudgetExceededError) {\n          stoppedAtCall = call;\n        }\n        throw error;\n      }\n    }\n\n    return \"unexpected_completion\";\n  }), { context }),\n  (error) => error instanceof BudgetExceededError\n    && error.budgetKey === AgentToolCalls.name\n    && error.limit === TOOL_CALL_LIMIT\n    && error.spent === TOOL_CALL_LIMIT + 1,\n);\n\nconst finalBudget = context.get(AgentToolCalls);\nconst eventTypes = observedEvents.map(({ type }) => type);\n\nassert.equal(executedToolCalls, TOOL_CALL_LIMIT);\nassert.equal(stoppedAtCall, TOOL_CALL_LIMIT + 1);\nassert.deepEqual(finalBudget, {\n  spent: TOOL_CALL_LIMIT,\n  limit: TOOL_CALL_LIMIT,\n  unit: TOOL_CALL_UNIT,\n});\nassert.equal(eventTypes.filter((type) => type === \"agent:tool_started\").length, TOOL_CALL_LIMIT + 1);\nassert.equal(eventTypes.filter((type) => type === \"agent:tool_succeeded\").length, TOOL_CALL_LIMIT);\nassert.equal(eventTypes.filter((type) => type === \"agent:tool_cancelled\").length, 1);\nassert.equal(eventTypes.at(-1), \"agent:failed\");\n\nprocess.stdout.write(`${JSON.stringify({\n  sample: \"agent-tool-loop-budget\",\n  requestedToolCalls: REQUESTED_TOOL_CALLS,\n  admittedToolCalls: executedToolCalls,\n  stoppedBeforeCall: stoppedAtCall,\n  budget: finalBudget,\n  terminalReason: \"budget_exceeded\",\n  eventTypes,\n})}\\n`);\n"
+    },
     "agent-tree-cancel": {
       "path": "packages/core/samples/agent-tree-cancel.sample.js",
       "result": {

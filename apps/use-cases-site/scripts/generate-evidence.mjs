@@ -16,6 +16,7 @@ const repoRoot = resolve(siteRoot, "..", "..");
 const outputPath = resolve(siteRoot, "src", "data", "generated", "evidence-snapshots.json");
 
 const samples = [
+  { id: "agent-tool-loop-budget", path: "packages/core/samples/agent-tool-loop-budget.sample.js" },
   { id: "agent-tree-cancel", path: "packages/core/samples/agent-tree-cancel.sample.js" },
   { id: "conversation-agent", path: "packages/core/samples/conversation-agent.sample.js" },
   { id: "race-providers", path: "packages/core/samples/race-providers.sample.js" },
