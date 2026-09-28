@@ -377,6 +377,38 @@ to create an initial immutable context bag before opening a scope. Prefer the
 `scope.context` after a scope starts. The implementation does not provide a
 mutable service container or process-global registry.
 
+### Declared Agent Tool Authority
+
+`runAgent()` can evaluate a capability declared by an `agent.tool()` call
+against `allowedCapabilities` and `deniedCapabilities`. A denied declared
+capability emits `agent:tool_denied` and throws `AgentCapabilityError` before
+the tool body starts.
+
+```ts
+import { runAgent } from "@workit/core/ai";
+
+await runAgent(async (agent) => {
+  await agent.tool(
+    "read_repository",
+    undefined,
+    async () => readRepository(),
+    { capability: "repo:read" },
+  );
+}, {
+  authority: { allowedCapabilities: ["repo:read"] },
+});
+```
+
+The 1.0 contract is opt-in per tool call: when `AgentToolOptions.capability` is
+omitted, the authority policy is not evaluated and the tool is admitted. An
+allowlist therefore does not make unannotated tools fail closed. Applications
+that require fail-closed behavior must ensure every governed tool declares a
+capability before it reaches `agent.tool()`.
+
+This contract is a cooperative application policy. It is not authentication,
+human approval, rollback, or an operating-system sandbox. A tool body can still
+perform behavior broader than the capability string it declares.
+
 ### Candidate Selection
 
 > Available since `0.6.0`. Its release evidence includes a redacted external-

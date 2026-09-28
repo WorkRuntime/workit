@@ -169,7 +169,7 @@
     },
     {
       "id": "CORR-006",
-      "title": "agent authority denies undeclared capability before tool execution",
+      "title": "agent authority denies a declared capability outside the allowlist before tool execution",
       "class": "correctness",
       "status": "proven",
       "proof": "tests/evidence/correctness/agent-authority.mjs",
