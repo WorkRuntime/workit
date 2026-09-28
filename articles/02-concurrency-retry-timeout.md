@@ -68,7 +68,7 @@ const [profile, plan, sources] = await run.all([
 
 You can pivot a dashboard on that. You cannot pivot on `Error: AggregateError`.
 
-> **Bench [`01-run-all-vs-promise-all.mjs`](../benchmarks/articles/01-run-all-vs-promise-all.mjs).** A succeeds at 50 ms. **B fails at 30 ms.** C succeeds at 100 ms.
+> **Bench [`01-run-all-vs-promise-all.mjs`](../packages/core/benchmarks/articles/01-run-all-vs-promise-all.mjs).** A succeeds at 50 ms. **B fails at 30 ms.** C succeeds at 100 ms.
 >
 > | Implementation | Outer rejected | A still ran past reject | C still ran past reject | Defer ran for losers |
 > |---|---|---|---|---|
@@ -90,7 +90,7 @@ Six tokens you wrote with `Promise.race`. Different runtime contract:
 - Each loser sees `CancelReason { kind: "race_lost", winnerId }` -- typed, exhaustively narrowed.
 - `await run.race(...)` returns only after losers have finished cleaning up.
 
-> **Bench [`02-run-race-vs-promise-race.mjs`](../benchmarks/articles/02-run-race-vs-promise-race.mjs).** Anthropic at 10 ms, OpenAI at 50 ms, Gemini at 80 ms.
+> **Bench [`02-run-race-vs-promise-race.mjs`](../packages/core/benchmarks/articles/02-run-race-vs-promise-race.mjs).** Anthropic at 10 ms, OpenAI at 50 ms, Gemini at 80 ms.
 >
 > | Implementation | Winner at | OpenAI loser still ran | Gemini loser still ran | Loser reason |
 > |---|---|---|---|---|
@@ -109,7 +109,7 @@ const cheapest = await run.any([callExpensive, callCheap, callCheaper]);
 
 `Promise.any` resolves with the first **success** and ignores the rest. The slower siblings keep running. The faster failing ones got logged and forgotten. `run.any` does the same -- except the slower siblings actually stop.
 
-> **Bench [`03-run-any-vs-promise-any.mjs`](../benchmarks/articles/03-run-any-vs-promise-any.mjs).** A fails at 30 ms. B succeeds at 50 ms. C succeeds at 100 ms.
+> **Bench [`03-run-any-vs-promise-any.mjs`](../packages/core/benchmarks/articles/03-run-any-vs-promise-any.mjs).** A fails at 30 ms. B succeeds at 50 ms. C succeeds at 100 ms.
 >
 > | Implementation | Resolved at | C kept running | Defer ran for C |
 > |---|---|---|---|
@@ -142,7 +142,7 @@ if (out.mode === "collect") {
 
 `WorkOutput<R>` is a discriminated union -- `mode: "fail" | "continue" | "collect"`. Change `.onError("continue")` and the return type forces you to handle `errors[]`. The compiler is your audit log.
 
-> **Bench [`04-pool-vs-semaphore.mjs`](../benchmarks/articles/04-pool-vs-semaphore.mjs).** 10 items, concurrency 4. Item 3 throws at 20 ms; the rest take 100 ms each.
+> **Bench [`04-pool-vs-semaphore.mjs`](../packages/core/benchmarks/articles/04-pool-vs-semaphore.mjs).** 10 items, concurrency 4. Item 3 throws at 20 ms; the rest take 100 ms each.
 >
 > | Implementation | Outer rejected | Started | Fulfilled AFTER rejection | Cancelled | Never started | Longest post-rejection run |
 > |---|---|---|---|---|---|---|
@@ -174,7 +174,7 @@ Three things WorkIt makes part of the retry contract:
 2. **Validate input at the boundary.** `run.retry({ times: 1e9 })` would create an unbounded retry policy. `run.retry` rejects it: `RangeError: retry attempts must be an integer between 1 and 1000`. Bound is `MAX_RETRY_ATTEMPTS`.
 3. **Sleep with the scope signal.** Backoff sleep is interruptible -- abort the signal, the sleep rejects, the loop exits. The benchmark below compares against a signal-unaware retry loop; current retry libraries may expose their own abort hooks, but they still do not own WorkIt's scope tree, cleanup, and cancel-reason contract.
 
-> **Bench [`05-retry-on-cancel.mjs`](../benchmarks/articles/05-retry-on-cancel.mjs).** Body throws on every attempt. External cancel fires around t=50 ms. Up to 8 retries with 50 ms backoff.
+> **Bench [`05-retry-on-cancel.mjs`](../packages/core/benchmarks/articles/05-retry-on-cancel.mjs).** Body throws on every attempt. External cancel fires around t=50 ms. Up to 8 retries with 50 ms backoff.
 >
 > | Implementation | Cancel observed | Outer settled | Cancel latency | Extra attempts after cancel | Settled as |
 > |---|---|---|---|---|---|
@@ -258,7 +258,7 @@ const ranked = await run.hedge(
 
 If the first call hasn't returned in 2 seconds, fire a second one. First success wins; the rest cancel. Bounded by `max`, this is a measured way to reduce tail latency without paying for every speculative fan-out.
 
-> **Bench [`06-hedge-tied-requests.mjs`](../benchmarks/articles/06-hedge-tied-requests.mjs).** Two scenarios, opts `{ after: "50ms", max: 3 }`.
+> **Bench [`06-hedge-tied-requests.mjs`](../packages/core/benchmarks/articles/06-hedge-tied-requests.mjs).** Two scenarios, opts `{ after: "50ms", max: 3 }`.
 >
 > | Scenario | Body latency | Attempts fired (timestamps) | Winner | Losers cancelled | Cancel reason |
 > |---|---|---|---|---|---|
@@ -311,13 +311,13 @@ npm run bench:articles
 # full article suite: 19 passed, 0 failed
 ```
 
-This article cites benches 01-06 from the full suite. Each bench script is **~100 lines, zero external dependencies**, and asserts the WorkIt invariant in-line. Timings are representative captured runs; the assertions guard semantic invariants, not exact milliseconds. The folder has its own `package.json` so the published package's dependency graph stays empty. Read the README at [`benchmarks/articles/`](../benchmarks/articles/README.md) for how the promise-helper baselines stay honest.
+This article cites benches 01-06 from the full suite. Each bench script is **~100 lines, zero external dependencies**, and asserts the WorkIt invariant in-line. Timings are representative captured runs; the assertions guard semantic invariants, not exact milliseconds. The folder has its own `package.json` so the published package's dependency graph stays empty. Read the README at [`benchmarks/articles/`](../packages/core/benchmarks/articles/README.md) for how the promise-helper baselines stay honest.
 
 Production-side gates that back the same composables:
 
 | Claim | Evidence |
 |---|---|
-| Cancellation safety, all composables | Benches 01-06 plus [`tests/evidence/lifecycle/owned-work.mjs`](../tests/evidence/lifecycle/owned-work.mjs) verify parent cancellation, sibling failure, retry cancellation, race loser cleanup, and owned background work. |
+| Cancellation safety, all composables | Benches 01-06 plus [`tests/evidence/lifecycle/owned-work.mjs`](../packages/core/tests/evidence/lifecycle/owned-work.mjs) verify parent cancellation, sibling failure, retry cancellation, race loser cleanup, and owned background work. |
 | `run.retry` validation | `RangeError` for `times` <= 0, > 1000, NaN, Infinity, fractional. Identical rejection on numeric and object form. |
 | `run.race` / `run.any` loser cleanup | LIFO `defer` blocks observed in test for every loser; outer promise does not resolve until cleanup completes |
 | Bundle of all nine composables | Included in 14,175 B min / 4,835 B gzip core-group-import. Tree-shaken if unused. |

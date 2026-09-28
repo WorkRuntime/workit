@@ -33,7 +33,7 @@ Two things to notice:
 
 What the producer actually does:
 
-> **Bench [`09-stream-1b-lazy.mjs`](../benchmarks/articles/09-stream-1b-lazy.mjs).** 1,000,000,000-row generator. `inParallel(16)`. Consumer takes 25, breaks.
+> **Bench [`09-stream-1b-lazy.mjs`](../packages/core/benchmarks/articles/09-stream-1b-lazy.mjs).** 1,000,000,000-row generator. `inParallel(16)`. Consumer takes 25, breaks.
 >
 > | Implementation | Consumed | **Items pulled from the generator** | maxActive | In-flight after break |
 > |---|---|---|---|---|
@@ -67,7 +67,7 @@ Properties the runtime guarantees:
 - **A throw inside the body** triggers `CancelReason { kind: "manual", tag: "stream_failed" }` for siblings -- typed, distinguishable from the consumer-break path on a dashboard.
 - **Slow consumer pauses producer.** Tracked under `check:stream-memory`: 1,000,000 logical items, slow consumer, bounded heap growth, and no unbounded producer advance.
 
-> **Bench [`10-stream-slow-consumer.mjs`](../benchmarks/articles/10-stream-slow-consumer.mjs).** 5,000-item source, `inParallel(16)`, consumer ~5 ms per item, take 200.
+> **Bench [`10-stream-slow-consumer.mjs`](../packages/core/benchmarks/articles/10-stream-slow-consumer.mjs).** 5,000-item source, `inParallel(16)`, consumer ~5 ms per item, take 200.
 >
 > | Metric | Value |
 > |---|---|
@@ -153,7 +153,7 @@ await group(async (task) => {
 });
 ```
 
-Channel contract, all five rows verified by [`11-channel-contract.mjs`](../benchmarks/articles/11-channel-contract.mjs):
+Channel contract, all five rows verified by [`11-channel-contract.mjs`](../packages/core/benchmarks/articles/11-channel-contract.mjs):
 
 | # | Scenario | Bench observation |
 |---|---|---|
@@ -263,10 +263,10 @@ Production-side gates that back the same primitives:
 
 | Claim | Evidence |
 |---|---|
-| 1 B virtual stream consumed = 25 | `sample:1b` produces <= TAKE+CONCURRENCY items, asserted in CI. Reproduced by [`09-stream-1b-lazy.mjs`](../benchmarks/articles/09-stream-1b-lazy.mjs). |
+| 1 B virtual stream consumed = 25 | `sample:1b` produces <= TAKE+CONCURRENCY items, asserted in CI. Reproduced by [`09-stream-1b-lazy.mjs`](../packages/core/benchmarks/articles/09-stream-1b-lazy.mjs). |
 | 1 M item slow-consumer gate | `check:stream-memory` -- heap growth bounded, max active capped, and producer pull remains demand-limited. |
-| Channel backpressure on capacity 2 | [`11-channel-contract.mjs`](../benchmarks/articles/11-channel-contract.mjs) verifies the third send blocks until the first receive. |
-| Channel close + drain | [`tests/evidence/correctness/runtime-contracts.mjs`](../tests/evidence/correctness/runtime-contracts.mjs) verifies buffered values drain before `done: true`. |
+| Channel backpressure on capacity 2 | [`11-channel-contract.mjs`](../packages/core/benchmarks/articles/11-channel-contract.mjs) verifies the third send blocks until the first receive. |
+| Channel close + drain | [`tests/evidence/correctness/runtime-contracts.mjs`](../packages/core/tests/evidence/correctness/runtime-contracts.mjs) verifies buffered values drain before `done: true`. |
 | Channel cancel via signal | Channel contract coverage verifies pending receives reject with the cancel reason. |
 | Channel composes with `group()` | Channel contract coverage verifies producer/consumer pipelines deliver values in order. |
 | `work().inParallel(N)` cap | Property test (`fast-check`): for any (N, total), `maxActive <= N`. |

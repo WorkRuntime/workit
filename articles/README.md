@@ -32,7 +32,7 @@ worker hard-kill against a CPU spinner, local-first observability, and the
 ## Editorial Rules
 
 - **Code first.** Open with a runnable snippet that is the point.
-- **Claims map to gates.** Every number cited maps to `npm run verify`, `npm run bench:articles`, `npm run test:evidence`, or [`evidence/claims.json`](../evidence/claims.json).
+- **Claims map to gates.** Every number cited maps to `npm run verify`, `npm run bench:articles`, `npm run test:evidence`, or [`evidence/claims.json`](../packages/core/evidence/claims.json).
 - **No theatrical comparisons.** Do not say "10x faster than X" without a benchmark. Say what the executable invariant verifies.
 - **Ownership/composition framing.** External libraries may expose cancellation hooks; WorkIt's claim is that cancellation, cleanup, retry, timeout, budgets, backpressure, and diagnostics compose under one owner.
 - **Agent and data-plane scenarios stay first-class.** Provider racing, agent cancellation, RAG ingest, streaming STT, embedding pipelines, token/cost/tool-call budgets are the core scenarios.
@@ -73,7 +73,7 @@ npm run check:public-proof
 ```
 
 The captured article benchmark result for this publication revision is
-[`benchmarks/results/articles.latest.json`](../benchmarks/results/articles.latest.json).
+[`benchmarks/results/articles.latest.json`](../packages/core/benchmarks/results/articles.latest.json).
 
 ## The Single Labeled Gap
 

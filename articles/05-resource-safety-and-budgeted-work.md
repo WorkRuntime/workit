@@ -32,7 +32,7 @@ const rows = await run.scope(async (scope) => scope.spawn(run.bracket(
 
 `release` runs **once** on every exit path: success, throw, parent cancel, timeout, sibling failure. The release receives the resource. The release also receives `cleanupCtx.signal` so it can give up if the cleanup itself hangs. Nested brackets release LIFO.
 
-> **Bench [`12-bracket-vs-try-finally.mjs`](../benchmarks/articles/12-bracket-vs-try-finally.mjs).** Five scenarios -- measured.
+> **Bench [`12-bracket-vs-try-finally.mjs`](../packages/core/benchmarks/articles/12-bracket-vs-try-finally.mjs).** Five scenarios -- measured.
 >
 > | # | Scenario | Result |
 > |---|---|---|
@@ -64,7 +64,7 @@ The user hits Ctrl-C. The parent scope cancels. The deadline fires. Inside the s
 
 Cancellation is **delayed**, not hidden.
 
-This is the line that lets you write a Stripe webhook handler, a distributed-lock release, or a database commit without relying on ordinary task cancellation to preserve the critical section. **Bench [`08-uncancellable-shield.mjs`](../benchmarks/articles/08-uncancellable-shield.mjs)** (article 03) measured the body running 95 ms past a parent cancel before the original reason was rethrown.
+This is the line that lets you write a Stripe webhook handler, a distributed-lock release, or a database commit without relying on ordinary task cancellation to preserve the critical section. **Bench [`08-uncancellable-shield.mjs`](../packages/core/benchmarks/articles/08-uncancellable-shield.mjs)** (article 03) measured the body running 95 ms past a parent cancel before the original reason was rethrown.
 
 **When to use `uncancellable`** -- short, critical sections that must finish atomically: Stripe charges, audit log flushes, idempotency-key writes, distributed-lock release.
 
@@ -114,7 +114,7 @@ import { createBudget } from "@workit/core";
 const Anthropic = createBudget("anthropic-tokens", { unit: "tokens" });
 ```
 
-> **Bench [`13-budget-atomicity-and-cancel.mjs`](../benchmarks/articles/13-budget-atomicity-and-cancel.mjs).** Three rules, measured.
+> **Bench [`13-budget-atomicity-and-cancel.mjs`](../packages/core/benchmarks/articles/13-budget-atomicity-and-cancel.mjs).** Three rules, measured.
 >
 > | Rule | Bench observation |
 > |---|---|
@@ -162,7 +162,7 @@ Budgets, cancellation reasons, request scopes, idempotency keys, agent identity,
 
 The fix: an **overlay-based** context. Think of it as a linked list of single-key deltas pointing at the parent bag. `.with(key, value)` returns a child that stores one entry and points at its parent. Lookup walks up the chain. Memory and cost per `.with()` are O(1).
 
-> **Bench [`14-context-overlay-perf.mjs`](../benchmarks/articles/14-context-overlay-perf.mjs).** 100 `.with()` calls over a 5,000-key bag.
+> **Bench [`14-context-overlay-perf.mjs`](../packages/core/benchmarks/articles/14-context-overlay-perf.mjs).** 100 `.with()` calls over a 5,000-key bag.
 >
 > | Implementation | Wall time | Per call |
 > |---|---|---|
@@ -202,10 +202,10 @@ Production-side gates that back the same primitives:
 
 | Claim | Evidence |
 |---|---|
-| `run.bracket` scenarios | [`12-bracket-vs-try-finally.mjs`](../benchmarks/articles/12-bracket-vs-try-finally.mjs) covers success, throw, cancel, timeout, hanging cleanup, and bounded release. |
-| `run.uncancellable` scenarios | [`08-uncancellable-shield.mjs`](../benchmarks/articles/08-uncancellable-shield.mjs) covers parent cancel during body, shield timeout, nested shields, and signal isolation. |
-| Budget atomicity | Property test: 100 concurrent charges of 0.01 -> spent = 1.00 exactly. Reproduced by [`13-budget-atomicity-and-cancel.mjs`](../benchmarks/articles/13-budget-atomicity-and-cancel.mjs). |
-| Budget snapshot immutability | [`tests/evidence/correctness/runtime-contracts.mjs`](../tests/evidence/correctness/runtime-contracts.mjs) verifies caller objects remain unchanged and snapshots are read-only views of budget state. |
+| `run.bracket` scenarios | [`12-bracket-vs-try-finally.mjs`](../packages/core/benchmarks/articles/12-bracket-vs-try-finally.mjs) covers success, throw, cancel, timeout, hanging cleanup, and bounded release. |
+| `run.uncancellable` scenarios | [`08-uncancellable-shield.mjs`](../packages/core/benchmarks/articles/08-uncancellable-shield.mjs) covers parent cancel during body, shield timeout, nested shields, and signal isolation. |
+| Budget atomicity | Property test: 100 concurrent charges of 0.01 -> spent = 1.00 exactly. Reproduced by [`13-budget-atomicity-and-cancel.mjs`](../packages/core/benchmarks/articles/13-budget-atomicity-and-cancel.mjs). |
+| Budget snapshot immutability | [`tests/evidence/correctness/runtime-contracts.mjs`](../packages/core/tests/evidence/correctness/runtime-contracts.mjs) verifies caller objects remain unchanged and snapshots are read-only views of budget state. |
 | Budget owning-scope cancellation | Charge attempted at depth 5 cancels the owning scope at depth 0 with `kind: "budget"`. |
 | Context overlay perf | `npm run check:context-performance` asserts < 10 ms; bench records a representative ~0.01 ms run with a large speedup over the inline baseline. |
 | 100K embeddings sample | `sample:embed100k`: 100,000 docs, concurrency 32, token budget enforced, in-CI assertion. |
