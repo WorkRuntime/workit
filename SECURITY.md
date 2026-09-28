@@ -6,8 +6,9 @@ SPDX-License-Identifier: Apache-2.0
 
 ## Supported Versions
 
-WorkIt is pre-release software. Security fixes apply to the current `0.x`
-development line until a stable support policy is published.
+Security fixes apply to the latest published `1.x` release. The historical
+`0.x` lines no longer receive routine fixes unless a security advisory states
+otherwise.
 
 ## Reporting A Vulnerability
 
@@ -33,9 +34,10 @@ fix, mitigation, or status update as soon as practical.
 ## Security Boundary
 
 WorkIt is a local structured-concurrency runtime. It does not authenticate
-users, authorize actions, encrypt payloads, or provide a durable workflow
-ledger. Applications remain responsible for tenant isolation, provider
-credentials, authorization, persistence, and external network policy.
+users, authorize application identities, encrypt payloads, provide a database
+service, or transparently resume in-flight workflows after process failure.
+Applications remain responsible for tenant isolation, provider credentials,
+authorization, persistence adapters, and external network policy.
 
 The core package must keep these guarantees:
 
