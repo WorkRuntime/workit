@@ -12,9 +12,25 @@ import { fileURLToPath } from "node:url";
 import {
   LAB_DEVCONTAINER_PATH,
   REAL_WORKIT_LAUNCH_URL,
+  WORKIT_RUNTIME_VERSION,
 } from "../launch-targets.mjs";
 
 const EXPECTED_WORKSPACE = "/workspaces/${localWorkspaceFolderBasename}/examples/ai-failure-lab";
+
+test("published runtime label matches the locked dependency", async () => {
+  const manifest = JSON.parse(await readFile(
+    fileURLToPath(new URL("../package.json", import.meta.url)),
+    "utf8",
+  ));
+  const lockfile = JSON.parse(await readFile(
+    fileURLToPath(new URL("../package-lock.json", import.meta.url)),
+    "utf8",
+  ));
+
+  assert.equal(manifest.dependencies["@workit/core"], WORKIT_RUNTIME_VERSION);
+  assert.equal(lockfile.packages[""].dependencies["@workit/core"], WORKIT_RUNTIME_VERSION);
+  assert.equal(lockfile.packages["node_modules/@workit/core"].version, WORKIT_RUNTIME_VERSION);
+});
 
 test("real WorkIt launch target uses the bounded Codespaces dev container", async () => {
   const launchUrl = new URL(REAL_WORKIT_LAUNCH_URL);

@@ -1,7 +1,7 @@
 # WorkIt AI Failure Lab
 
 This standalone Node.js project runs the same bounded incident datasets shown by
-the WorkIt examples site through the published `@workit/core@0.6.1` package.
+the WorkIt examples site through the published `@workit/core@1.0.0` package.
 
 ## Run locally
 

@@ -13,7 +13,7 @@
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
-    "@workit/core": "0.6.1"
+    "@workit/core": "1.0.0"
   },
   "engines": {
     "node": ">=20.11"

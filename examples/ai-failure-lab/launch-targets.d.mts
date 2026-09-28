@@ -6,5 +6,5 @@
  */
 
 export const LAB_DEVCONTAINER_PATH: "examples/ai-failure-lab/.devcontainer/devcontainer.json";
-export const WORKIT_RUNTIME_VERSION: "0.6.1";
+export const WORKIT_RUNTIME_VERSION: "1.0.0";
 export const REAL_WORKIT_LAUNCH_URL: string;
