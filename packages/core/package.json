@@ -244,7 +244,7 @@
   },
   "devDependencies": {
     "@opentelemetry/api": "1.9.1",
-    "@types/node": "25.6.1",
+    "@types/node": "26.6.3",
     "@vitest/coverage-v8": "4.1.11",
     "esbuild": "0.28.2",
     "fast-check": "4.9.0",
