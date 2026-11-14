@@ -136,6 +136,10 @@ try {
     "@trpc/server@11.17.0",
     "express@5.2.1",
     "fastify@5.8.5",
+    // fastify@5.8.5 accepts light-my-request ^6.0.0. From 6.8.0 that range
+    // resolves to cookie@^2, which is ESM-only and requires Node >= 22, so the
+    // Node 20.11 fixture cannot load it. Pin the last release on cookie@^1.
+    "light-my-request@6.6.0",
     "ai@6.0.175",
   ], {
     cwd: temp,
