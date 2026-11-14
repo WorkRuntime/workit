@@ -6,17 +6,20 @@
  */
 
 import { readFile } from "node:fs/promises";
+import { isReleaseAtOrAfter } from "../../../scripts/release-line.mjs";
 import { createSuite } from "../harness.mjs";
 
 const suite = createSuite("release");
 const root = new URL("../../../", import.meta.url);
-const HARDENED_RELEASE_VERSIONS = new Set(["0.6.1", "1.0.0"]);
-const COMPATIBILITY_BASELINES = new Set(["0.6.0", "0.6.1"]);
+/** Release that introduced the hardening gates; every later release keeps them. */
+const HARDENING_VERSION = "0.6.1";
+/** Oldest baseline the previous-release compatibility gate has ever locked. */
+const OLDEST_COMPATIBILITY_BASELINE = "0.6.0";
 
 await suite.proof(
   "REL-012",
   "0.6.1 locks declarations compatibility and reproducible packaging",
-  "declarations and 0.6.0 compatibility are locked, Node 20.11/22/24 are exercised, two builds pack identically, public benchmark thresholds drive their gates, and deep property exploration is scheduled",
+  "declarations and previous-release compatibility are locked, Node 20.11/22/24 are exercised, two builds pack identically, public benchmark thresholds drive their gates, and deep property exploration is scheduled",
   async () => {
     const packageJson = JSON.parse(await readFile(new URL("package.json", root), "utf8"));
     const snapshot = JSON.parse(await readFile(
@@ -46,10 +49,11 @@ await suite.proof(
     )?.groups?.version;
 
     return {
-      ok: HARDENED_RELEASE_VERSIONS.has(packageJson.version)
+      ok: isReleaseAtOrAfter(packageJson.version, HARDENING_VERSION)
         && snapshot.files?.length === 31
         && declarationGate.includes("public-declarations.snapshot.json")
-        && COMPATIBILITY_BASELINES.has(compatibilityBaseline)
+        && isReleaseAtOrAfter(compatibilityBaseline, OLDEST_COMPATIBILITY_BASELINE)
+        && isReleaseAtOrAfter(packageJson.version, compatibilityBaseline)
         && reproducibilityGate.includes("two clean builds produced different package bytes")
         && ci.includes('node-version: ["20.11.1", "22.x", "24.x"]')
         && logicalFixture?.minimumLogicalItemsPerSecond === 50_000_000

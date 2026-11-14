@@ -6,10 +6,13 @@
  */
 
 import { readFile } from "node:fs/promises";
+import { isReleaseAtOrAfter, isReleaseOnMajorLine } from "../../../scripts/release-line.mjs";
 import { createSuite } from "../harness.mjs";
 
-const RELEASE_VERSION = "1.0.0";
-const COMPATIBILITY_BASELINE = "0.6.1";
+/** Release that froze the surface. Its changelog entry must stay published. */
+const FREEZE_VERSION = "1.0.0";
+/** Major line the freeze covers: every 1.x release keeps the frozen surface. */
+const FROZEN_MAJOR = 1;
 const STABLE_ENTRYPOINT_COUNT = 16;
 const suite = createSuite("release");
 const root = new URL("../../../", import.meta.url);
@@ -17,7 +20,7 @@ const root = new URL("../../../", import.meta.url);
 await suite.proof(
   "REL-014",
   "1.0 freezes the documented package surface",
-  "the 1.0 package declares all 16 entrypoints stable and checks runtime exports and declarations against 0.6.1",
+  "every 1.x package declares all 16 entrypoints stable and checks runtime exports and declarations against a published 1.x baseline no newer than itself",
   async () => {
     const packageJson = JSON.parse(await readFile(new URL("package.json", root), "utf8"));
     const readme = await readFile(new URL("README.md", root), "utf8");
@@ -34,14 +37,19 @@ await suite.proof(
       return readme.includes(`| \`${publishedPath}\` | stable |`);
     });
 
+    const compatibilityBaseline = compatibilityGate.match(
+      /BASELINE_VERSION = "(?<version>[^"]+)"/u,
+    )?.groups?.version;
+
     return {
-      ok: packageJson.version === RELEASE_VERSION
+      ok: isReleaseOnMajorLine(packageJson.version, FROZEN_MAJOR)
         && entrypoints.length === STABLE_ENTRYPOINT_COUNT
         && stableRows.length === STABLE_ENTRYPOINT_COUNT
-        && changelog.includes(`## ${RELEASE_VERSION}`)
-        && compatibilityGate.includes(`BASELINE_VERSION = "${COMPATIBILITY_BASELINE}"`),
+        && changelog.includes(`## ${FREEZE_VERSION}`)
+        && isReleaseAtOrAfter(compatibilityBaseline, FREEZE_VERSION)
+        && isReleaseAtOrAfter(packageJson.version, compatibilityBaseline),
       version: packageJson.version,
-      compatibilityBaseline: COMPATIBILITY_BASELINE,
+      compatibilityBaseline,
       entrypoints,
       stableEntrypoints: stableRows.length,
     };

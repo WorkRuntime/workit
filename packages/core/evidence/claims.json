@@ -573,7 +573,7 @@
       "status": "proven",
       "proof": "tests/evidence/release/hardening-contracts.mjs",
       "command": "npm run test:evidence",
-      "expectedInvariant": "declarations and 0.6.0 compatibility are locked, Node 20.11/22/24 are exercised, two builds pack identically, public benchmark thresholds drive their gates, and 1,000 runs per property are scheduled nightly with rotating reproducible seeds",
+      "expectedInvariant": "declarations and previous-release compatibility are locked, Node 20.11/22/24 are exercised, two builds pack identically, public benchmark thresholds drive their gates, and 1,000 runs per property are scheduled nightly with rotating reproducible seeds",
       "limitations": "The declaration snapshot intentionally freezes the complete generated type graph. The Node matrix and deep property profile execute in CI; local release verification covers the active Node version and bounded property profile unless explicitly overridden.",
       "verifiedFor": "0.6.1"
     },
@@ -597,8 +597,8 @@
       "status": "proven",
       "proof": "tests/evidence/release/one-zero-contracts.mjs",
       "command": "npm run test:evidence",
-      "expectedInvariant": "the 1.0 package declares all 16 entrypoints stable and checks runtime exports and declarations against 0.6.1",
-      "limitations": "The compatibility gate proves the published JavaScript exports and generated declarations are unchanged from 0.6.1. Behavioral compatibility remains bounded by the documented contracts and executable consumer fixtures.",
+      "expectedInvariant": "every 1.x package declares all 16 entrypoints stable and checks runtime exports and declarations against a published 1.x baseline no newer than itself",
+      "limitations": "The compatibility gate proves the JavaScript export names and generated declarations are unchanged from the 1.0.0 release, which was itself verified unchanged from 0.6.1 when it was published. Behavioral compatibility remains bounded by the documented contracts and executable consumer fixtures.",
       "verifiedFor": "1.0.0"
     },
     {
