@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { parseSingleNpmPackResult } from "./npm-pack-result.mjs";
 
-const BASELINE_VERSION = "0.6.1";
+const BASELINE_VERSION = "1.0.0";
 const OPENTELEMETRY_VERSION = "1.9.1";
 const PACKAGE_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const FIXTURE_PATH = fileURLToPath(
