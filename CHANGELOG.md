@@ -7,6 +7,24 @@ SPDX-License-Identifier: Apache-2.0
 
 ## Unreleased
 
+## 1.0.1
+
+- Keep the `1.0.0` runtime, public exports, and TypeScript declarations
+  unchanged. This is a documentation and release-evidence maintenance release.
+- Document the declared agent tool authority contract of `runAgent()`:
+  `allowedCapabilities` and `deniedCapabilities` are evaluated only for tool
+  calls that declare a `capability`, and a tool that omits it is admitted even
+  when an allowlist is present. The contract is a cooperative application
+  policy, not authentication, human approval, rollback, or a sandbox.
+- Correct the CORR-006 claim title to match its proof: denial of a declared
+  capability outside the allowlist.
+- Evaluate the release proofs REL-012 and REL-014 against the release line
+  instead of an enumerated version, and verify the packed package against the
+  `1.0.0` release across ESM, CommonJS, and strict TypeScript declarations.
+- Pin a transitive dependency of the Fastify consumer fixture so the Node
+  20.11 compatibility check keeps running. The published package continues to
+  have zero runtime dependencies.
+
 ## 1.0.0
 
 - Freeze the 16 documented package entrypoints and their public TypeScript and

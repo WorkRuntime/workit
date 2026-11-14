@@ -1,6 +1,6 @@
 {
   "name": "@workit/core",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Structured concurrency runtime for TypeScript: owned async work, cancellation, budgets, retries, timeouts, worker offload, scopes.",
   "keywords": [
     "structured-concurrency",
