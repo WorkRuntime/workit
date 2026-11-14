@@ -12,7 +12,7 @@ const suite = createSuite("correctness");
 
 await suite.proof(
   "CORR-006",
-  "agent authority denies undeclared capability before tool execution",
+  "agent authority denies a declared capability outside the allowlist before tool execution",
   "denied declared tool capability emits agent:tool_denied and the tool body is never called",
   async () => {
     let called = false;
